@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>SprigSynth — Libretto A5</title>
+<style>
+  @page { size: A4 portrait; margin: 13mm 14mm; }
+
+  :root {
+    --ink:      #16191d;
+    --ink-soft: #5b6570;
+    --line:     #c8cfd6;
+    --accent:   #0b5fa5;
+    --bg-soft:  #f4f6f8;
+    --green:    #2fa84f;
+    --red:      #d92d20;
+    --yellow:   #f2b705;
+    --blue:     #1f6feb;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 8.5pt;
+    line-height: 1.33;
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page { page-break-after: always; position: relative; }
+  .page:last-child { page-break-after: auto; }
+
+  /* ---------- intestazioni ---------- */
+  .masthead {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    border-bottom: 1.5pt solid var(--ink); padding-bottom: 2.2mm; margin-bottom: 3.6mm;
+  }
+  .masthead h1 { font-size: 17.5pt; margin: 0; letter-spacing: -0.4pt; }
+  .masthead .sub { font-size: 8pt; color: var(--ink-soft); margin-top: 1mm; }
+  .masthead .meta {
+    text-align: right; font-size: 7.6pt; color: var(--ink-soft);
+    font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.5;
+  }
+
+  h2 {
+    font-size: 10.5pt; margin: 0 0 1.9mm; padding-bottom: 1.2mm;
+    border-bottom: 0.8pt solid var(--line);
+  }
+  h2 .n {
+    display: inline-block; background: var(--ink); color: #fff;
+    width: 4.8mm; height: 4.8mm; line-height: 4.8mm; text-align: center;
+    border-radius: 0.8mm; font-size: 8.6pt; margin-right: 2mm; vertical-align: 0.3mm;
+  }
+  h3 { font-size: 9pt; margin: 3mm 0 1.2mm; }
+
+  .runner {
+    position: running(footer);
+  }
+  .foot {
+    margin-top: 3mm; padding-top: 1.4mm; border-top: 0.6pt solid var(--line);
+    font-size: 7.2pt; color: var(--ink-soft); display: flex; justify-content: space-between;
+  }
+
+  /* ---------- tabelle ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 7.8pt; }
+  th, td { text-align: left; padding: 1mm 1.5mm; border-bottom: 0.5pt solid var(--line); vertical-align: top; }
+  th {
+    background: var(--bg-soft); font-size: 7pt; text-transform: uppercase;
+    letter-spacing: 0.4pt; border-bottom: 1pt solid var(--ink);
+  }
+  tbody tr:nth-child(even) td { background: #fafbfc; }
+  td.num, th.num { text-align: center; width: 7mm; font-weight: 700; }
+  code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 7.8pt; }
+  .gpio {
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 7.6pt;
+    background: #eaeff4; border: 0.5pt solid #cdd8e2; border-radius: 1mm;
+    padding: 0.2mm 1.2mm; white-space: nowrap;
+  }
+
+  /* ---------- pastiglie colore ---------- */
+  .dot {
+    display: inline-block; width: 3mm; height: 3mm; border-radius: 50%;
+    border: 0.5pt solid rgba(0,0,0,.45); vertical-align: -0.3mm; margin-right: 1.2mm;
+  }
+  .dot.g { background: var(--green); } .dot.r { background: var(--red); }
+  .dot.y { background: var(--yellow); } .dot.b { background: var(--blue); }
+  .dot.k { background: #2b2f34; } .dot.w { background: #d9dde1; }
+
+  /* ---------- riquadri ---------- */
+  .note {
+    background: var(--bg-soft); border-left: 2pt solid var(--accent);
+    padding: 2mm 2.6mm; margin: 2.4mm 0; font-size: 7.9pt;
+  }
+  .warn { background: #fff6f5; border-left-color: var(--red); }
+  .note p { margin: 0 0 1.5mm; } .note p:last-child { margin-bottom: 0; }
+  .note b { color: var(--ink); }
+
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6mm; }
+  .cols2-wide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0 6mm; }
+
+  ol.steps { margin: 0 0 0 4.5mm; padding: 0; }
+  ol.steps li { margin-bottom: 1.1mm; }
+  ul.tight { margin: 0 0 0 4.2mm; padding: 0; }
+  ul.tight li { margin-bottom: 0.9mm; }
+
+  .legend-table td { padding: 0.85mm 1.2mm; font-size: 7.3pt; }
+  .legend-table td.num { width: 5.5mm; }
+
+  svg { display: block; width: 100%; height: auto; }
+
+  /* ---------- disegno ---------- */
+  .panel-body { fill: #f7f8fa; stroke: #16191d; stroke-width: 1.6; stroke-linejoin: round; }
+  .bezel { fill: #dfe4e9; stroke: #4a545e; stroke-width: 0.7; }
+  .cap-g { fill: #2fa84f; } .cap-r { fill: #d92d20; }
+  .cap-y { fill: #f2b705; } .cap-b { fill: #1f6feb; }
+  .cap { stroke: rgba(0,0,0,.5); stroke-width: 0.5; }
+  .callout { fill: #ffffff; stroke: #16191d; stroke-width: 0.9; }
+  .callout-t { font: 700 9px "Helvetica Neue", Arial, sans-serif; fill: #16191d; text-anchor: middle; }
+  .lead { stroke: #7a848e; stroke-width: 0.5; fill: none; }
+  .lead-dot { fill: #7a848e; }
+  .dim { stroke: #0b5fa5; stroke-width: 0.5; fill: none; }
+  .dim-t { font: 500 7.5px "Helvetica Neue", Arial, sans-serif; fill: #0b5fa5; text-anchor: middle; }
+  .lbl { font: 500 7px "Helvetica Neue", Arial, sans-serif; fill: #5b6570; text-anchor: middle; }
+  .lbl-s { font: 500 6px "Helvetica Neue", Arial, sans-serif; fill: #7a848e; text-anchor: middle; }
+
+  /* ================= variante libretto A5 ================= */
+  @page { size: A5 portrait; margin: 10mm 11mm; }
+
+  body { font-size: 8.6pt; line-height: 1.38; }
+
+  /* le sezioni diventano capitoli: iniziano a pagina nuova e poi scorrono */
+  .masthead { display: block; border-bottom-width: 1.2pt; padding-bottom: 2mm; margin-bottom: 3.4mm; }
+  .masthead h1 { font-size: 14.5pt; }
+  .masthead .sub { font-size: 7.8pt; }
+  .masthead .meta { display: none; }
+  .foot { display: none; }
+
+  /* una colonna sola: su 126 mm di specchio due colonne sono illeggibili */
+  .cols2, .cols2-wide { grid-template-columns: 1fr; gap: 0; }
+  .cols2 > div + div, .cols2 > table + table, .cols2 > ul + ul { margin-top: 3mm; }
+
+  /* niente righe spezzate a cavallo di due pagine */
+  tr, .note, ul.tight, ol.steps, svg { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+  table { font-size: 7.9pt; }
+  h2 { font-size: 10pt; margin-top: 3.5mm; }
+  svg { max-height: none !important; }
+
+  /* la legenda su pagina propria: la 1 resta una copertina col solo disegno */
+  .page:first-of-type > .cols2 { break-before: page; page-break-before: always; }
+  .page:first-of-type > .cols2 > table + table { margin-top: 0; }
+</style>
+</head>
+<body>
+
+<section class="page">
+  <div class="masthead">
+    <div>
+      <h1>SprigSynth</h1>
+      <div class="sub">Sintetizzatore monofonico ESP32-S3 &middot; Blueprint del pannello e legenda comandi</div>
+    </div>
+    <div class="meta">TAV. 1 / 5<br>LAYOUT PANNELLO<br>SCALA ~1:2 &middot; QUOTE IN mm</div>
+  </div>
+  <svg viewBox="-60 -30 405 356" xmlns="http://www.w3.org/2000/svg" style="max-height:150mm; margin:0 auto;">
+    <defs>
+      <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+        <path d="M25,0 L0,0 L0,25" fill="none" stroke="#dde3e9" stroke-width="0.35"/>
+      </pattern>
+      <clipPath id="panelClip">
+        <path d="M305,0 L305,145 L255,245 L120,250 L0,175 L0,25 L45,0 Z"/>
+      </clipPath>
+      <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#0b5fa5"/>
+      </marker>
+      <marker id="arrowS" markerWidth="5" markerHeight="5" refX="4.5" refY="2.5" orient="auto">
+        <path d="M0,0 L5,2.5 L0,5 Z" fill="#5b6570"/>
+      </marker>
+    </defs>
+
+    <path class="panel-body" d="M305,0 L305,145 L255,245 L120,250 L0,175 L0,25 L45,0 Z"/>
+    <rect x="0" y="0" width="305" height="250" fill="url(#grid)" clip-path="url(#panelClip)"/>
+
+    <!-- ============ JOYSTICK ============ -->
+    <circle cx="163" cy="180" r="45" fill="#e7ebef" stroke="#4a545e" stroke-width="0.8"/>
+    <circle cx="163" cy="180" r="45" fill="none" stroke="#8a949e" stroke-width="0.4" stroke-dasharray="2 2"/>
+    <circle cx="163" cy="180" r="17.5" fill="#f2b705" stroke="rgba(0,0,0,.5)" stroke-width="0.6"/>
+    <path d="M163,161 L163,155 M163,199 L163,205 M144,180 L138,180 M182,180 L188,180"
+          stroke="#5b6570" stroke-width="0.8" marker-end="url(#arrowS)"/>
+    <text class="lbl" x="163" y="241">JOYSTICK 4 MICROSWITCH</text>
+
+    <!-- ============ DISPLAY (previsto) ============ -->
+    <circle cx="243" cy="185" r="20" fill="#eef2f6" stroke="#0b5fa5" stroke-width="0.8" stroke-dasharray="3 2"/>
+    <circle cx="243" cy="185" r="16.5" fill="#dde5ec" stroke="#0b5fa5" stroke-width="0.4"/>
+    <text class="lbl-s" x="243" y="184">GC9A01</text>
+    <text class="lbl-s" x="243" y="192">&#216;40 mm</text>
+
+    <!-- ============ PULSANTI NOTA ============ -->
+    <circle class="bezel" cx="271" cy="76" r="13"/><circle class="cap cap-b" cx="271" cy="76" r="10"/>
+    <circle class="bezel" cx="210" cy="62" r="13"/><circle class="cap cap-y" cx="210" cy="62" r="10"/>
+    <circle class="bezel" cx="169" cy="30" r="13"/><circle class="cap cap-g" cx="169" cy="30" r="10"/>
+    <circle class="bezel" cx="172" cy="68" r="13"/><circle class="cap cap-r" cx="172" cy="68" r="10"/>
+    <circle class="bezel" cx="135" cy="32" r="13"/><circle class="cap cap-g" cx="135" cy="32" r="10"/>
+    <circle class="bezel" cx="137" cy="71" r="13"/><circle class="cap cap-r" cx="137" cy="71" r="10"/>
+    <circle class="bezel" cx="99" cy="73" r="13"/><circle class="cap cap-y" cx="99" cy="73" r="10"/>
+    <circle class="bezel" cx="47" cy="97" r="13"/><circle class="cap cap-b" cx="47" cy="97" r="10"/>
+
+    <!-- ============ BILANCIERI ============ -->
+    <rect x="276" y="23" width="18" height="30" rx="2" fill="#2b2f34" stroke="#4a545e" stroke-width="0.7"/>
+    <rect x="279.5" y="27" width="11" height="22" rx="1" fill="#d92d20"/>
+    <rect x="237" y="26" width="18" height="30" rx="2" fill="#2b2f34" stroke="#4a545e" stroke-width="0.7"/>
+    <rect x="240.5" y="30" width="11" height="22" rx="1" fill="#54595f"/>
+    <rect x="52" y="44" width="18" height="30" rx="2" fill="#2b2f34" stroke="#4a545e" stroke-width="0.7"/>
+    <rect x="55.5" y="48" width="11" height="22" rx="1" fill="#d92d20"/>
+
+    <!-- ============ LEVE A SCATTO ============ -->
+    <g>
+      <circle cx="260" cy="122" r="7" fill="#c9ced3" stroke="#4a545e" stroke-width="0.7"/>
+      <circle cx="260" cy="122" r="2.6" fill="#8d949b"/>
+      <path d="M260,122 L253,128" stroke="#4a545e" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <g>
+      <circle cx="64" cy="139" r="7" fill="#c9ced3" stroke="#4a545e" stroke-width="0.7"/>
+      <circle cx="64" cy="139" r="2.6" fill="#8d949b"/>
+      <path d="M64,139 L57,145" stroke="#4a545e" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <g>
+      <circle cx="28" cy="59" r="7" fill="#c9ced3" stroke="#4a545e" stroke-width="0.7"/>
+      <circle cx="28" cy="59" r="2.6" fill="#8d949b"/>
+      <path d="M28,59 L21,65" stroke="#4a545e" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+
+    <!-- ============ ENCODER ============ -->
+    <g>
+      <circle cx="207" cy="25" r="12" fill="#c9ced3" stroke="#4a545e" stroke-width="0.6"/>
+      <circle cx="207" cy="25" r="10" fill="#3a3f45" stroke="#16191d" stroke-width="0.6"/>
+      <path d="M207,25 L216,25" stroke="#e7ebef" stroke-width="1.1" stroke-linecap="round"/>
+      <path d="M195,13 A17,17 0 0,1 219,13" fill="none" stroke="#5b6570" stroke-width="0.6"
+            stroke-dasharray="1.5 1.5" marker-end="url(#arrowS)"/>
+    </g>
+    <g>
+      <circle cx="96" cy="32" r="12" fill="#c9ced3" stroke="#4a545e" stroke-width="0.6"/>
+      <circle cx="96" cy="32" r="10" fill="#3a3f45" stroke="#16191d" stroke-width="0.6"/>
+      <path d="M96,32 L105,32" stroke="#e7ebef" stroke-width="1.1" stroke-linecap="round"/>
+      <path d="M84,20 A17,17 0 0,1 108,20" fill="none" stroke="#5b6570" stroke-width="0.6"
+            stroke-dasharray="1.5 1.5" marker-end="url(#arrowS)"/>
+    </g>
+
+    <!-- ============ CALLOUT: fascia superiore ============ -->
+    <path class="lead" d="M18,-6 L26,52"/><circle class="lead-dot" cx="26" cy="52" r="1"/>
+    <circle class="callout" cx="18" cy="-14" r="8"/><text class="callout-t" x="18" y="-10.8">18</text>
+
+    <path class="lead" d="M59,-6 L59,44"/><circle class="lead-dot" cx="59" cy="44" r="1"/>
+    <circle class="callout" cx="59" cy="-14" r="8"/><text class="callout-t" x="59" y="-10.8">13</text>
+
+    <path class="lead" d="M96,-6 L96,20"/><circle class="lead-dot" cx="96" cy="20" r="1"/>
+    <circle class="callout" cx="96" cy="-14" r="8"/><text class="callout-t" x="96" y="-10.8">20</text>
+
+    <path class="lead" d="M135,-6 L135,19"/><circle class="lead-dot" cx="135" cy="19" r="1"/>
+    <circle class="callout" cx="135" cy="-14" r="8"/><text class="callout-t" x="135" y="-10.8">3</text>
+
+    <path class="lead" d="M172,-6 L170,17"/><circle class="lead-dot" cx="170" cy="17" r="1"/>
+    <circle class="callout" cx="172" cy="-14" r="8"/><text class="callout-t" x="172" y="-10.8">5</text>
+
+    <path class="lead" d="M209,-6 L207,13"/><circle class="lead-dot" cx="207" cy="13" r="1"/>
+    <circle class="callout" cx="209" cy="-14" r="8"/><text class="callout-t" x="209" y="-10.8">19</text>
+
+    <path class="lead" d="M246,-6 L246,26"/><circle class="lead-dot" cx="246" cy="26" r="1"/>
+    <circle class="callout" cx="246" cy="-14" r="8"/><text class="callout-t" x="246" y="-10.8">14</text>
+
+    <path class="lead" d="M285,-6 L285,23"/><circle class="lead-dot" cx="285" cy="23" r="1"/>
+    <circle class="callout" cx="285" cy="-14" r="8"/><text class="callout-t" x="285" y="-10.8">15</text>
+
+    <!-- ============ CALLOUT: lato destro ============ -->
+    <path class="lead" d="M317,76 L284,76"/><circle class="lead-dot" cx="284" cy="76" r="1"/>
+    <circle class="callout" cx="325" cy="76" r="8"/><text class="callout-t" x="325" y="79.2">8</text>
+
+    <path class="lead" d="M317,122 L267,122"/><circle class="lead-dot" cx="267" cy="122" r="1"/>
+    <circle class="callout" cx="325" cy="122" r="8"/><text class="callout-t" x="325" y="125.2">16</text>
+
+    <path class="lead" d="M317,185 L263,185"/><circle class="lead-dot" cx="263" cy="185" r="1"/>
+    <circle class="callout" cx="325" cy="185" r="8" stroke="#0b5fa5"/><text class="callout-t" x="325" y="188.2">21</text>
+
+    <!-- ============ CALLOUT: fascia centrale ============ -->
+    <path class="lead" d="M213,102 L211,75"/><circle class="lead-dot" cx="211" cy="75" r="1"/>
+    <circle class="callout" cx="213" cy="110" r="8"/><text class="callout-t" x="213" y="113.2">7</text>
+
+    <path class="lead" d="M177,102 L173,81"/><circle class="lead-dot" cx="173" cy="81" r="1"/>
+    <circle class="callout" cx="177" cy="110" r="8"/><text class="callout-t" x="177" y="113.2">6</text>
+
+    <path class="lead" d="M140,102 L137,84"/><circle class="lead-dot" cx="137" cy="84" r="1"/>
+    <circle class="callout" cx="140" cy="110" r="8"/><text class="callout-t" x="140" y="113.2">4</text>
+
+    <path class="lead" d="M102,102 L99,86"/><circle class="lead-dot" cx="99" cy="86" r="1"/>
+    <circle class="callout" cx="102" cy="110" r="8"/><text class="callout-t" x="102" y="113.2">2</text>
+
+    <path class="lead" d="M26,133 L40,108"/><circle class="lead-dot" cx="40" cy="108" r="1"/>
+    <circle class="callout" cx="20" cy="140" r="8"/><text class="callout-t" x="20" y="143.2">1</text>
+
+    <path class="lead" d="M22,196 L58,143"/><circle class="lead-dot" cx="58" cy="143" r="1"/>
+    <circle class="callout" cx="14" cy="202" r="8"/><text class="callout-t" x="14" y="205.2">17</text>
+
+    <!-- ============ CALLOUT: joystick ============ -->
+    <circle class="callout" cx="163" cy="145" r="7.5"/><circle class="callout" cx="163" cy="215" r="7.5"/>
+    <circle class="callout" cx="128" cy="180" r="7.5"/><circle class="callout" cx="198" cy="180" r="7.5"/>
+    <text class="callout-t" x="163" y="148">9</text>
+    <text class="callout-t" x="163" y="218">10</text>
+    <text class="callout-t" x="128" y="183">11</text>
+    <text class="callout-t" x="198" y="183">12</text>
+
+    <!-- ============ QUOTE ============ -->
+    <path class="dim" d="M0,278 L305,278" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <path class="dim" d="M0,270 L0,286 M305,270 L305,286"/>
+    <text class="dim-t" x="152" y="275">~305 (indicativo)</text>
+
+    <path class="dim" d="M-48,0 L-48,250" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <path class="dim" d="M-55,0 L-41,0 M-55,250 L-41,250"/>
+    <text class="dim-t" x="-48" y="125" transform="rotate(-90 -48,125)">~250 (indicativo)</text>
+
+    <g transform="translate(0,292)">
+      <rect x="0" y="0" width="22" height="3" fill="#16191d"/>
+      <rect x="22" y="0" width="22" height="3" fill="#ffffff" stroke="#16191d" stroke-width="0.4"/>
+      <text class="lbl-s" x="0" y="9">0</text>
+      <text class="lbl-s" x="44" y="9">44 mm (2 tasti)</text>
+    </g>
+    <text class="lbl-s" x="152" y="318">Tasti &#216;22 mm (foro) &middot; ghiera &#216;26 &middot; posizioni ricostruite dalla fotografia</text>
+  </svg>
+
+  <div class="cols2" style="margin-top:3mm">
+    <h2 style="grid-column:1/-1">Legenda dei comandi</h2>
+    <table class="legend-table">
+      <tr><td class="num">1</td><td><span class="dot b"></span>Pulsante blu</td><td><b>Nota DO</b></td></tr>
+      <tr><td class="num">2</td><td><span class="dot y"></span>Pulsante giallo</td><td><b>Nota RE</b></td></tr>
+      <tr><td class="num">3</td><td><span class="dot g"></span>Pulsante verde</td><td><b>Nota MI</b></td></tr>
+      <tr><td class="num">4</td><td><span class="dot r"></span>Pulsante rosso</td><td><b>Nota FA</b></td></tr>
+      <tr><td class="num">5</td><td><span class="dot g"></span>Pulsante verde</td><td><b>Nota SOL</b></td></tr>
+      <tr><td class="num">6</td><td><span class="dot r"></span>Pulsante rosso</td><td><b>Nota LA</b></td></tr>
+      <tr><td class="num">7</td><td><span class="dot y"></span>Pulsante giallo</td><td><b>Nota SI</b></td></tr>
+      <tr><td class="num">8</td><td><span class="dot b"></span>Pulsante blu</td><td><b>Nota DO'</b></td></tr>
+      <tr><td class="num">9</td><td>Joystick SU</td><td><b>Ottava +1</b></td></tr>
+      <tr><td class="num">10</td><td>Joystick GI&Ugrave;</td><td><b>Ottava &minus;1</b></td></tr>
+      <tr><td class="num">11</td><td>Joystick SX</td><td><b>Onda precedente</b></td></tr>
+    </table>
+    <table class="legend-table">
+      <tr><td class="num">12</td><td>Joystick DX</td><td><b>Onda successiva</b></td></tr>
+      <tr><td class="num">13</td><td><span class="dot r"></span>Bilanciere lum.</td><td><b>REC</b></td></tr>
+      <tr><td class="num">14</td><td><span class="dot k"></span>Bilanciere nero</td><td><b>HOLD / ADSR</b></td></tr>
+      <tr><td class="num">15</td><td><span class="dot r"></span>Bilanciere lum.</td><td><b>PLAY / STOP</b></td></tr>
+      <tr><td class="num">16</td><td>Leva a scatto</td><td><b>Scorri display</b></td></tr>
+      <tr><td class="num">17</td><td>Leva a scatto</td><td><b>Arpeggiator</b></td></tr>
+      <tr><td class="num">18</td><td>Leva a scatto</td><td><b>Preset BPM</b></td></tr>
+      <tr><td class="num">19</td><td>Encoder rotativo</td><td><b>Cutoff / Attack</b></td></tr>
+      <tr><td class="num">20</td><td>Encoder rotativo</td><td><b>Volume / Release</b></td></tr>
+      <tr><td class="num">21</td><td>Display GC9A01</td><td><b>4+1 schermate</b></td></tr>
+    </table>
+  </div>
+
+  <div class="foot"><span>SprigSynth &middot; blueprint pannello</span><span>Tav. 1 / 5</span></div>
+</section>
+
+<section class="page">
+  <div class="masthead">
+    <div>
+      <h1>Funzioni dei comandi</h1>
+      <div class="sub">Ogni comando ha due funzioni: una in modalit&agrave; normale, una in ADSR&nbsp;Edit&nbsp;Mode</div>
+    </div>
+    <div class="meta">TAV. 2 / 5<br>MAPPATURA COMANDI</div>
+  </div>
+  <div class="note">
+    <p><b>Tutti i comandi sono a ritorno automatico</b> (momentanei): nessun interruttore resta
+    meccanicamente in posizione. Ogni stato ON/OFF &mdash; HOLD, Arpeggiator, edit mode, PLAY &mdash;
+    vive nel firmware e si commuta alla pressione. Fanno eccezione i due encoder (rotazione continua,
+    senza fine corsa) e il joystick (4 microswitch a ritorno a molla).</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="num">N.</th><th>Comando</th>
+        <th>Modalit&agrave; normale</th>
+        <th>ADSR Edit Mode</th>
+        <th>GPIO</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="num">1</td><td><span class="dot b"></span>Pulsante blu (sinistra)</td><td>Nota <b>DO</b></td><td>Nota DO (per ascoltare l&rsquo;inviluppo)</td><td><span class="gpio">6</span></td></tr>
+      <tr><td class="num">2</td><td><span class="dot y"></span>Pulsante giallo (sinistra)</td><td>Nota <b>RE</b></td><td>Nota RE</td><td><span class="gpio">7</span></td></tr>
+      <tr><td class="num">3</td><td><span class="dot g"></span>Pulsante verde (sinistra)</td><td>Nota <b>MI</b></td><td>Nota MI</td><td><span class="gpio">8</span></td></tr>
+      <tr><td class="num">4</td><td><span class="dot r"></span>Pulsante rosso (sinistra)</td><td>Nota <b>FA</b></td><td>Nota FA</td><td><span class="gpio">9</span></td></tr>
+      <tr><td class="num">5</td><td><span class="dot g"></span>Pulsante verde (destra)</td><td>Nota <b>SOL</b></td><td>Nota SOL</td><td><span class="gpio">10</span></td></tr>
+      <tr><td class="num">6</td><td><span class="dot r"></span>Pulsante rosso (destra)</td><td>Nota <b>LA</b></td><td>Nota LA</td><td><span class="gpio">11</span></td></tr>
+      <tr><td class="num">7</td><td><span class="dot y"></span>Pulsante giallo (destra)</td><td>Nota <b>SI</b></td><td>Nota SI</td><td><span class="gpio">12</span></td></tr>
+      <tr><td class="num">8</td><td><span class="dot b"></span>Pulsante blu (destra)</td><td>Nota <b>DO&rsquo;</b> (ottava sopra)</td><td>Nota DO&rsquo;</td><td><span class="gpio">13</span></td></tr>
+      <tr><td class="num">9</td><td>Joystick <b>SU</b></td><td>Ottava <b>+1</b> (fino a +2)</td><td>Decay <b>+10 ms</b> (max 1000)</td><td><span class="gpio">14</span></td></tr>
+      <tr><td class="num">10</td><td>Joystick <b>GI&Ugrave;</b></td><td>Ottava <b>&minus;1</b> (fino a &minus;2)</td><td>Decay <b>&minus;10 ms</b> (min 5)</td><td><span class="gpio">15</span></td></tr>
+      <tr><td class="num">11</td><td>Joystick <b>SINISTRA</b></td><td>Forma d&rsquo;onda <b>precedente</b></td><td>Sustain <b>&minus;5%</b></td><td><span class="gpio">16</span></td></tr>
+      <tr><td class="num">12</td><td>Joystick <b>DESTRA</b></td><td>Forma d&rsquo;onda <b>successiva</b></td><td>Sustain <b>+5%</b></td><td><span class="gpio">17</span></td></tr>
+      <tr><td class="num">13</td><td><span class="dot r"></span>Bilanciere rosso sinistro</td><td><b>REC</b> &mdash; avvia/ferma la registrazione</td><td>&mdash;</td><td><span class="gpio">21</span></td></tr>
+      <tr><td class="num">14</td><td><span class="dot k"></span>Bilanciere nero</td><td><b>Breve:</b> HOLD on/off<br><b>Lunga &gt;600 ms:</b> entra in edit mode</td><td><b>Lunga &gt;600 ms:</b> esce dall&rsquo;edit mode</td><td><span class="gpio">2</span></td></tr>
+      <tr><td class="num">15</td><td><span class="dot r"></span>Bilanciere rosso destro</td><td><b>PLAY / STOP</b> della sequenza</td><td>&mdash;</td><td><span class="gpio">1</span></td></tr>
+      <tr><td class="num">16</td><td>Leva destra, sul display</td><td><b>Scorre le 4 schermate</b> del display</td><td>Ignorata (display bloccato su ADSR)</td><td><span class="gpio">18</span></td></tr>
+      <tr><td class="num">17</td><td>Leva sinistra, al centro</td><td><b>Arpeggiator</b> ON / OFF</td><td>&mdash;</td><td><span class="gpio">41</span></td></tr>
+      <tr><td class="num">18</td><td>Leva sinistra, d&rsquo;angolo</td><td><b>Preset BPM</b>: 60&rarr;80&rarr;100&rarr;120&rarr;140&rarr;160&rarr;180</td><td>&mdash;</td><td><span class="gpio">0</span></td></tr>
+      <tr><td class="num">19</td><td>Encoder 1</td><td><b>Cutoff filtro</b> 80 Hz &ndash; 8 kHz<br><span class="mono">~64 scatti sull&rsquo;intera corsa</span></td><td><b>Attack</b> 2 &ndash; 500 ms<br><span class="mono">~48 scatti</span></td><td><span class="gpio">4 / 5</span></td></tr>
+      <tr><td class="num">20</td><td>Encoder 2</td><td><b>Volume</b> generale<br><span class="mono">2% per scatto</span></td><td><b>Release</b> 10 &ndash; 2000 ms<br><span class="mono">~48 scatti</span></td><td><span class="gpio">43 / 44</span></td></tr>
+      <tr><td class="num">21</td><td>Display GC9A01</td><td>4 schermate cicliche</td><td>Schermata ADSR dedicata</td><td><span class="gpio">SPI</span></td></tr>
+    </tbody>
+  </table><div class="foot"><span>SprigSynth &middot; funzioni dei comandi</span><span>Tav. 2 / 5</span></div>
+</section>
+
+<section class="page">
+  <div class="masthead">
+    <div>
+      <h1>Il suono e i collegamenti del pannello</h1>
+      <div class="sub">Criteri di assegnazione dei tasti, forme d&rsquo;onda e cablaggio dei 18 ingressi digitali</div>
+    </div>
+    <div class="meta">TAV. 3 / 5<br>PANNELLO &rarr; ESP32-S3</div>
+  </div>
+  <div class="cols2-wide">
+    <div>
+      <h3>Perch&eacute; questa assegnazione</h3>
+      <ul class="tight">
+        <li>I <b>due tasti blu</b> stanno agli estremi del gruppo e fanno le due <b>DO</b>: la scala
+          sale da sinistra verso destra come su una tastiera, e i colori restano simmetrici
+          (blu &middot; giallo &middot; verde-rosso &middot; verde-rosso &middot; giallo &middot; blu),
+          con le due coppie centrali impilate una sopra l&rsquo;altra.</li>
+        <li><b>Rosso = trasporto.</b> I due bilancieri rossi illuminati sono REC e PLAY/STOP,
+          in quest&rsquo;ordine da sinistra a destra come nel flusso di lavoro; il nero &egrave;
+          HOLD/ADSR.</li>
+        <li>La <b>leva di destra</b> &egrave; quella a fianco del display: scorre le schermate.</li>
+        <li>Il tasto <b>BPM</b> &egrave; sulla leva pi&ugrave; defilata perch&eacute; usa il GPIO&nbsp;0, che
+          all&rsquo;accensione non deve risultare premuto.</li>
+      </ul>
+      <p style="margin-top:2mm">Nulla di tutto ci&ograve; &egrave; vincolante: l&rsquo;abbinamento
+      comando &rarr; GPIO sta tutto in <code>src/pinout.h</code>, una riga per comando.</p>
+    </div>
+    <div>
+      <h3>Le 4 forme d&rsquo;onda</h3>
+      <p style="margin:0 0 2mm">Si scorrono con il joystick sinistra/destra, in quest&rsquo;ordine ciclico:</p>
+      <svg viewBox="0 0 200 34" style="width:100%; height:auto">
+        <g fill="none" stroke="#0b5fa5" stroke-width="1.4">
+          <path d="M2,17 q6,-14 12,0 t12,0 t12,0 t12,0"/>
+          <path d="M54,10 h10 v14 h10 v-14 h10 v14 h10 v-14 h4"/>
+          <path d="M106,24 l10,-14 v14 l10,-14 v14 l10,-14 v14 l8,-11"/>
+          <path d="M156,24 l7,-14 l7,14 l7,-14 l7,14 l7,-14 l5,10"/>
+        </g>
+        <g font="500 6px Helvetica" fill="#5b6570" text-anchor="middle" style="font:500 6px Helvetica,Arial;fill:#5b6570">
+          <text x="26" y="33">SINE</text><text x="76" y="33">SQUARE</text>
+          <text x="128" y="33">SAW</text><text x="178" y="33">TRIANGLE</text>
+        </g>
+      </svg>
+      <h3>Note e frequenze (ottava 0)</h3>
+      <p class="mono" style="margin:0">DO 261.6 &middot; RE 293.7 &middot; MI 329.6 &middot; FA 349.2 &middot;
+      SOL 392.0 &middot; LA 440.0 &middot; SI 493.9 &middot; DO&rsquo; 523.3 Hz</p>
+      <p style="margin:1.5mm 0 0">L&rsquo;ottava moltiplica tutto per 2<sup>n</sup>, con n da &minus;2 a +2:
+      il range totale va da ~65 Hz a ~2.1 kHz.</p>
+    </div>
+  </div>
+
+  
+  <h2 style="margin-top:4mm"><span class="n">A</span>Pannello &rarr; ESP32-S3</h2>
+
+  <div class="note">
+    <p><b>Regola generale per tutti i pulsanti.</b> Ogni contatto ha due terminali: uno va al
+    proprio GPIO, l&rsquo;altro a <b>GND</b>. Nessuna resistenza esterna: il firmware attiva il
+    pull-up interno, quindi a riposo il pin legge ALTO e premendo va a massa. Conviene portare una
+    <b>unica dorsale di massa</b> lungo il pannello e agganciarci in serie tutti i secondi terminali.</p>
+  </div>
+
+  <div class="cols2">
+    <table>
+      <thead><tr><th>GPIO</th><th>Comando</th><th class="num">N.</th></tr></thead>
+      <tbody>
+        <tr><td><span class="gpio">6</span></td><td>Pulsante blu &mdash; DO</td><td class="num">1</td></tr>
+        <tr><td><span class="gpio">7</span></td><td>Pulsante giallo &mdash; RE</td><td class="num">2</td></tr>
+        <tr><td><span class="gpio">8</span></td><td>Pulsante verde &mdash; MI</td><td class="num">3</td></tr>
+        <tr><td><span class="gpio">9</span></td><td>Pulsante rosso &mdash; FA</td><td class="num">4</td></tr>
+        <tr><td><span class="gpio">10</span></td><td>Pulsante verde &mdash; SOL</td><td class="num">5</td></tr>
+        <tr><td><span class="gpio">11</span></td><td>Pulsante rosso &mdash; LA</td><td class="num">6</td></tr>
+        <tr><td><span class="gpio">12</span></td><td>Pulsante giallo &mdash; SI</td><td class="num">7</td></tr>
+        <tr><td><span class="gpio">13</span></td><td>Pulsante blu &mdash; DO&rsquo;</td><td class="num">8</td></tr>
+        <tr><td><span class="gpio">14</span></td><td>Joystick SU</td><td class="num">9</td></tr>
+        <tr><td><span class="gpio">15</span></td><td>Joystick GI&Ugrave;</td><td class="num">10</td></tr>
+        <tr><td><span class="gpio">16</span></td><td>Joystick SINISTRA</td><td class="num">11</td></tr>
+        <tr><td><span class="gpio">17</span></td><td>Joystick DESTRA</td><td class="num">12</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>GPIO</th><th>Comando</th><th class="num">N.</th></tr></thead>
+      <tbody>
+        <tr><td><span class="gpio">21</span></td><td>Bilanciere rosso sinistro &mdash; REC</td><td class="num">13</td></tr>
+        <tr><td><span class="gpio">2</span></td><td>Bilanciere nero &mdash; HOLD/ADSR</td><td class="num">14</td></tr>
+        <tr><td><span class="gpio">1</span></td><td>Bilanciere rosso destro &mdash; PLAY</td><td class="num">15</td></tr>
+        <tr><td><span class="gpio">18</span></td><td>Leva &mdash; scorri display</td><td class="num">16</td></tr>
+        <tr><td><span class="gpio">41</span></td><td>Leva &mdash; arpeggiator</td><td class="num">17</td></tr>
+        <tr><td><span class="gpio">0</span></td><td>Leva &mdash; preset BPM</td><td class="num">18</td></tr>
+        <tr><td><span class="gpio">4</span></td><td>Encoder 1 &mdash; pin <b>A</b></td><td class="num" rowspan="2">19</td></tr>
+        <tr><td><span class="gpio">5</span></td><td>Encoder 1 &mdash; pin <b>B</b></td></tr>
+        <tr><td><span class="gpio">43</span></td><td>Encoder 2 &mdash; pin <b>A</b></td><td class="num" rowspan="2">20</td></tr>
+        <tr><td><span class="gpio">44</span></td><td>Encoder 2 &mdash; pin <b>B</b></td></tr>
+        <tr><td><span class="gpio">GND</span></td><td colspan="2">Comune di tutti i pulsanti, del joystick
+          e del pin <b>C</b> dei due encoder</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <p><b>La leva BPM (18) sta sul GPIO 0, che &egrave; uno strapping pin:</b> se resta premuta
+    all&rsquo;accensione la scheda parte in modalit&agrave; download e il synth non si avvia.
+    Liberi per espansioni restano solo <span class="gpio">19</span> e <span class="gpio">20</span>,
+    e solo rinunciando alla seriale USB.</p>
+    <p><b>GPIO 35, 36 e 37 sono sui connettori ma non sono utilizzabili:</b> sono le linee della
+    PSRAM ottale interna al modulo N16R8. La scheda li espone perch&eacute; il PCB &egrave; lo stesso
+    delle versioni senza PSRAM &mdash; collegarci qualcosa fa crashare la RAM esterna.</p>
+  </div>
+<div class="foot"><span>SprigSynth &middot; collegamenti del pannello</span><span>Tav. 3 / 5</span></div>
+</section>
+
+<section class="page">
+  <div class="masthead">
+    <div>
+      <h1>Collegamento dei moduli</h1>
+      <div class="sub">Amplificatore I2S, display SPI, encoder, alimentazione</div>
+    </div>
+    <div class="meta">TAV. 4 / 5<br>MODULI E ALIMENTAZIONE</div>
+  </div>
+  <svg viewBox="0 0 300 118" style="max-height:44mm; margin:0 auto 3mm">
+    <defs>
+      <marker id="a2" markerWidth="6" markerHeight="6" refX="5.5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#5b6570"/>
+      </marker>
+    </defs>
+    <rect x="112" y="26" width="84" height="66" rx="3" fill="#eef2f6" stroke="#16191d" stroke-width="1.2"/>
+    <text x="154" y="46" style="font:700 8px Helvetica,Arial;fill:#16191d" text-anchor="middle">ESP32-S3</text>
+    <text x="154" y="56" style="font:500 6.5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">N16R8 DevKitC-1</text>
+    <circle cx="154" cy="72" r="5" fill="#7c5cff" stroke="#16191d" stroke-width="0.6"/>
+    <text x="154" y="87" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">LED RGB &middot; GPIO 48</text>
+
+    <rect x="0" y="30" width="70" height="58" rx="3" fill="#f7f8fa" stroke="#4a545e" stroke-width="0.9"/>
+    <text x="35" y="48" style="font:700 7px Helvetica,Arial;fill:#16191d" text-anchor="middle">PANNELLO</text>
+    <text x="35" y="60" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">8 note &middot; joystick</text>
+    <text x="35" y="69" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">6 interruttori</text>
+    <text x="35" y="78" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">2 encoder</text>
+    <path d="M71,59 L110,59" stroke="#5b6570" stroke-width="0.9" marker-end="url(#a2)"/>
+    <text x="90" y="54" style="font:500 5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">18 GPIO + 4 ENC</text>
+    <text x="90" y="68" style="font:500 5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">+ GND comune</text>
+
+    <rect x="218" y="8" width="80" height="40" rx="3" fill="#f7f8fa" stroke="#4a545e" stroke-width="0.9"/>
+    <text x="258" y="24" style="font:700 7px Helvetica,Arial;fill:#16191d" text-anchor="middle">GC9A01</text>
+    <text x="258" y="35" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">TFT tondo 240x240</text>
+    <text x="258" y="44" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">3V3</text>
+    <path d="M197,42 L216,30" stroke="#5b6570" stroke-width="0.9" marker-end="url(#a2)"/>
+    <text x="206" y="30" style="font:500 5.5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">SPI</text>
+
+    <rect x="218" y="60" width="60" height="38" rx="3" fill="#f7f8fa" stroke="#4a545e" stroke-width="0.9"/>
+    <text x="248" y="76" style="font:700 7px Helvetica,Arial;fill:#16191d" text-anchor="middle">MAX98357</text>
+    <text x="248" y="87" style="font:500 6px Helvetica,Arial;fill:#5b6570" text-anchor="middle">5V &middot; I2S</text>
+    <path d="M197,74 L216,76" stroke="#5b6570" stroke-width="0.9" marker-end="url(#a2)"/>
+    <text x="206" y="70" style="font:500 5.5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">I2S</text>
+    <path d="M280,79 l8,-9 v18 z" fill="#dfe4e9" stroke="#4a545e" stroke-width="0.8"/>
+    <text x="290" y="103" style="font:500 5.5px Helvetica,Arial;fill:#5b6570" text-anchor="middle">4-8 &#937;</text>
+  </svg>
+
+  <div class="cols2">
+    <div>
+      <table>
+        <thead><tr><th>MAX98357</th><th>&rarr;</th><th>ESP32-S3</th></tr></thead>
+        <tbody>
+          <tr><td>VIN</td><td>&rarr;</td><td><b>5V</b> (non 3V3)</td></tr>
+          <tr><td>GND</td><td>&rarr;</td><td>GND</td></tr>
+          <tr><td>BCLK</td><td>&rarr;</td><td><span class="gpio">38</span></td></tr>
+          <tr><td>LRC / WS</td><td>&rarr;</td><td><span class="gpio">39</span></td></tr>
+          <tr><td>DIN</td><td>&rarr;</td><td><span class="gpio">40</span></td></tr>
+          <tr><td>GAIN</td><td colspan="2">libero = +9 dB (a GND = +12 dB)</td></tr>
+          <tr><td>SD</td><td colspan="2">libero: il firmware manda lo stesso segnale su L e R</td></tr>
+          <tr><td>+ / &minus;</td><td colspan="2">altoparlante 4&ndash;8 &Omega;</td></tr>
+        </tbody>
+      </table>
+
+      <table style="margin-top:3mm">
+        <thead><tr><th>Encoder (EC11)</th><th>&rarr;</th><th>ESP32-S3</th></tr></thead>
+        <tbody>
+          <tr><td>Enc 1 &mdash; A / C / B</td><td>&rarr;</td><td><span class="gpio">4</span> / GND / <span class="gpio">5</span></td></tr>
+          <tr><td>Enc 2 &mdash; A / C / B</td><td>&rarr;</td><td><span class="gpio">43</span> / GND / <span class="gpio">44</span></td></tr>
+          <tr><td>Click albero</td><td colspan="2">non collegato</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <table>
+        <thead><tr><th>GC9A01</th><th>&rarr;</th><th>ESP32-S3</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>&rarr;</td><td><b>3V3</b></td></tr>
+          <tr><td>GND</td><td>&rarr;</td><td>GND</td></tr>
+          <tr><td>SCL / SCK</td><td>&rarr;</td><td><span class="gpio">42</span></td></tr>
+          <tr><td>SDA / MOSI</td><td>&rarr;</td><td><span class="gpio">47</span></td></tr>
+          <tr><td>CS</td><td>&rarr;</td><td><span class="gpio">3</span> &mdash; <b>non 48</b></td></tr>
+          <tr><td>DC</td><td>&rarr;</td><td><span class="gpio">45</span></td></tr>
+          <tr><td>RST</td><td>&rarr;</td><td><span class="gpio">46</span></td></tr>
+          <tr><td>BLK</td><td>&rarr;</td><td>3V3 (retroilluminazione fissa)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="note warn" style="margin-top:3mm">
+        <p><b>GPIO 48 &egrave; il LED RGB della scheda.</b> Su quel pin c&rsquo;&egrave; il WS2812
+        saldato a bordo: usandolo per il CS del display, il LED riceve dati casuali e resta acceso
+        bianco fisso. Per questo il <b>CS sta sul GPIO 3</b>.</p>
+      </div>
+      <div class="note warn">
+        <p><b>GPIO 43/44 sono i pin della UART0.</b> Occupandoli con l&rsquo;encoder 2, la seriale
+        passa dall&rsquo;USB nativo: <b>flash e monitor dalla porta &ldquo;USB&rdquo;</b>, non da
+        &ldquo;UART&rdquo;. Per tenere libera la UART0, sposta l&rsquo;encoder 2 su GPIO 19/20 e metti
+        <code>ARDUINO_USB_CDC_ON_BOOT=0</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:4mm"><span class="n">B</span>Alimentazione e avvertenze di montaggio</h2>
+  <div class="cols2">
+    <ul class="tight">
+      <li>Alimenta tutto dal <b>5V</b> della DevKitC-1. Il MAX98357 su un altoparlante da 4&nbsp;&Omega;
+        pu&ograve; assorbire picchi vicini a <b>1&nbsp;A</b>: metti un condensatore da
+        <b>470&ndash;1000&nbsp;&micro;F</b> tra 5V e GND vicino al modulo, o l&rsquo;ESP32 si
+        riavvier&agrave; sui colpi di volume.</li>
+      <li>Il display va a <b>3V3</b>: alimentarlo a 5V senza level shifter lo danneggia.</li>
+    </ul>
+    <ul class="tight">
+      <li>Tieni i cavi I2S e SPI <b>separati</b> da quelli dei pulsanti: sono gli unici segnali veloci.</li>
+      <li><b>Encoder al contrario?</b> Scambia i fili A e B di quell&rsquo;encoder.</li>
+      <li>Se i cavi sono lunghi e gli encoder saltano scatti, aggiungi <b>10&nbsp;k&Omega; verso 3V3</b>
+        su A e B: &egrave; l&rsquo;unico punto in cui pu&ograve; servire una resistenza esterna.</li>
+    </ul>
+  </div>
+<div class="foot"><span>SprigSynth &middot; collegamento dei moduli</span><span>Tav. 4 / 5</span></div>
+</section>
+
+<section class="page">
+  <div class="masthead">
+    <div>
+      <h1>Guida all&rsquo;uso</h1>
+      <div class="sub">Come si suona, si registra e si modifica il suono</div>
+    </div>
+    <div class="meta">TAV. 5 / 5<br>ISTRUZIONI</div>
+  </div>
+  <div class="cols2" style="gap:0 7mm">
+    <div>
+      <h2><span class="n">1</span>Suonare</h2>
+      <p style="margin-top:0">Il synth &egrave; <b>monofonico</b>. Se premi pi&ugrave; tasti vince
+      <b>l&rsquo;ultimo premuto</b>; rilasciandolo torna quello ancora tenuto. Il joystick cambia
+      <b>ottava</b> (su/gi&ugrave;, da &minus;2 a +2) e <b>forma d&rsquo;onda</b> (sx/dx);
+      l&rsquo;encoder 1 apre e chiude il filtro, l&rsquo;encoder 2 &egrave; il volume.</p>
+
+      <h2><span class="n">2</span>HOLD</h2>
+      <p style="margin-top:0">Una <b>pressione breve</b> del bilanciere nero <b>(14)</b> attiva
+      l&rsquo;HOLD: la nota continua a suonare anche a tasto rilasciato. Premendo un altro tasto la
+      nota tenuta cambia. Una seconda pressione breve spegne l&rsquo;HOLD e la nota.</p>
+
+      <h2><span class="n">3</span>ADSR Edit Mode</h2>
+      <p style="margin-top:0">Tieni premuto il bilanciere nero <b>(14) per pi&ugrave; di mezzo secondo</b>:
+      il display passa alla schermata ADSR e i comandi cambiano funzione.</p>
+      <table style="margin-bottom:2mm">
+        <tbody>
+          <tr><td><b>Encoder 1</b></td><td>Attack</td><td class="mono">2 &ndash; 500 ms</td></tr>
+          <tr><td><b>Encoder 2</b></td><td>Release</td><td class="mono">10 &ndash; 2000 ms</td></tr>
+          <tr><td><b>Joy su/gi&ugrave;</b></td><td>Decay</td><td class="mono">5 &ndash; 1000 ms</td></tr>
+          <tr><td><b>Joy sx/dx</b></td><td>Sustain</td><td class="mono">0 &ndash; 100 %</td></tr>
+        </tbody>
+      </table>
+      <p>Tenendo il joystick premuto il valore <b>scorre da solo</b>. I tasti nota continuano a
+      suonare, cos&igrave; senti l&rsquo;inviluppo mentre lo modifichi; cutoff e volume restano fermi
+      e all&rsquo;uscita riprendono da l&igrave; senza salti. Un&rsquo;altra pressione lunga torna
+      alla modalit&agrave; normale.</p>
+
+      <h2><span class="n">4</span>Arpeggiator</h2>
+      <p style="margin-top:0">La leva <b>(17)</b> lo accende e lo spegne. Con l&rsquo;arpeggiator attivo,
+      tenendo premute pi&ugrave; note il synth le ripete a rotazione <b>nell&rsquo;ordine in cui le hai
+      premute</b>, a passo fisso di 150&nbsp;ms. Rilasciando i tasti l&rsquo;arpeggio si ferma.</p>
+    </div>
+
+    <div>
+      <h2><span class="n">5</span>Sequencer</h2>
+      <p style="margin-top:0">Griglia fissa di <b>16 step</b> in sedicesimi, alla maniera di una
+      drum machine.</p>
+      <ol class="steps">
+        <li>Scegli il tempo con la leva <b>(18)</b>: ogni pressione passa al preset successivo
+          (60, 80, 100, 120, 140, 160, 180 BPM).</li>
+        <li>Premi <b>REC (13)</b>. La registrazione parte subito e ad ogni step fotografa la nota che
+          stai tenendo premuta in quell&rsquo;istante; se non tieni niente, registra silenzio.</li>
+        <li>Dopo <b>16 step</b> la registrazione si chiude da sola e la sequenza parte in loop.</li>
+        <li>Se premi <b>REC</b> di nuovo prima della fine, gli step mancanti restano silenzio e il loop
+          parte comunque.</li>
+        <li>Con <b>PLAY/STOP (15)</b> fermi e fai ripartire il loop.</li>
+      </ol>
+      <p>Mentre la sequenza gira <b>puoi suonare sopra</b>: la nota dal vivo ha sempre la
+      precedenza e la sequenza torna a sentirsi appena lasci i tasti. Cambiando BPM la durata
+      degli step si aggiorna immediatamente.</p>
+
+      <h2><span class="n">6</span>Display</h2>
+      <p style="margin-top:0">La leva <b>(16)</b> scorre le quattro schermate:</p>
+      <table>
+        <tbody>
+          <tr><td class="num">1</td><td><b>WAVE</b></td><td>forma d&rsquo;onda con la sua icona</td></tr>
+          <tr><td class="num">2</td><td><b>OCTAVE</b></td><td>ottava corrente, numero grande</td></tr>
+          <tr><td class="num">3</td><td><b>LEVELS</b></td><td>barre di cutoff e volume in tempo reale</td></tr>
+          <tr><td class="num">4</td><td><b>SEQUENCER</b></td><td>REC/PLAY, step su 16, BPM, HOLD, ARP</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:2mm">La quinta schermata (<b>ADSR EDIT</b>) compare da sola quando entri in
+      edit mode e sparisce quando esci: non fa parte del ciclo.</p>
+
+      <h2><span class="n">7</span>LED RGB della scheda</h2>
+      <p style="margin-top:0">Il LED saldato sulla DevKitC-1 fa da spia di vita: tre giochi di luce che
+      si alternano ogni 7 secondi &mdash; <b>arcobaleno</b>, <b>respiro</b> e <b>battito</b> nei colori
+      dei tasti &mdash; al <b>20%</b> di luminosit&agrave;, regolabile con
+      <code>StatusLed::setBrightness()</code>.</p>
+
+      
+    </div>
+  </div>
+
+  <h2 style="margin-top:4mm"><span class="n">8</span>Se qualcosa non va</h2>
+  <div class="cols2">
+    <table>
+      <tbody>
+        <tr><td><b>Nessun suono</b></td><td>Verifica VIN del MAX98357 sui 5V e il
+          volume (encoder 2, schermata LEVELS). Il filtro tutto chiuso rende il suono quasi muto.</td></tr>
+        <tr><td><b>Audio che gracchia<br>o scheda che si riavvia</b></td><td>Alimentazione insufficiente:
+          aggiungi il condensatore da 470&ndash;1000 &micro;F vicino all&rsquo;amplificatore.</td></tr>
+        <tr><td><b>Display nero</b></td><td>Controlla BLK a 3V3, il CS sul <b>GPIO 3</b> e i pin DC/RST
+          (45/46), i pi&ugrave; facili da invertire.</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <tbody>
+        <tr><td><b>LED RGB bianco fisso</b></td><td>Il GPIO 48 &egrave; stato
+          riassegnato a un altro segnale: rimettilo al LED.</td></tr>
+        <tr><td><b>Encoder invertito</b></td><td>Scambia i fili A e B di quell&rsquo;encoder.</td></tr>
+        <tr><td><b>Una nota resta bloccata</b></td><td>&Egrave; l&rsquo;HOLD attivo: pressione breve sul
+          bilanciere nero (14).</td></tr>
+        <tr><td><b>Non si accende</b></td><td>La leva BPM (18, GPIO 0) era premuta all&rsquo;accensione:
+          rilasciala e ridai corrente.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note" style="margin-top:4mm">
+    <p><b>Dove si cambia tutto.</b> <code>pinout.h</code>: abbinamento comando &rarr; GPIO &middot;
+    <code>main.cpp</code>: range dei parametri, passo degli encoder, tempo dell&rsquo;arpeggiator &middot;
+    <code>display.cpp</code>: schermate &middot; <code>PROGRESS.md</code>: avanzamento e differenze
+    rispetto al brief.</p>
+  </div>
+
+  <div class="foot"><span>SprigSynth &middot; guida all&rsquo;uso</span><span>Tav. 5 / 5</span></div>
+</section>
+
+</body>
+</html>
