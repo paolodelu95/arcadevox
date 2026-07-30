@@ -257,6 +257,7 @@ src/
 
 tools/
   make_logo.py        rigenera src/logo.h dal font Handel Gothic
+  simdisplay/         renderizza le schermate sul computer e controlla il cerchio
 
 firmware/
   manifest.json       la release pubblicata, che il synth va a cercare

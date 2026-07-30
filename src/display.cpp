@@ -60,7 +60,29 @@ void textRight(const char *s, int xEnd, int y, uint8_t size, uint16_t color) {
 }
 
 // Cancella una fascia orizzontale (usata prima di riscrivere un valore dinamico).
-void clearBand(int y, int h) { gfx->fillRect(8, y, 224, h, BLACK); }
+//
+// La fascia non puo' essere un rettangolo fisso largo quanto il quadrato. Il
+// vetro e' tondo: allontanandosi dal centro il cerchio rientra, e appena si
+// superano i 37 px di distanza — sopra y=83 o sotto y=157 — l'anello passa a
+// x <= 8, cioe' dentro il fillRect da 8 a 231, che se lo mangia aprendo due
+// tagli, uno per fianco. Non sono tagli che si richiudono: la cornice si
+// ridisegna solo al cambio schermata, quindi restano li' finche' non si esce.
+// Percio' la mezza larghezza si stringe seguendo il cerchio.
+//
+// Il raggio di riferimento e' 116 e non 118: l'anello e' spesso due pixel (117
+// e 118) e sotto ci vuole un pixel di nero, altrimenti la fascia arriva a
+// sbavare sulla cornice invece di mangiarsela. Comanda la riga piu' lontana dal
+// centro, che e' quella dove il cerchio e' piu' stretto. Il tetto a 112 e' la
+// mezza larghezza di sempre: verso il centro non serve allargarsi di piu'.
+void clearBand(int y, int h) {
+    int top = y - CY, bot = y + h - 1 - CY;
+    if (top < 0) top = -top;
+    if (bot < 0) bot = -bot;
+    const int dy = (top > bot) ? top : bot;
+    int half = (dy < 116) ? (int)sqrtf((float)(116 * 116 - dy * dy)) : 0;
+    if (half > 112) half = 112;
+    gfx->fillRect(CX - half, y, 2 * half, h, BLACK);
+}
 
 // ------------------------------------------------------------------- colore
 //
@@ -115,11 +137,23 @@ void chrome(const char *title, uint16_t accent) {
 
     // Parentesi ai lati del titolo. La lunghezza si adatta: con un titolo lungo
     // lo spazio dentro il cerchio finisce, e un trattino che sborda si vedrebbe
-    // tagliato dalla cornice tonda.
+    // tagliato dalla cornice tonda. Da nove caratteri in su (SEQUENCER, STEP
+    // EDIT) il braccio scenderebbe sotto i 10 px e allora si rinuncia: meglio
+    // niente parentesi che due monconi appiccicati al titolo.
     const int tw = 12 * (int)strlen(title);
     const uint16_t bracket = dim565(accent, 2, 3);
-    const int inner = tw / 2 + 8;
-    const int outer = 74;  // mezza larghezza utile alla quota delle parentesi
+    // Sei pixel d'aria fra titolo e parentesi e non otto: qui sotto si vede che
+    // di spazio ce n'e' poco, e due pixel restituiti al braccio sono la
+    // differenza fra tenere le parentesi su SETTINGS e COUNT IN o perderle.
+    const int inner = tw / 2 + 6;
+    // Il punto critico e' la cima del trattino verticale, a y=24, cioe' 96 px
+    // sopra il centro. Perche' resti dentro l'area dei contenuti (raggio 116,
+    // sotto l'anello) la mezza larghezza li' vale al massimo
+    // sqrt(116^2 - 96^2) = 65.1. Con il 74 di prima il trattino usciva
+    // addirittura dal vetro: la sua punta stava a raggio 121.2 e i tre pixel
+    // piu' alti, oltre 119.5, sul pannello tondo non esistono proprio; gli
+    // altri quattro finivano appoggiati all'anello.
+    const int outer = 65;
     if (outer - inner >= 10) {
         for (int side = 0; side < 2; ++side) {
             const int x0 = (side == 0) ? (CX - outer) : (CX + inner);
@@ -634,8 +668,14 @@ void drawAdsrScreen(const SynthView &v, bool full) {
         gfx->fillRect(28, y, 186, 26, BLACK);
         gfx->fillRect(30, y, 18, 18, rows[i].color);
         textAt(rows[i].label, 33, y + 1, 2, BLACK);
-        hudBar(54, y, 96, 18, rows[i].frac, dim565(rows[i].color, 1, 2), rows[i].color);
-        textRight(rows[i].value, 212, y + 5, 1, HUD_ICE);
+        // Il numero e' l'unica cosa che leggi mentre giri la manopola, e a size 1
+        // sul vetro da 1.28" e' alto un millimetro scarso. Va a size 2 come i
+        // valori di LEVELS e SETTINGS; lo spazio glielo cede la barra, che
+        // scende da 12 a 7 segmenti senza perdere niente — dice una frazione di
+        // corsa, non una misura. y+1 e non y+5 perche' il testo ora e' alto 16
+        // px dentro una targhetta di 18.
+        hudBar(54, y, 60, 18, rows[i].frac, dim565(rows[i].color, 1, 2), rows[i].color);
+        textRight(rows[i].value, 212, y + 1, 2, HUD_ICE);
     }
 }
 
@@ -687,8 +727,15 @@ void drawSettingsScreen(const SynthView &v, bool full) {
         if (!full && v.setIndex[i] == prev.setIndex[i] && sel == wasSel) continue;
 
         const int y = settingsRowY(i);
-        gfx->fillRect(26, y, 190, SET_ROW_H - 2, BLACK);
-        if (sel) gfx->fillRect(28, y + 1, 4, SET_ROW_H - 4, HUD_MAGENTA);
+        // L'ultima voce (MODALITA' WIFI) sta a y=174 e la sua riga arriva a
+        // y=193: li' il cerchio si e' gia' stretto e l'anello passa a x=29 e
+        // x=211. Il rettangolo di pulizia largo 26..215 se lo portava via, e la
+        // barretta del cursore a x=28 finiva a ridipingerne un pixel di
+        // magenta. Con 31..209 e la barretta a 32 restano due pixel di nero fra
+        // la riga e la cornice, e sulle righe alte non cambia niente perche'
+        // li' di spazio ce n'era d'avanzo.
+        gfx->fillRect(31, y, 179, SET_ROW_H - 2, BLACK);
+        if (sel) gfx->fillRect(32, y + 1, 4, SET_ROW_H - 4, HUD_MAGENTA);
 
         textAt(Settings::ENTRIES[i].label, 42, y + 6, 1, sel ? HUD_ICE : HUD_LABEL);
         if (Settings::isAction(i)) {
@@ -701,17 +748,27 @@ void drawSettingsScreen(const SynthView &v, bool full) {
 
     // Riga di aiuto: dice sempre cosa fa il tasto adesso, perche' lo stesso
     // pulsante ha tre significati diversi a seconda di dove sei.
+    //
+    // Nessuna di queste stringhe puo' superare i 24 caratteri. E' la quota che
+    // detta il limite: a y=208, l'ultima riga di pixel del glifo, il cerchio
+    // dell'area dei contenuti lascia solo 75 px per lato, e la fascia che
+    // ripulisce la riga si stringe di conseguenza. Con i 28 caratteri di prima
+    // il testo partiva da x=36, cioe' fuori dal vetro, e la prima e l'ultima
+    // lettera finivano sotto la ghiera.
     const char *hint;
     if (!editing) {
-        hint = "TIENI PREMUTO PER MODIFICARE";
+        hint = "TIENI PREMUTO: MODIFICA";
     } else if (Settings::isAction(v.setCursor)) {
         hint = "PREMI: QR   TIENI: ESCI";
     } else {
-        hint = "PREMI: AVANTI  TIENI: ESCI";
+        hint = "PREMI: GIU'  TIENI: ESCI";
     }
     static const char *lastHint = nullptr;
     if (full || hint != lastHint) {
-        clearBand(202, 10);
+        // Alta 8 e non 10: il glifo size 1 occupa y 202..208 e non serve altro.
+        // Due righe in meno vogliono dire una fascia piu' larga di 6 px, che e'
+        // esattamente quello che ci vuole per starci dentro con 24 caratteri.
+        clearBand(202, 8);
         textCentered(hint, 202, 1, Settings::isAction(v.setCursor) && editing ? HUD_RED
                                                                              : HUD_LABEL);
         lastHint = hint;
@@ -879,7 +936,12 @@ void drawVuScreen(const SynthView &, bool full) {
         snprintf(buf, sizeof(buf), "-inf dB");
     }
     if (strcmp(buf, lastRms) != 0) {
-        gfx->fillRect(50, 202, 140, 16, BLACK);
+        // 140 px di pulizia per 8 caratteri ("-66.0 dB" e' il piu' lungo, 96 px
+        // da x=72 a x=167) erano una fascia larga il doppio del necessario, e a
+        // y=217 arrivava a mangiarsi l'anello: li' il cerchio passa a x=53 e
+        // x=187, dentro il vecchio 50..189. Con 66..173 il testo e' coperto con
+        // sei pixel di margine per lato e la cornice resta intera.
+        gfx->fillRect(66, 202, 108, 16, BLACK);
         textCentered(buf, 202, 2, HUD_ICE);
         strncpy(lastRms, buf, sizeof(lastRms) - 1);
     }
@@ -891,7 +953,12 @@ void drawVuScreen(const SynthView &, bool full) {
         snprintf(pk, sizeof(pk), "pk --");
     }
     if (strcmp(pk, lastPk) != 0) {
-        gfx->fillRect(72, 222, 96, 8, BLACK);
+        // Quota bassissima, a 109 px dal centro: qui il vetro lascia poco piu' di
+        // 80 px di corda. "pk -40 dB" sono 9 caratteri, 54 px da x=93 a x=146:
+        // basta e avanza una fascia da 88 a 159. Con la vecchia 72..167 si
+        // spegnevano i pixel di cornice del fondo, dove l'anello passa a x=77 e
+        // x=162.
+        gfx->fillRect(88, 222, 72, 8, BLACK);
         textCentered(pk, 222, 1, HUD_LABEL);
         strncpy(lastPk, pk, sizeof(lastPk) - 1);
     }
@@ -994,7 +1061,12 @@ void drawScopeScreen(const SynthView &v, bool full) {
     char info[28];
     snprintf(info, sizeof(info), "%s  zoom x%.1f", WAVEFORM_NAMES[v.waveform], zoom);
     if (strcmp(info, lastInfo) != 0) {
-        gfx->fillRect(20, 192, 200, 8, BLACK);
+        // La riga piu' lunga possibile e' "TRIANGLE  zoom x8.0": 19 caratteri,
+        // 114 px da x=63 a x=176. I 200 px di prima erano quasi tutto il
+        // quadrato e a y=199 tagliavano l'anello di netto su tutti e due i
+        // fianchi, dove passa a x=33 e x=206. 128 px bastano con sette pixel di
+        // margine per lato.
+        gfx->fillRect(56, 192, 128, 8, BLACK);
         textCentered(info, 192, 1, HUD_LABEL);
         strncpy(lastInfo, info, sizeof(lastInfo) - 1);
     }
@@ -1018,10 +1090,14 @@ void drawNetworkIdleScreen(const SynthView &, bool full) {
 
     // Avvertenza in fondo, con la barra rossa a sinistra: e' l'unica cosa della
     // schermata che vale la pena leggere due volte.
-    gfx->fillRect(34, 168, 3, 34, HUD_RED);
-    textAt("DA QUI IN POI", 46, 170, 1, HUD_RED);
-    textAt("il synth resta muto", 46, 182, 1, HUD_LABEL);
-    textAt("fino al riavvio", 46, 194, 1, HUD_LABEL);
+    // Il blocco sale di 6 px per la stessa ragione del gemello su UPDATE: a x=34
+    // siamo a 86 px dal centro, e li' l'anello interno passa gia' a y=199. La
+    // barretta che finiva a 201 gli si appoggiava sopra per le ultime tre
+    // righe. Finendo a 195 resta a raggio 114, con il suo margine di nero.
+    gfx->fillRect(34, 162, 3, 34, HUD_RED);
+    textAt("DA QUI IN POI", 46, 164, 1, HUD_RED);
+    textAt("il synth resta muto", 46, 176, 1, HUD_LABEL);
+    textAt("fino al riavvio", 46, 188, 1, HUD_LABEL);
 }
 
 // ---------------------------------------------------------------- QR code
@@ -1234,6 +1310,15 @@ void splash() {
     logoGrid();
     logoTrace();
 
+    // Griglia e traccia arrivano fino al bordo del quadrato, ed e' voluto: sul
+    // vetro tondo spariscono dietro la ghiera, che e' proprio l'effetto oblo'
+    // che si vuole. Quello che non e' voluto e' che passando ci cancellino la
+    // cornice — le sei orizzontali la tagliano in dodici punti, e sui tre archi
+    // alti il neon diventa quasi spento. Si ripassano i due anelli sopra: costa
+    // due righe, e la griglia torna a sembrare che passi sotto il telaio.
+    gfx->drawCircle(CX, CY, 118, LOGO_NEON);
+    gfx->drawCircle(CX, CY, 116, LOGO_DIMCYAN);
+
     // Prima le due eco laterali, poi il corpo bianco che scende riga per riga: le
     // lettere sembrano mettersi a fuoco. L'ordine conta, il corpo deve coprire le
     // eco e non il contrario.
@@ -1352,7 +1437,14 @@ void updateNetwork() {
         // Un aggiornamento fallito lascia lo schermo sulla barra di
         // avanzamento: senza questo non si saprebbe mai com'e' andata.
         chrome("FALLITO", HUD_RED);
-        textCentered(msg, 96, 2, HUD_ICE);
+        // I messaggi del portale arrivano a 24 caratteri ("trasferimento
+        // interrotto"): a size 2 fanno 288 px su 240, il testo partirebbe da
+        // x=-24, si perderebbero le prime due lettere e le ultime andrebbero a
+        // capo da sole spezzando la parola. A questa quota ce ne stanno 18, di
+        // piu' non entrano: oltre si scende a size 1. Piccolo, ma intero e
+        // leggibile, che e' l'unica cosa che conta quando c'e' scritto FALLITO.
+        const bool lungo = strlen(msg) > 18;
+        textCentered(msg, lungo ? 100 : 96, lungo ? 1 : 2, HUD_ICE);
         textCentered("il firmware attuale", 136, 1, HUD_LABEL);
         textCentered("e' rimasto intatto", 148, 1, HUD_LABEL);
         hudChipCentered(180, "PLAY PER RIAVVIARE", HUD_NEON, 1);
@@ -1406,9 +1498,16 @@ void drawOtaProgress(int pct) {
     if (lastPct < 0 || pct < lastPct) {
         chrome("UPDATE", HUD_AMBER);
         textCentered("SCRITTURA IN CORSO", CONTENT_TOP, 1, HUD_LABEL);
-        gfx->fillRect(34, 186, 3, 22, HUD_RED);
-        textAt("NON SPEGNERE", 46, 190, 1, HUD_RED);
-        textAt("l'aggiornamento e' a meta'", 46, 202, 1, HUD_LABEL);
+        // Il blocco dell'avvertenza sale di 12 px. A x=34 (86 px dal centro) il
+        // vetro finisce a y=202: la barretta rossa alta 22 che partiva da 186
+        // usciva dal tondo per le ultime cinque righe e prima ancora passava
+        // sopra l'anello. Alzandola a 174 il suo ultimo pixel sta a raggio 114,
+        // dentro. L'ascissa resta 34 perche' e' la stessa della barretta gemella
+        // sulla schermata NETWORK e le due devono restare allineate; sopra c'e'
+        // spazio, il blocco della percentuale finisce a y=165.
+        gfx->fillRect(34, 174, 3, 22, HUD_RED);
+        textAt("NON SPEGNERE", 46, 178, 1, HUD_RED);
+        textAt("l'aggiornamento e' a meta'", 46, 190, 1, HUD_LABEL);
     }
     lastPct = pct;
 

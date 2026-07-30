@@ -8,3 +8,10 @@
 # cache di tools/make_logo.py
 __pycache__/
 *.pyc
+
+# simulatore del display (tools/simdisplay): i sorgenti si committano, i PNG no.
+# Sono 50 immagini rigenerabili in due secondi con tools/simdisplay/build.sh, e
+# committarle vorrebbe dire portarsi dietro un binario nuovo ad ogni ritocco di
+# un pixel in display.cpp.
+tools/simdisplay/out/
+tools/simdisplay/build/
