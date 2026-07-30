@@ -55,10 +55,22 @@ bool load(SynthState &s) {
     // riportano ai valori di fabbrica. Senza questo, aggiornando si perderebbero
     // onda, ottava, cutoff, volume e ADSR di chi il synth lo stava gia' usando.
     constexpr size_t LEGACY_BYTES = offsetof(SynthState, stepVol);
+    // La 1.12.0 ha aggiunto in coda l'orientamento della scala di sensibilita'.
+    // Stessa logica di prima, un anello piu' avanti: un blob lungo fin qui e'
+    // stato scritto fra la 1.3.0 e la 1.11.0, quando l'indice cresceva verso i
+    // giri piu' bassi. Si rilegge, il campo nuovo resta a zero, e chi lo usa sa
+    // che quegli indici vanno rovesciati prima di crederci.
+    constexpr size_t PRE_SCALE_BYTES = offsetof(SynthState, scaleRev);
     const size_t stored = prefs.getBytesLength(KEY_STATE);
-    if (stored != sizeof(tmp) && stored != LEGACY_BYTES) return false;
+    if (stored != sizeof(tmp) && stored != PRE_SCALE_BYTES && stored != LEGACY_BYTES) return false;
     if (prefs.getBytes(KEY_STATE, &tmp, stored) != stored) return false;
     if (tmp.magic != STATE_MAGIC) return false;  // formato vecchio: si riparte dai default
+
+    // In un blob pre-1.3.0 la coda della sensibilita' non e' mai stata scritta:
+    // quei byte sono zeri, non indici da convertire. Dichiararli gia' nella
+    // scala nuova evita di rovesciare un dato che non esiste; i chiamanti li
+    // riportano comunque ai valori di fabbrica.
+    if (stored == LEGACY_BYTES) tmp.scaleRev = STORAGE_SCALE_REV;
 
     // Il pattern e' facoltativo: se manca, i parametri si caricano comunque.
     if (prefs.getBytes(KEY_PATTERN, Sequencer::patternData(), Sequencer::patternSize()) ==

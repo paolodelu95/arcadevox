@@ -165,6 +165,7 @@ static Storage::SynthState snapshotState() {
     s.stepCutoff = setIndex[SETTING_CUTOFF];
     s.stepAdsr = setIndex[SETTING_ADSR];
     s.stepFine = setIndex[SETTING_FINE];
+    s.scaleRev = STORAGE_SCALE_REV;
     return s;
 }
 
@@ -208,6 +209,22 @@ void setup() {
         setIndex[SETTING_CUTOFF] = Settings::clampIndex(SETTING_CUTOFF, saved.stepCutoff);
         setIndex[SETTING_ADSR] = Settings::clampIndex(SETTING_ADSR, saved.stepAdsr);
         setIndex[SETTING_FINE] = Settings::clampIndex(SETTING_FINE, saved.stepFine);
+
+        // Fino alla 1.11.0 la scala dei giri era scritta al contrario, e con lei
+        // gli indici finiti in NVS. Rovesciarli qui vuol dire che chi aggiorna
+        // ritrova la sensibilita' che aveva scelto, non la sua immagine
+        // speculare: chi si era messo su 0.6 giri per il volume non si sveglia a
+        // 5.0, che al primo tocco della manopola sembrerebbe un guasto. Il passo
+        // fine non c'entra, la sua scala saliva gia' nel verso giusto.
+        if (saved.scaleRev != STORAGE_SCALE_REV) {
+            const uint8_t rovesciare[3] = {SETTING_VOL, SETTING_CUTOFF, SETTING_ADSR};
+            for (uint8_t i = 0; i < 3; ++i) {
+                const uint8_t which = rovesciare[i];
+                setIndex[which] = Settings::ENTRIES[which].count - 1 - setIndex[which];
+            }
+            Storage::markDirty();  // riscrive col verso nuovo, cosi' non si converte due volte
+            Serial.println(F("Sensibilita' convertita alla scala crescente."));
+        }
         Sequencer::setBpm(saved.bpm);
         Serial.println(F("Stato ripristinato da NVS."));
     }
