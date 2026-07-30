@@ -52,11 +52,36 @@ bool uploadRejected = false;
 
 void setStatus(const char *m) { strncpy(statusMsg, m, sizeof(statusMsg) - 1); }
 
+// Nel formato WIFI: questi cinque caratteri delimitano i campi e vanno preceduti
+// da una barra rovesciata. SSID e password attuali non ne contengono, ma sono
+// generati da una snprintf poco piu' sotto: se un giorno cambia il formato del
+// nome, un punto e virgola di troppo spezzerebbe il codice in silenzio.
+void appendEscaped(char *dst, size_t cap, const char *src) {
+    size_t n = strlen(dst);
+    for (const char *p = src; *p && n + 2 < cap; ++p) {
+        if (*p == '\\' || *p == ';' || *p == ',' || *p == ':' || *p == '"') dst[n++] = '\\';
+        dst[n++] = *p;
+    }
+    dst[n] = '\0';
+}
+
 // Il QR racconta cose diverse a seconda del momento: prima come entrare nella
 // rete, poi dove andare una volta dentro.
 void setQrForJoin() {
-    // Formato standard riconosciuto dalle fotocamere di iOS e Android.
-    snprintf(qrText, sizeof(qrText), "WIFI:T:WPA;S:%s;P:%s;;", apSsid, apPass);
+    // Ordine dei campi S, T, P: e' quello che emettono la condivisione WiFi di
+    // Android e Apple Configurator, ed e' di gran lunga il piu' collaudato dai
+    // lettori. Lo standard non lo impone — con T davanti il codice si decodifica
+    // ugualmente — ma qui non stiamo cercando di essere conformi, stiamo cercando
+    // di farci riconoscere da un telefono qualsiasi.
+    //
+    // Niente campo H: la rete non e' nascosta e ometterlo vale "H:false", mentre
+    // scriverlo costerebbe 8 byte su un codice di versione 3 che ne regge 53.
+    qrText[0] = '\0';
+    strncat(qrText, "WIFI:S:", sizeof(qrText) - 1);
+    appendEscaped(qrText, sizeof(qrText), apSsid);
+    strncat(qrText, ";T:WPA;P:", sizeof(qrText) - strlen(qrText) - 1);
+    appendEscaped(qrText, sizeof(qrText), apPass);
+    strncat(qrText, ";;", sizeof(qrText) - strlen(qrText) - 1);
 }
 
 void setQrForPortal() { strncpy(qrText, portal, sizeof(qrText) - 1); }

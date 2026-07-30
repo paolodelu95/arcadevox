@@ -8,6 +8,9 @@
 #define DEBOUNCE_MS 15
 #define HOLD_LONG_PRESS_MS 600
 #define REC_LONG_PRESS_MS 600
+// Svuota il pattern: piu' lungo degli altri perche' butta via del lavoro, e non
+// deve poter partire da una pressione affrettata sul tasto di avvio.
+#define PLAY_LONG_PRESS_MS 800
 // Piu' lungo degli altri: da qui si accende la radio, e non deve poter succedere
 // per una pressione distratta durante una session.
 #define DISPLAY_LONG_PRESS_MS 1000
@@ -36,7 +39,6 @@ bool joyLeft();
 bool joyRight();
 
 // --- pulsanti funzione (solo fronte di discesa) ---
-bool playPressed();
 bool arpPressed();
 bool bpmPressed();
 bool polyPressed();  // ex tasto DO': commuta MONO / POLIFONICO
@@ -55,6 +57,8 @@ bool recShortPress();   // REC / stop registrazione
 bool recLongPress();    // STEP EDIT mode
 bool displayShortPress();  // scorre le schermate
 bool displayLongPress();   // attiva la modalita' NETWORK (solo da quella schermata)
+bool playShortPress();     // PLAY / STOP del sequencer
+bool playLongPress();      // svuota il pattern
 
 // Stato istantaneo di HOLD: durante il record fa da tasto di cancellazione.
 bool holdIsDown();

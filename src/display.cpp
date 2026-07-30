@@ -21,6 +21,7 @@
 #include "net_portal.h"
 #include "pinout.h"
 #include "sequencer.h"
+#include "settings.h"
 #include "version.h"
 
 namespace {
@@ -455,6 +456,13 @@ void drawCountIn(const SynthView &v, bool full) {
 }
 
 void drawSeqScreen(const SynthView &v, bool full) {
+    // Svuotare 16 step con una pressione lunga e' un'azione che non lascia
+    // traccia: senza una conferma esplicita si resta col dubbio di aver solo
+    // fermato il loop. Resta a schermo un secondo e mezzo.
+    const bool cleared = (v.clearedAgo > 0 && v.clearedAgo < 1500);
+    const bool wasCleared = (prev.clearedAgo > 0 && prev.clearedAgo < 1500);
+    if (cleared != wasCleared) full = true;
+
     if (v.countIn > 0) {
         drawCountIn(v, full || prev.countIn == 0);
         return;
@@ -466,7 +474,13 @@ void drawSeqScreen(const SynthView &v, bool full) {
         chrome(v.seqEditing ? "STEP EDIT" : "SEQUENCER", v.seqEditing ? HUD_ICE : HUD_MAGENTA);
     }
 
-    const bool modeChanged = full || v.seqMode != prev.seqMode || v.seqEditing != prev.seqEditing;
+    if (cleared) {
+        clearBand(56, 22);
+        hudChipCentered(56, "PATTERN VUOTO", HUD_RED, 1);
+    }
+
+    const bool modeChanged =
+        (!cleared) && (full || v.seqMode != prev.seqMode || v.seqEditing != prev.seqEditing);
     if (modeChanged) {
         // Lo stato del trasporto e' una targhetta piena: il colore lo riconosci
         // prima di aver letto la parola, che e' quello che serve mentre suoni.
@@ -604,6 +618,42 @@ void drawAdsrScreen(const SynthView &v, bool full) {
         textAt(rows[i].label, 33, y + 1, 2, BLACK);
         hudBar(54, y, 96, 18, rows[i].frac, dim565(rows[i].color, 1, 2), rows[i].color);
         textRight(rows[i].value, 212, y + 5, 1, HUD_ICE);
+    }
+}
+
+// ------------------------------------------------------------- impostazioni
+//
+// Quattro righe, una selezionata. Encoder 1 sceglie la riga, encoder 2 cambia il
+// valore: i due encoder qui non fanno cutoff e volume, e va bene cosi' — sei
+// fermo su una schermata di regolazione, il suono puo' aspettare.
+//
+// I valori sono scritti in **giri di manopola** e non in frazioni di corsa:
+// "2.4 giri" dice quello che ti interessa davvero, "1/48 di corsa per scatto" no.
+void drawSettingsScreen(const SynthView &v, bool full) {
+    constexpr int ROW_Y0 = 62, ROW_DY = 34, ROW_H = 30;
+
+    if (full) {
+        chrome("SETTINGS", HUD_NEON);
+        textCentered("ENC1 SCEGLIE   ENC2 CAMBIA", 206, 1, HUD_LABEL);
+    }
+
+    for (int i = 0; i < SETTING_COUNT; ++i) {
+        const bool sel = (i == v.setCursor);
+        const bool wasSel = (i == prev.setCursor);
+        if (!full && v.setIndex[i] == prev.setIndex[i] && sel == wasSel) continue;
+
+        const int y = ROW_Y0 + i * ROW_DY;
+        gfx->fillRect(26, y, 190, ROW_H, BLACK);
+
+        // La riga scelta si riconosce dalla barra piena a sinistra, non da una
+        // sfumatura di grigio: a colpo d'occhio funziona molto meglio.
+        gfx->fillRect(28, y + 2, 4, ROW_H - 4, sel ? HUD_MAGENTA : HUD_TRACK);
+
+        // Nome a sinistra piccolo, valore a destra grande: il valore e' quello
+        // che stai cambiando e deve leggersi senza avvicinarsi.
+        textAt(Settings::ENTRIES[i].label, 40, y + 11, 1, sel ? HUD_ICE : HUD_LABEL);
+        textRight(Settings::valueLabel(i, v.setIndex[i]), 212, y + 7, 2,
+                  sel ? HUD_AMBER : HUD_LABEL);
     }
 }
 
@@ -1194,6 +1244,7 @@ void update(const SynthView &v) {
             case 3: drawSeqScreen(v, full); break;
             case SCREEN_VU: drawVuScreen(v, full); break;
             case SCREEN_SCOPE: drawScopeScreen(v, full); break;
+            case SCREEN_SETTINGS: drawSettingsScreen(v, full); break;
             default: drawNetworkIdleScreen(v, full); break;
         }
     }
@@ -1245,22 +1296,23 @@ void updateNetwork() {
 
     if (qrChanged) {
         gfx->fillScreen(BLACK);
-        drawQr(qr, 96);
+        drawQr(qr, 92);
     }
 
-    // Tre righe sotto il codice: cosa sta succedendo, e le credenziali scritte
-    // in chiaro per chi preferisce digitarle a mano.
-    gfx->fillRect(10, 164, 220, 48, BLACK);
-    textCentered(msg, 166, 1, HUD_NEON);
-    textCentered(NetPortal::ssid(), 180, 1, HUD_ICE);
+    // Sotto il codice: cosa sta succedendo, e le credenziali per chi le digita a
+    // mano. La password e' scritta grande di proposito: se la fotocamera non
+    // aggancia il QR — e capita, dipende dal telefono — questa riga e' l'unica
+    // via d'uscita, e va letta da mezzo metro con il synth appoggiato al tavolo.
+    gfx->fillRect(10, 160, 220, 56, BLACK);
+    textCentered(msg, 162, 1, HUD_NEON);
 
-    char line[40];
     if (NetPortal::staIp()[0] != '\0') {
-        snprintf(line, sizeof(line), "rete: %s", NetPortal::staIp());
+        textCentered("IN RETE COME", 180, 1, HUD_LABEL);
+        textCentered(NetPortal::staIp(), 194, 2, HUD_ICE);
     } else {
-        snprintf(line, sizeof(line), "pass: %s", NetPortal::password());
+        textCentered(NetPortal::ssid(), 178, 1, HUD_ICE);
+        textCentered(NetPortal::password(), 194, 2, HUD_AMBER);
     }
-    textCentered(line, 194, 1, HUD_LABEL);
 }
 
 void drawOtaProgress(int pct) {

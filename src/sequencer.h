@@ -51,6 +51,9 @@ void update(uint32_t now, bool erase);
 void toggleRecord();  // REC breve
 void togglePlay();    // PLAY/STOP
 void stop();
+// Svuota tutti i 16 step (PLAY tenuto premuto). Ferma anche il loop: continuare
+// a girare su un pattern appena azzerato non direbbe niente a chi ascolta.
+void clearAll();
 
 // --- registrazione dal vivo ---
 // Da chiamare sul fronte di attacco di ogni nota suonata (arpeggiator incluso).

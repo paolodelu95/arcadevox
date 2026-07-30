@@ -23,8 +23,9 @@ un inviluppo vero e un filtro che si apre.
 - **Arpeggiator** sulle note tenute, in ordine di pressione, passo 150 ms
 - **Step-sequencer** a 16 step con scrittura passo-passo, record quantizzato in overdub,
   preconteggio e metronomo
-- **Display GC9A01** tondo con 7 schermate cicliche — fra cui VU meter ad ago e
-  oscilloscopio dell'uscita — più quelle di edit ADSR e preconteggio
+- **Display GC9A01** tondo con 8 schermate cicliche — fra cui VU meter ad ago,
+  oscilloscopio dell'uscita e impostazioni — più quelle di edit ADSR e preconteggio
+- **Sensibilità degli encoder regolabile** dal pannello, in giri di manopola
 - **Memoria**: pattern e parametri sopravvivono allo spegnimento
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
 - **LED RGB** di bordo con tre giochi di luce in loop
@@ -49,7 +50,7 @@ esterna. I comandi sono tutti momentanei — ogni stato ON/OFF vive nel firmware
 | 13 | Selettore MONO / POLIFONICO | 42 / 47 | SPI SCLK / MOSI |
 | 14–17 | Joystick su / giù / sx / dx | 3 / 45 / 46 | Display CS / DC / RST |
 | 18 | Scorri schermate · NETWORK (>1 s) | 48 | LED RGB di bordo |
-| 21 / 1 | REC · STEP EDIT (>600 ms) / PLAY-STOP | | |
+| 21 / 1 | REC · STEP EDIT (>600 ms) / PLAY-STOP · svuota pattern (>800 ms) | | |
 | 2 | HOLD (breve) · ADSR edit (>600 ms) | 4 / 5 | Encoder 1 (A/B) |
 | 41 / 0 | Leva arpeggiator / preset BPM | 43 / 44 | Encoder 2 (A/B) |
 
@@ -103,7 +104,8 @@ poi non c'è nessuna fretta, il tempo non scorre.
 | encoder 2 | BPM continuo, 40–240 |
 | HOLD (breve) | svuota lo step e avanza |
 | leva ARP | scrive un **legato**: la nota precedente prosegue senza ripartire |
-| PLAY | avvia o ferma il loop — puoi continuare a scrivere mentre suona |
+| PLAY (breve) | avvia o ferma il loop — puoi continuare a scrivere mentre suona |
+| PLAY (lungo) | **svuota tutti i 16 step**: non si torna indietro |
 | REC (lungo) | esce |
 
 Il tasto che scrive e fa avanzare il cursore è il *step input* di MPC e Roland MC: si digita
@@ -123,6 +125,28 @@ che c'è già suona), poi il loop gira all'infinito e tutto quello che suoni ci 
 
 La griglia mostra il contenuto: ogni cella porta l'iniziale della nota e un colore per
 l'ottava, i legati una barretta. La cornice verde è la testina, quella bianca il cursore.
+
+## Sensibilità degli encoder
+
+Gli encoder sono incrementali, e quanto muove uno scatto era cablato nel codice:
+col volume a 1/50 di corsa per scatto servivano **due giri e mezzo** di manopola
+per andare da zero a fondo scala. Ora si regola dalla schermata **SETTINGS**.
+
+| Voce | Cosa muove | Default |
+|---|---|---|
+| VOLUME | encoder 2 in uso normale | 2.4 giri per l'intera corsa |
+| CUTOFF | encoder 1 in uso normale | 3.2 giri da 80 Hz a 8 kHz |
+| ADSR | attack e release in ADSR edit | 2.4 giri |
+| PASSO FINE | divisore col click dell'encoder | 1/4 |
+
+Sulla schermata SETTINGS **l'encoder 1 sceglie la riga e l'encoder 2 cambia il
+valore**: lì i due encoder non fanno cutoff e volume, che restano fermi finché
+non te ne vai. I valori sono scritti in giri di manopola perché è la grandezza
+che senti sotto le dita, non frazioni di corsa.
+
+I default riproducono il comportamento precedente: aggiornando non trovi le
+manopole cambiate sotto le dita finché non decidi tu. Il *passo fine* resterà
+inattivo finché i click degli encoder non saranno cablati (vedi `pinout.h`).
 
 ## Aggiornare il firmware via WiFi
 

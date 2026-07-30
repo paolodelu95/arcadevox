@@ -260,6 +260,16 @@ void *patternData() { return steps; }
 
 size_t patternSize() { return sizeof(steps); }
 
+void clearAll() {
+    stop();
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        steps[i].note = SEQ_REST;
+        steps[i].oct = 0;
+    }
+    cursorPos = 0;
+    ++rev;
+}
+
 void patternChanged() { ++rev; }
 
 void sanitizePattern() {

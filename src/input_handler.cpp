@@ -167,9 +167,10 @@ PressTracker pressTrackers[] = {
     {B_HOLD, HOLD_LONG_PRESS_MS, false, false, false},
     {B_REC, REC_LONG_PRESS_MS, false, false, false},
     {B_DISPLAY, DISPLAY_LONG_PRESS_MS, false, false, false},
+    {B_PLAY, PLAY_LONG_PRESS_MS, false, false, false},
 };
 
-enum { T_HOLD = 0, T_REC, T_DISPLAY, T_COUNT };
+enum { T_HOLD = 0, T_REC, T_DISPLAY, T_PLAY, T_COUNT };
 
 void notePressed(int note) {
     for (uint8_t i = 0; i < pressCount; ++i) {
@@ -303,7 +304,6 @@ bool joyDown() { return consume(joyEvent[1]); }
 bool joyLeft() { return consume(joyEvent[2]); }
 bool joyRight() { return consume(joyEvent[3]); }
 
-bool playPressed() { return consume(buttons[B_PLAY].edgeDown); }
 bool arpPressed() { return consume(buttons[B_ARP].edgeDown); }
 bool bpmPressed() { return consume(buttons[B_BPM].edgeDown); }
 bool polyPressed() { return consume(buttons[B_POLY].edgeDown); }
@@ -314,6 +314,11 @@ bool recShortPress() { return consume(pressTrackers[T_REC].shortEvent); }
 bool recLongPress() { return consume(pressTrackers[T_REC].longEvent); }
 bool displayShortPress() { return consume(pressTrackers[T_DISPLAY].shortEvent); }
 bool displayLongPress() { return consume(pressTrackers[T_DISPLAY].longEvent); }
+// PLAY e' passato fra i pulsanti a doppia funzione: il fronte di discesa lo
+// consuma il tracker, quindi non esiste piu' una lettura "grezza" del tasto e
+// l'avvio del loop scatta al rilascio, come su REC e HOLD.
+bool playShortPress() { return consume(pressTrackers[T_PLAY].shortEvent); }
+bool playLongPress() { return consume(pressTrackers[T_PLAY].longEvent); }
 
 bool holdIsDown() { return buttons[B_HOLD].state; }
 

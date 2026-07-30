@@ -3,6 +3,7 @@
 #include "storage.h"
 
 #include <Preferences.h>
+#include <stddef.h>  // offsetof, per la migrazione del blob
 
 #include "sequencer.h"
 
@@ -47,7 +48,16 @@ bool load(SynthState &s) {
     if (!ready) return false;
 
     SynthState tmp = {};
-    if (prefs.getBytes(KEY_STATE, &tmp, sizeof(tmp)) != sizeof(tmp)) return false;
+
+    // La 1.3.0 ha aggiunto in coda alla struttura la sensibilita' degli encoder.
+    // Un blob piu' corto e' quindi una versione precedente, non un errore:
+    // si rilegge per quello che e' e la coda resta a zero, che i chiamanti
+    // riportano ai valori di fabbrica. Senza questo, aggiornando si perderebbero
+    // onda, ottava, cutoff, volume e ADSR di chi il synth lo stava gia' usando.
+    constexpr size_t LEGACY_BYTES = offsetof(SynthState, stepVol);
+    const size_t stored = prefs.getBytesLength(KEY_STATE);
+    if (stored != sizeof(tmp) && stored != LEGACY_BYTES) return false;
+    if (prefs.getBytes(KEY_STATE, &tmp, stored) != stored) return false;
     if (tmp.magic != STATE_MAGIC) return false;  // formato vecchio: si riparte dai default
 
     // Il pattern e' facoltativo: se manca, i parametri si caricano comunque.

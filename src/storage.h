@@ -25,6 +25,15 @@ struct SynthState {
     float decayMs;
     float sustain;
     float releaseMs;
+
+    // Sensibilita' degli encoder: indici nelle tabelle di main.cpp, non valori.
+    // Salvare l'indice invece del passo vero permette di ritoccare le tabelle in
+    // una release futura senza che le schede gia' in giro si ritrovino con una
+    // sensibilita' assurda.
+    uint8_t stepVol;
+    uint8_t stepCutoff;
+    uint8_t stepAdsr;
+    uint8_t stepFine;
 };
 
 void begin();

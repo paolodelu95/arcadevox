@@ -14,6 +14,7 @@
 #include "net_portal.h"
 #include "pinout.h"
 #include "sequencer.h"
+#include "settings.h"
 #include "status_led.h"
 #include "storage.h"
 #include "version.h"
@@ -57,15 +58,16 @@ static const float DECAY_MAX_MS = 1000.0f;
 static const float DECAY_STEP_MS = 10.0f;
 static const float SUSTAIN_STEP = 0.05f;
 
-// Passo per scatto di encoder. I valori esponenziali si muovono su una posizione
-// normalizzata 0..1: 1/64 di corsa per scatto = ~3 giri di manopola da 20 detent
-// per l'intero range del cutoff.
-static const float CUTOFF_STEP = 1.0f / 64.0f;
-static const float CUTOFF_STEP_FINE = 1.0f / 256.0f;
-static const float VOLUME_STEP = 0.02f;
-static const float VOLUME_STEP_FINE = 0.005f;
-static const float ADSR_STEP = 1.0f / 48.0f;
-static const float ADSR_STEP_FINE = 1.0f / 192.0f;
+// Quanto muove uno scatto di encoder non e' piu' una costante: lo decide la
+// schermata SETTINGS, perche' e' una questione di gusto e cambia da mano a mano.
+// I valori esponenziali si muovono su una posizione normalizzata 0..1.
+static uint8_t setIndex[SETTING_COUNT];
+
+// Passo della voce `which`, diviso per il passo fine se il click e' inserito.
+static float stepFor(uint8_t which, bool fine) {
+    const float s = Settings::step(which, setIndex[which]);
+    return fine ? (s / Settings::fineDivider(setIndex[SETTING_FINE])) : s;
+}
 
 // ------------------------------------------------------------------- stato
 static uint8_t waveform = WAVE_SAW;
@@ -111,6 +113,9 @@ static uint32_t arpLastStep = 0;
 static bool prevAnyHeld = false;
 
 static uint32_t lastDisplayAt = 0;
+// Istante dell'ultima cancellazione del pattern, per la conferma a schermo.
+static uint32_t clearedAt = 0;
+static uint8_t settingsCursor = 0;
 
 // --------------------------------------------------------------- utilities
 static void applyOctave(int8_t oct) {
@@ -154,6 +159,10 @@ static Storage::SynthState snapshotState() {
     s.decayMs = decayMs;
     s.sustain = sustainLevel;
     s.releaseMs = releaseMs;
+    s.stepVol = setIndex[SETTING_VOL];
+    s.stepCutoff = setIndex[SETTING_CUTOFF];
+    s.stepAdsr = setIndex[SETTING_ADSR];
+    s.stepFine = setIndex[SETTING_FINE];
     return s;
 }
 
@@ -173,6 +182,8 @@ static void pushAllParams() {
 void setup() {
     Serial.begin(115200);
 
+    for (int i = 0; i < SETTING_COUNT; ++i) setIndex[i] = Settings::ENTRIES[i].byDefault;
+
     StatusLed::begin();  // per primo: spegne il LED RGB prima di ogni altra cosa
     Input::begin();
     Sequencer::begin();
@@ -191,6 +202,10 @@ void setup() {
         sustainLevel = saved.sustain;
         releaseMs = saved.releaseMs;
         polyMode = saved.poly;
+        setIndex[SETTING_VOL] = Settings::clampIndex(SETTING_VOL, saved.stepVol);
+        setIndex[SETTING_CUTOFF] = Settings::clampIndex(SETTING_CUTOFF, saved.stepCutoff);
+        setIndex[SETTING_ADSR] = Settings::clampIndex(SETTING_ADSR, saved.stepAdsr);
+        setIndex[SETTING_FINE] = Settings::clampIndex(SETTING_FINE, saved.stepFine);
         Sequencer::setBpm(saved.bpm);
         Serial.println(F("Stato ripristinato da NVS."));
     }
@@ -218,7 +233,9 @@ void loop() {
     // WiFi. Si esce solo riavviando.
     if (NetPortal::active()) {
         NetPortal::update();
-        if (Input::playPressed()) {
+        // Qui vanno bene entrambe: chi vuole uscire preme e basta, senza stare a
+        // misurare quanto tiene giu' il tasto.
+        if (Input::playShortPress() || Input::playLongPress()) {
             Serial.println(F("Uscita dalla modalita' NETWORK: riavvio."));
             ESP.restart();
         }
@@ -248,7 +265,16 @@ void loop() {
         Sequencer::toggleEditing();
     }
     if (Input::recShortPress()) Sequencer::toggleRecord();
-    if (Input::playPressed()) Sequencer::togglePlay();
+    if (Input::playShortPress()) Sequencer::togglePlay();
+
+    if (Input::playLongPress()) {
+        // Svuota tutti i 16 step. Non c'e' modo di tornare indietro, per questo
+        // la soglia e' piu' alta degli altri long-press e il display lo conferma.
+        Sequencer::clearAll();
+        Storage::markDirty();
+        clearedAt = now;
+        Serial.println(F("Pattern svuotato."));
+    }
 
     if (Input::holdLongPress()) {
         // Long-press (>600 ms): entra/esce dall'ADSR EDIT MODE.
@@ -366,15 +392,33 @@ void loop() {
     const int enc1 = Input::enc1Delta();
     const int enc2 = Input::enc2Delta();
 
-    if (adsrEditMode) {
+    if (Display::currentScreen() == SCREEN_SETTINGS && !adsrEditMode && !stepEdit) {
+        // Su questa schermata gli encoder regolano se stessi: encoder 1 sceglie la
+        // riga, encoder 2 cambia il valore. Cutoff e volume restano fermi finche'
+        // non te ne vai, ed e' quello che serve mentre stai tarando.
         if (enc1 != 0) {
-            attackPos = clamp01(attackPos + enc1 * (enc1Fine ? ADSR_STEP_FINE : ADSR_STEP));
+            int c = (int)settingsCursor + enc1;
+            if (c < 0) c = 0;
+            if (c > SETTING_COUNT - 1) c = SETTING_COUNT - 1;
+            settingsCursor = (uint8_t)c;
+        }
+        if (enc2 != 0) {
+            const uint8_t which = settingsCursor;
+            int idx = (int)setIndex[which] + enc2;
+            if (idx < 0) idx = 0;
+            if (idx > Settings::ENTRIES[which].count - 1) idx = Settings::ENTRIES[which].count - 1;
+            setIndex[which] = (uint8_t)idx;
+            Storage::markDirty();
+        }
+    } else if (adsrEditMode) {
+        if (enc1 != 0) {
+            attackPos = clamp01(attackPos + enc1 * stepFor(SETTING_ADSR, enc1Fine));
             attackMs = expMap(attackPos, ATTACK_MIN_MS, ATTACK_RATIO);
             AudioEngine::setAttack(attackMs);
             Storage::markDirty();
         }
         if (enc2 != 0) {
-            releasePos = clamp01(releasePos + enc2 * (enc2Fine ? ADSR_STEP_FINE : ADSR_STEP));
+            releasePos = clamp01(releasePos + enc2 * stepFor(SETTING_ADSR, enc2Fine));
             releaseMs = expMap(releasePos, RELEASE_MIN_MS, RELEASE_RATIO);
             AudioEngine::setRelease(releaseMs);
             Storage::markDirty();
@@ -388,13 +432,13 @@ void loop() {
         }
     } else {
         if (enc1 != 0) {
-            cutoffPos = clamp01(cutoffPos + enc1 * (enc1Fine ? CUTOFF_STEP_FINE : CUTOFF_STEP));
+            cutoffPos = clamp01(cutoffPos + enc1 * stepFor(SETTING_CUTOFF, enc1Fine));
             cutoffHz = expMap(cutoffPos, CUTOFF_MIN_HZ, CUTOFF_RATIO);
             AudioEngine::setCutoff(cutoffHz);
             Storage::markDirty();
         }
         if (enc2 != 0) {
-            volume = clamp01(volume + enc2 * (enc2Fine ? VOLUME_STEP_FINE : VOLUME_STEP));
+            volume = clamp01(volume + enc2 * stepFor(SETTING_VOL, enc2Fine));
             AudioEngine::setVolume(volume);
             Storage::markDirty();
         }
@@ -559,6 +603,9 @@ void loop() {
         view.arp = arpActive;
         view.poly = polyMode;
         view.voices = AudioEngine::activeVoices();
+        for (int i = 0; i < SETTING_COUNT; ++i) view.setIndex[i] = setIndex[i];
+        view.setCursor = settingsCursor;
+        view.clearedAgo = (clearedAt == 0) ? 0 : (now - clearedAt);
 
         Display::update(view);
     }
