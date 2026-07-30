@@ -237,8 +237,28 @@ String pageMessage(const char *title, const String &body, bool ok) {
     return s;
 }
 
+// Chi e' agganciato all'access point ha gia' dimostrato di conoscere la
+// password WPA2 — che e' poi la stessa del portale: chiedergliela una seconda
+// volta in una finestra di login non aggiunge nessuna barriera, e nel browser
+// ridotto del captive portal quella finestra e' spesso un vicolo cieco (la si
+// compila e ricompare, oppure non si apre affatto). La difesa che conta e'
+// l'altra: da dentro casa, quando il synth e' anche sulla rete di famiglia, il
+// portale risponde su un secondo indirizzo raggiungibile da chiunque sia in
+// LAN senza aver visto il display. Li' la password serve davvero.
+bool fromAccessPoint() {
+    const IPAddress remote = server.client().remoteIP();
+    const IPAddress apIp = WiFi.softAPIP();
+    const IPAddress mask = WiFi.softAPSubnetMask();
+    for (int i = 0; i < 4; ++i) {
+        if ((remote[i] & mask[i]) != (apIp[i] & mask[i])) return false;
+    }
+    return true;
+}
+
+bool authOk() { return fromAccessPoint() || server.authenticate(AUTH_USER, apPass); }
+
 bool requireAuth() {
-    if (server.authenticate(AUTH_USER, apPass)) return true;
+    if (authOk()) return true;
     server.requestAuthentication(BASIC_AUTH, "ArcadeVox");
     return false;
 }
@@ -290,7 +310,7 @@ void handleUploadData() {
     if (up.status == UPLOAD_FILE_START) {
         // L'autenticazione va verificata qui: i dati arrivano prima che il
         // gestore di completamento venga chiamato.
-        uploadRejected = !server.authenticate(AUTH_USER, apPass);
+        uploadRejected = !authOk();
         if (uploadRejected) return;
 
         otaProgress = 0;

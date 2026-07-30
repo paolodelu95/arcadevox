@@ -179,9 +179,13 @@ quindi la modalità è esclusiva — e sul display compare un QR.
 3. Da lì puoi **caricare un `firmware.bin`** preso dal telefono, oppure dare al synth le
    credenziali del WiFi di casa e fargli **cercare gli aggiornamenti da internet**.
 
-Il browser chiede utente e password appena apri il portale: sono `arcade` e la password
-scritta sul display, che è la stessa dell'access point. Le trovi entrambe accanto al QR.
-Si esce con **PLAY**, che riavvia il synth.
+Dal telefono agganciato al QR **il portale si apre subito, senza login**: per stare su
+quella rete hai già digitato la password WPA2, e chiedertela una seconda volta in una
+finestra del browser non proteggerebbe niente — nel browser ridotto del captive portal
+quella finestra è anzi il punto in cui ci si incastra. La richiesta di utente e password
+resta solo per chi apre il portale **dall'indirizzo sulla rete di casa**, che è raggiungibile
+da chiunque sia in LAN senza aver visto il display: lì l'utente è `arcade` e la password è
+quella scritta accanto al QR. Si esce con **PLAY**, che riavvia il synth.
 
 Il nome della rete di casa **si sceglie da un elenco**: il synth scandaglia le reti attorno e
 te le propone in una tendina, con la potenza del segnale. Il campo libero sotto serve solo

@@ -1383,10 +1383,13 @@ void updateNetwork() {
     textCentered(head, 160, 1, HUD_NEON);
     textCentered(NetPortal::ssid(), 172, 1, HUD_ICE);
     textCentered(NetPortal::password(), 184, 2, HUD_AMBER);
-    // La stessa password vale per la rete e per il portale, ma il nome utente
-    // finora stava solo nel manuale: davanti alla finestra di login del browser
-    // non serviva a niente.
-    textCentered("utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+    // Dall'access point il portale si apre senza login. La finestra utente e
+    // password compare solo a chi arriva dall'indirizzo di casa, quindi la
+    // riga si scrive solo quando quell'indirizzo esiste: altrimenti annuncia
+    // un ostacolo che sulla strada del QR non c'e'.
+    if (NetPortal::staIp()[0] != '\0') {
+        textCentered("da casa, utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+    }
     // La via d'uscita va scritta sulla schermata da cui si vuole uscire. Finora
     // stava solo nel manuale, e da qui il synth sembrava un vicolo cieco.
     textCentered("PLAY per uscire", 216, 1, HUD_LIME);
