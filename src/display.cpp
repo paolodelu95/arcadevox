@@ -234,7 +234,7 @@ void drawVoiceSlots(int y, uint8_t voices, bool poly) {
 void drawWaveScreen(const SynthView &v, bool full) {
     if (full) {
         chrome("OSC", HUD_NEON);
-        textCentered("FORMA D'ONDA", CONTENT_TOP, 1, HUD_LABEL);
+        textCentered("JOY < > CAMBIA ONDA", CONTENT_TOP, 1, HUD_LABEL);
     }
     if (full || v.waveform != prev.waveform) {
         gfx->fillRect(56, 72, 128, 60, BLACK);
@@ -255,7 +255,7 @@ void drawWaveScreen(const SynthView &v, bool full) {
 void drawOctaveScreen(const SynthView &v, bool full) {
     if (full) {
         chrome("OCTAVE", HUD_MAGENTA);
-        textCentered("REGISTRO", CONTENT_TOP, 1, HUD_LABEL);
+        textCentered("JOY SU GIU CAMBIA OTTAVA", CONTENT_TOP, 1, HUD_LABEL);
     }
     if (!full && v.octave == prev.octave) return;
 
@@ -329,6 +329,7 @@ void drawLevelsScreen(const SynthView &v, bool full) {
         chrome("LEVELS", HUD_AMBER);
         textAt("CUTOFF", BX, 58, 1, HUD_LABEL);
         textAt("VOLUME", BX, 124, 1, HUD_LABEL);
+        textCentered("ENC 1 CUTOFF   ENC 2 VOLUME", 164, 1, HUD_LABEL);
     }
 
     // cutoff: mappatura log 80..8000 Hz per una barra percettivamente lineare
@@ -472,6 +473,11 @@ void drawSeqScreen(const SynthView &v, bool full) {
 
     if (full) {
         chrome(v.seqEditing ? "STEP EDIT" : "SEQUENCER", v.seqEditing ? HUD_ICE : HUD_MAGENTA);
+        // In step edit i tasti nota scrivono invece di suonare e la leva ARP
+        // diventa il legato: e' il momento in cui una legenda serve di piu'.
+        textCentered(v.seqEditing ? "TASTI SCRIVONO   ARP: LEGATO"
+                                  : "TIENI REC: EDIT   PLAY: SVUOTA",
+                     180, 1, HUD_LABEL);
     }
 
     if (cleared) {
@@ -535,14 +541,17 @@ void drawSeqScreen(const SynthView &v, bool full) {
 
     if (full || v.hold != prev.hold || v.arp != prev.arp || v.bpm != prev.bpm ||
         v.poly != prev.poly) {
-        clearBand(164, 18);
+        // Fascia stretta sul solo BPM: con i 18 px di prima la pulizia arrivava a
+        // toccare la legenda qui sotto e ne mangiava la prima riga ad ogni
+        // cambio di tempo.
+        clearBand(162, 16);
         char buf[24];
         snprintf(buf, sizeof(buf), "%d BPM", (int)v.bpm);
-        textCentered(buf, 164, 2, HUD_AMBER);
+        textCentered(buf, 162, 2, HUD_AMBER);
 
         // Tre targhette invece di una riga di testo: acceso e spento si
         // distinguono per pieno contro contorno, non per sfumatura di grigio.
-        clearBand(190, 16);
+        clearBand(190, 15);
         struct Flag {
             const char *label;
             bool on;
