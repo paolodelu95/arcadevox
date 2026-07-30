@@ -11,6 +11,11 @@
 //   2. dai al synth le credenziali di casa e lui si scarica il firmware da solo.
 #pragma once
 
+// Nome utente del portale. Sta qui e non dentro net_portal.cpp perche' il
+// display lo scrive accanto al QR: la password si legge gia' a schermo, ma senza
+// l'utente la finestra di login del browser resta un indovinello.
+#define NET_AUTH_USER "arcade"
+
 #include <Arduino.h>
 
 namespace NetPortal {

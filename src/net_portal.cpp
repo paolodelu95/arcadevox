@@ -31,7 +31,7 @@
 namespace {
 
 constexpr uint16_t DNS_PORT = 53;
-constexpr const char *AUTH_USER = "arcade";
+constexpr const char *AUTH_USER = NET_AUTH_USER;
 
 DNSServer dns;
 WebServer server(80);
@@ -90,6 +90,24 @@ void setQrForJoin() {
 }
 
 void setQrForPortal() { strncpy(qrText, portal, sizeof(qrText) - 1); }
+
+// --------------------------------------------------------------- scansione
+// Setacciare i canali richiede qualche secondo. Farlo in modo sincrono dentro la
+// richiesta HTTP terrebbe fermo il server per tutto quel tempo e la pagina
+// sembrerebbe piantata: si lancia in asincrono e la si raccoglie quando e'
+// pronta, ricaricando.
+void startScanIfIdle() {
+    if (WiFi.scanComplete() == WIFI_SCAN_FAILED) WiFi.scanNetworks(true /* async */);
+}
+
+// Una rete con lo stesso nome puo' comparire piu' volte (due bande, o un
+// ripetitore): nell'elenco ne basta una.
+bool alreadyListed(int upTo, const String &name) {
+    for (int i = 0; i < upTo; ++i) {
+        if (WiFi.SSID(i) == name) return true;
+    }
+    return false;
+}
 
 // --------------------------------------------------------------- versioni
 // "1.2.3" -> 0x010203, per confrontare le release con un solo intero.
@@ -161,9 +179,34 @@ String pageStatus() {
         s += knownSsid;
         s += "</span></small>";
     }
-    s += "<input name=ssid placeholder='nome della rete' value='";
-    if (known) s += knownSsid;
-    s += "' required>"
+    startScanIfIdle();
+    const int found = WiFi.scanComplete();
+    if (found > 0) {
+        s += "<select name=ssid>";
+        for (int i = 0; i < found; ++i) {
+            const String name = WiFi.SSID(i);
+            if (name.length() == 0 || alreadyListed(i, name)) continue;
+            s += "<option value='";
+            s += name;
+            s += "'";
+            if (known && name == knownSsid) s += " selected";
+            s += ">";
+            s += name;
+            s += "  (";
+            s += String(WiFi.RSSI(i));
+            s += " dBm)</option>";
+        }
+        s += "</select>";
+        s += "<small>Non la vedi? Scrivila qui sotto, oppure ";
+        s += "<a style='color:#0aa' href='/rescan'>ripeti la scansione</a>.</small>";
+    } else {
+        s += "<small>Scansione delle reti in corso: ";
+        s += "<a style='color:#0aa' href='/'>ricarica</a> fra un istante. ";
+        s += "Nel frattempo puoi scrivere il nome a mano.</small>";
+    }
+    // Resta un campo libero: le reti nascoste non compaiono in nessuna scansione,
+    // e se e' pieno ha la precedenza sulla tendina.
+    s += "<input name=ssid_manual placeholder='oppure scrivi il nome' value=''>"
          "<input name=pass type=password placeholder=password>"
          "<button>Collega</button></form>";
     if (known) {
@@ -202,7 +245,14 @@ bool requireAuth() {
 
 // ----------------------------------------------------------------- rotte
 
-void handleRoot() { server.send(200, "text/html", pageStatus()); }
+void handleRoot() {
+    // L'autenticazione va chiesta qui, sulla prima pagina. Chiedendola solo alle
+    // rotte che scrivono — com'era prima — la finestra di login compariva a
+    // sorpresa dopo aver gia' compilato il modulo del WiFi, e sembrava un errore
+    // invece che l'ingresso. Il browser poi se la ricorda per tutta la sessione.
+    if (!requireAuth()) return;
+    server.send(200, "text/html", pageStatus());
+}
 
 // Le sonde con cui iOS e Android capiscono di essere dietro un captive portal:
 // rispondendo con un redirect si guadagna l'apertura automatica della pagina.
@@ -270,6 +320,14 @@ void handleUploadData() {
     }
 }
 
+void handleRescan() {
+    if (!requireAuth()) return;
+    WiFi.scanDelete();      // butta il risultato vecchio...
+    WiFi.scanNetworks(true);  // ...e ne chiede uno nuovo
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
 // Cambiare casa, o rete, senza dover rientrare a mano ogni volta in una rete
 // che non esiste piu'.
 void handleForget() {
@@ -286,7 +344,11 @@ void handleForget() {
 void handleWifi() {
     if (!requireAuth()) return;
 
-    String ssid = server.arg("ssid");
+    // Il campo scritto a mano ha la precedenza: se l'utente si e' preso la briga
+    // di digitarlo, e' perche' nella tendina non c'era quello che cercava.
+    String ssid = server.arg("ssid_manual");
+    ssid.trim();
+    if (ssid.length() == 0) ssid = server.arg("ssid");
     String pass = server.arg("pass");
     if (ssid.length() == 0) {
         server.send(200, "text/html",
@@ -428,6 +490,7 @@ void begin() {
     server.on("/update", HTTP_POST, handleUploadEnd, handleUploadData);
     server.on("/wifi", HTTP_POST, handleWifi);
     server.on("/forget", HTTP_POST, handleForget);
+    server.on("/rescan", HTTP_GET, handleRescan);
     server.on("/check", HTTP_GET, handleCheck);
     // Sonde di rilevazione del captive portal.
     server.on("/generate_204", HTTP_GET, handleCaptive);

@@ -161,8 +161,13 @@ quindi la modalità è esclusiva — e sul display compare un QR.
 3. Da lì puoi **caricare un `firmware.bin`** preso dal telefono, oppure dare al synth le
    credenziali del WiFi di casa e fargli **cercare gli aggiornamenti da internet**.
 
-Utente `arcade`, password quella scritta sul display accanto al QR. Si esce con **PLAY**, che
-riavvia il synth.
+Il browser chiede utente e password appena apri il portale: sono `arcade` e la password
+scritta sul display, che è la stessa dell'access point. Le trovi entrambe accanto al QR.
+Si esce con **PLAY**, che riavvia il synth.
+
+Il nome della rete di casa **si sceglie da un elenco**: il synth scandaglia le reti attorno e
+te le propone in una tendina, con la potenza del segnale. Il campo libero sotto serve solo
+alle reti nascoste, che in nessuna scansione compaiono.
 
 Le credenziali della rete di casa **restano nel synth**: alla successiva accensione della radio
 si ricollega da solo, senza ridigitarle, e il display mostra l'indirizzo che ha preso. Dal

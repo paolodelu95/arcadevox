@@ -1,1 +1,1 @@
-{"version":"1.4.0","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"Il synth si ricollega da solo alla rete di casa salvata, senza ridigitare le credenziali."}
+{"version":"1.5.0","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"La rete di casa si sceglie da un elenco invece di scriverla, e il login del portale arriva all'ingresso."}

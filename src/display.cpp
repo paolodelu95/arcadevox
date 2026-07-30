@@ -1321,8 +1321,12 @@ void updateNetwork() {
         snprintf(head, sizeof(head), "%s", msg);
     }
     textCentered(head, 162, 1, HUD_NEON);
-    textCentered(NetPortal::ssid(), 178, 1, HUD_ICE);
-    textCentered(NetPortal::password(), 194, 2, HUD_AMBER);
+    textCentered(NetPortal::ssid(), 176, 1, HUD_ICE);
+    textCentered(NetPortal::password(), 190, 2, HUD_AMBER);
+    // La stessa password vale per la rete e per il portale, ma il nome utente
+    // finora stava solo nel manuale: davanti alla finestra di login del browser
+    // non serviva a niente.
+    textCentered("utente: " NET_AUTH_USER, 210, 1, HUD_LABEL);
 }
 
 void drawOtaProgress(int pct) {
