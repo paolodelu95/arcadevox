@@ -164,6 +164,10 @@ quindi la modalità è esclusiva — e sul display compare un QR.
 Utente `arcade`, password quella scritta sul display accanto al QR. Si esce con **PLAY**, che
 riavvia il synth.
 
+Le credenziali della rete di casa **restano nel synth**: alla successiva accensione della radio
+si ricollega da solo, senza ridigitarle, e il display mostra l'indirizzo che ha preso. Dal
+portale si vede quale rete è in memoria e la si può dimenticare.
+
 Due cose da sapere:
 
 - Il **primo** firmware che contiene questa funzione va caricato **via USB**. Da lì in poi

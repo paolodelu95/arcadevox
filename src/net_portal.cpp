@@ -50,6 +50,11 @@ int otaProgress = 0;
 uint32_t staDeadline = 0;
 bool uploadRejected = false;
 
+// Rientro automatico nella rete di casa, in corso. Corre in parallelo al
+// portale e non passa dalla macchina a stati: se la rete non c'e' — sei fuori
+// casa, o l'hai cambiata — il QR e la pagina devono restare utilizzabili.
+bool staAuto = false;
+
 void setStatus(const char *m) { strncpy(statusMsg, m, sizeof(statusMsg) - 1); }
 
 // Nel formato WIFI: questi cinque caratteri delimitano i campi e vanno preceduti
@@ -145,10 +150,26 @@ String pageStatus() {
          "<button>Carica e riavvia</button></form>";
 
     s += "<h2>Collega alla rete di casa</h2><form method=POST action=/wifi>"
-         "<small>Serve solo per gli aggiornamenti da internet.</small>"
-         "<input name=ssid placeholder='nome della rete' required>"
+         "<small>Serve solo per gli aggiornamenti da internet. Le credenziali "
+         "restano nel synth: alla prossima accensione della radio ci si "
+         "ricollega da solo.</small>";
+    // Sapere quale rete e' memorizzata evita di ridigitarla per il dubbio.
+    String knownSsid, knownPass;
+    const bool known = Storage::loadWifi(knownSsid, knownPass);
+    if (known) {
+        s += "<small>In memoria: <span class=v>";
+        s += knownSsid;
+        s += "</span></small>";
+    }
+    s += "<input name=ssid placeholder='nome della rete' value='";
+    if (known) s += knownSsid;
+    s += "' required>"
          "<input name=pass type=password placeholder=password>"
          "<button>Collega</button></form>";
+    if (known) {
+        s += "<form method=POST action=/forget>"
+             "<button style='background:#622;color:#fdd'>Dimentica la rete</button></form>";
+    }
 
     s += "<h2>Aggiorna da internet</h2><form method=GET action=/check>"
          "<small>Indirizzo del manifest delle release.</small>"
@@ -249,6 +270,19 @@ void handleUploadData() {
     }
 }
 
+// Cambiare casa, o rete, senza dover rientrare a mano ogni volta in una rete
+// che non esiste piu'.
+void handleForget() {
+    if (!requireAuth()) return;
+    Storage::clearWifi();
+    staAuto = false;
+    WiFi.disconnect();
+    staIpText[0] = '\0';
+    server.send(200, "text/html",
+                pageMessage("Rete dimenticata",
+                            "Il synth non provera' piu' a ricollegarsi da solo.", true));
+}
+
 void handleWifi() {
     if (!requireAuth()) return;
 
@@ -261,6 +295,8 @@ void handleWifi() {
     }
 
     Storage::saveWifi(ssid.c_str(), pass.c_str());
+    staAuto = false;  // da qui comanda la macchina a stati, non il rientro in sordina
+    WiFi.disconnect();
     WiFi.begin(ssid.c_str(), pass.c_str());
     currentStage = NetPortal::NET_STA_WAIT;
     staDeadline = millis() + 20000;
@@ -391,6 +427,7 @@ void begin() {
     server.on("/", HTTP_GET, handleRoot);
     server.on("/update", HTTP_POST, handleUploadEnd, handleUploadData);
     server.on("/wifi", HTTP_POST, handleWifi);
+    server.on("/forget", HTTP_POST, handleForget);
     server.on("/check", HTTP_GET, handleCheck);
     // Sonde di rilevazione del captive portal.
     server.on("/generate_204", HTTP_GET, handleCaptive);
@@ -407,8 +444,19 @@ void begin() {
         Display::drawOtaProgress(otaProgress);
     });
 
+    // Le credenziali della rete di casa erano salvate in NVS da sempre, ma
+    // nessuno le rileggeva: si finiva per ridigitarle sul telefono ad ogni
+    // aggiornamento. Da qui in poi il synth ci riprova da solo.
+    String savedSsid, savedPass;
+    if (Storage::loadWifi(savedSsid, savedPass)) {
+        WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+        staAuto = true;
+        staDeadline = millis() + 20000;
+        Serial.printf("NETWORK: riprovo la rete salvata '%s'\n", savedSsid.c_str());
+    }
+
     currentStage = NET_AP;
-    setStatus("in attesa del telefono");
+    setStatus(staAuto ? "mi ricollego alla rete" : "in attesa del telefono");
     Serial.printf("NETWORK: %s / %s -> %s\n", apSsid, apPass, portal);
 }
 
@@ -421,6 +469,17 @@ void update() {
     server.handleClient();
 
     if (currentStage == NET_UPDATING || currentStage == NET_FAILED) return;
+
+    if (staAuto) {
+        if (WiFi.status() == WL_CONNECTED) {
+            strncpy(staIpText, WiFi.localIP().toString().c_str(), sizeof(staIpText) - 1);
+            staAuto = false;
+            Serial.printf("NETWORK: in rete come %s\n", staIpText);
+        } else if ((int32_t)(millis() - staDeadline) > 0) {
+            staAuto = false;  // pazienza: resta il portale dall'access point
+            Serial.println(F("NETWORK: rete salvata non raggiunta"));
+        }
+    }
 
     // Attesa del collegamento alla rete di casa.
     if (currentStage == NET_STA_WAIT) {

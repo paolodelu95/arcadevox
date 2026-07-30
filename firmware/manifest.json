@@ -1,1 +1,1 @@
-{"version":"1.3.0","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"Schermata SETTINGS per la sensibilita' degli encoder, PLAY lungo svuota il pattern, QR della rete piu' compatibile."}
+{"version":"1.4.0","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"Il synth si ricollega da solo alla rete di casa salvata, senza ridigitare le credenziali."}

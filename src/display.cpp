@@ -1263,15 +1263,20 @@ void updateNetwork() {
     static NetPortal::Stage lastStage = NetPortal::NET_OFF;
     static char lastQr[96] = "";
     static char lastMsg[64] = "";
+    static char lastIp[20] = "";
     static bool everDrawn = false;
 
     const NetPortal::Stage st = NetPortal::stage();
     const char *qr = NetPortal::qrPayload();
     const char *msg = NetPortal::message();
 
-    if (everDrawn && st == lastStage && strcmp(qr, lastQr) == 0 && strcmp(msg, lastMsg) == 0) {
+    // L'indirizzo entra nel confronto: arriva quando il rientro automatico va a
+    // buon fine, senza che ne' lo stato ne' il messaggio cambino.
+    if (everDrawn && st == lastStage && strcmp(qr, lastQr) == 0 && strcmp(msg, lastMsg) == 0 &&
+        strcmp(NetPortal::staIp(), lastIp) == 0) {
         return;
     }
+    strncpy(lastIp, NetPortal::staIp(), sizeof(lastIp) - 1);
     const bool qrChanged = !everDrawn || strcmp(qr, lastQr) != 0;
 
     lastStage = st;
@@ -1304,15 +1309,20 @@ void updateNetwork() {
     // aggancia il QR — e capita, dipende dal telefono — questa riga e' l'unica
     // via d'uscita, e va letta da mezzo metro con il synth appoggiato al tavolo.
     gfx->fillRect(10, 160, 220, 56, BLACK);
-    textCentered(msg, 162, 1, HUD_NEON);
 
+    // Una volta in rete la riga di stato porta l'indirizzo, che dal telefono e'
+    // una scorciatoia per il portale. Le credenziali dell'access point restano
+    // comunque a video: sono l'unica via d'ingresso se il telefono non e' sulla
+    // stessa rete di casa.
+    char head[40];
     if (NetPortal::staIp()[0] != '\0') {
-        textCentered("IN RETE COME", 180, 1, HUD_LABEL);
-        textCentered(NetPortal::staIp(), 194, 2, HUD_ICE);
+        snprintf(head, sizeof(head), "in rete: %s", NetPortal::staIp());
     } else {
-        textCentered(NetPortal::ssid(), 178, 1, HUD_ICE);
-        textCentered(NetPortal::password(), 194, 2, HUD_AMBER);
+        snprintf(head, sizeof(head), "%s", msg);
     }
+    textCentered(head, 162, 1, HUD_NEON);
+    textCentered(NetPortal::ssid(), 178, 1, HUD_ICE);
+    textCentered(NetPortal::password(), 194, 2, HUD_AMBER);
 }
 
 void drawOtaProgress(int pct) {
