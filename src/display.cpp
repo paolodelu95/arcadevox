@@ -606,10 +606,19 @@ void drawAdsrScreen(const SynthView &v, bool full) {
         full || fabsf(v.releaseMs - prev.releaseMs) > 0.5f,
     };
 
+    // Ogni parametro ha il suo comando, senza modalita' da ricordare: A e R sui
+    // due encoder, D e S sul joystick. Finora pero' non c'era scritto da nessuna
+    // parte, e girando le manopole sembrava che meta' dei parametri non si
+    // potesse toccare. La legenda in fondo lo dice.
+    if (full) {
+        clearBand(196, 10);
+        textCentered("A R = ENCODER  D S = JOY", 196, 1, HUD_LABEL);
+    }
+
     // Righe strette abbastanza da restare dentro l'area circolare anche in basso.
     // La lettera del parametro sta su una targhetta piena: quattro barre uguali
     // una sopra l'altra si confondono, il quadrato colorato le ancora.
-    const int y0 = 66, dy = 36;
+    const int y0 = 62, dy = 34;
     for (int i = 0; i < 4; ++i) {
         if (!changed[i]) continue;
         const int y = y0 + i * dy;

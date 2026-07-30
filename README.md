@@ -127,6 +127,20 @@ che c'è già suona), poi il loop gira all'infinito e tutto quello che suoni ci 
 La griglia mostra il contenuto: ogni cella porta l'iniziale della nota e un colore per
 l'ottava, i legati una barretta. La cornice verde è la testina, quella bianca il cursore.
 
+## ADSR edit
+
+Long-press di **HOLD** (>600 ms). I quattro parametri hanno quattro comandi diretti, senza
+modalità da ricordare:
+
+| Parametro | Comando | Perché lì |
+|---|---|---|
+| **A**ttack | encoder 1 | mappatura esponenziale, vuole una corsa continua |
+| **R**elease | encoder 2 | idem |
+| **D**ecay | joystick ↑ ↓ | passo fisso da 10 ms, l'auto-repeat basta |
+| **S**ustain | joystick ← → | passo fisso del 5% |
+
+La legenda è scritta in fondo alla schermata: `A R = ENCODER   D S = JOY`.
+
 ## Sensibilità degli encoder
 
 Gli encoder sono incrementali, e quanto muove uno scatto era cablato nel codice:
