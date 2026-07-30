@@ -4,3 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 .DS_Store
+
+# cache di tools/make_logo.py
+__pycache__/
+*.pyc
