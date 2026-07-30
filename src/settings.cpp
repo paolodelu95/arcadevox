@@ -23,20 +23,21 @@ namespace Settings {
 // schermata esistesse: chi aggiorna non trova le manopole cambiate sotto le dita
 // finche' non decide lui.
 const Entry ENTRIES[SETTING_COUNT] = {
-    {"VOLUME", 6, 2, TURNS},      // era 1/50 di corsa per scatto
-    {"CUTOFF", 6, 1, TURNS},      // era 1/64
-    {"ADSR", 6, 2, TURNS},        // era 1/48, su attack e release
-    {"PASSO FINE", 4, 1, FINE_LABELS},
+    {"ENCODER", "VOLUME", 6, 2, TURNS},  // era 1/50 di corsa per scatto
+    {nullptr, "CUTOFF", 6, 1, TURNS},    // era 1/64
+    {nullptr, "ADSR", 6, 2, TURNS},      // era 1/48, su attack e release
+    {nullptr, "PASSO FINE", 4, 1, FINE_LABELS},
+    {"RETE", "MODALITA' WIFI", 0, 0, nullptr},
 };
 
 uint8_t clampIndex(uint8_t which, uint8_t index) {
-    if (which >= SETTING_COUNT) return 0;
+    if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return 0;
     const uint8_t n = ENTRIES[which].count;
     return (index < n) ? index : ENTRIES[which].byDefault;
 }
 
 const char *valueLabel(uint8_t which, uint8_t index) {
-    if (which >= SETTING_COUNT) return "";
+    if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return "";
     return ENTRIES[which].valueLabels[clampIndex(which, index)];
 }
 

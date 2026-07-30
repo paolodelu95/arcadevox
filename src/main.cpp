@@ -116,6 +116,8 @@ static uint32_t lastDisplayAt = 0;
 // Istante dell'ultima cancellazione del pattern, per la conferma a schermo.
 static uint32_t clearedAt = 0;
 static uint8_t settingsCursor = 0;
+// Dentro al menu impostazioni: cambia il significato di piu' di un comando.
+static bool settingsEditing = false;
 
 // --------------------------------------------------------------- utilities
 static void applyOctave(int8_t oct) {
@@ -249,11 +251,31 @@ void loop() {
     StatusLed::update(now);
 
     // ---------------------------------------------------- pulsanti funzione
-    if (Input::displayShortPress()) Display::nextScreen();
+    // Il pulsante "scorri display" ha tre significati, e quale valga dipende solo
+    // da dove ti trovi: fuori dalle impostazioni scorre le schermate, dentro
+    // sceglie la voce, e tenuto premuto entra o esce dal menu. Un tasto solo,
+    // perche' sul pannello non ce ne sono di liberi.
+    if (Input::displayLongPress()) {
+        if (settingsEditing) {
+            settingsEditing = false;
+        } else if (Display::currentScreen() == SCREEN_SETTINGS) {
+            settingsEditing = true;
+            settingsCursor = 0;
+        }
+    }
+    if (Input::displayShortPress()) {
+        if (settingsEditing) {
+            settingsCursor = (uint8_t)((settingsCursor + 1) % SETTING_COUNT);
+        } else {
+            Display::nextScreen();
+        }
+    }
 
-    if (Input::displayLongPress() && Display::currentScreen() == SCREEN_NETWORK) {
-        // Gesto deliberato e possibile da una sola schermata: la radio non puo'
-        // accendersi per sbaglio nel mezzo di una session.
+    if (settingsEditing && settingsCursor == SETTING_NET && Input::playShortPress()) {
+        // Accendere la radio rende il synth muto fino al riavvio: e' l'azione piu'
+        // pesante del pannello, e per arrivarci servono ormai tre gesti distinti
+        // (schermata, pressione lunga, PLAY sulla voce giusta). Non ci si finisce
+        // per sbaglio nel mezzo di una session.
         Storage::flush(snapshotState());  // niente va perso spegnendo l'audio
         NetPortal::begin();
         return;
@@ -265,9 +287,11 @@ void loop() {
         Sequencer::toggleEditing();
     }
     if (Input::recShortPress()) Sequencer::toggleRecord();
-    if (Input::playShortPress()) Sequencer::togglePlay();
+    // Dentro al menu PLAY conferma una voce, non avvia il loop: consumarlo qui
+    // farebbe partire la sequenza mentre stai tarando le manopole.
+    if (!settingsEditing && Input::playShortPress()) Sequencer::togglePlay();
 
-    if (Input::playLongPress()) {
+    if (!settingsEditing && Input::playLongPress()) {
         // Svuota tutti i 16 step. Non c'e' modo di tornare indietro, per questo
         // la soglia e' piu' alta degli altri long-press e il display lo conferma.
         Sequencer::clearAll();
@@ -392,18 +416,19 @@ void loop() {
     const int enc1 = Input::enc1Delta();
     const int enc2 = Input::enc2Delta();
 
-    if (Display::currentScreen() == SCREEN_SETTINGS && !adsrEditMode && !stepEdit) {
-        // Su questa schermata gli encoder regolano se stessi: encoder 1 sceglie la
-        // riga, encoder 2 cambia il valore. Cutoff e volume restano fermi finche'
-        // non te ne vai, ed e' quello che serve mentre stai tarando.
+    if (settingsEditing) {
+        // Nel menu gli encoder regolano se stessi. L'encoder 1 scorre le voci
+        // come alternativa al pulsante, l'encoder 2 cambia il valore: cutoff e
+        // volume restano fermi finche' non esci, ed e' quello che serve mentre
+        // stai tarando proprio la loro sensibilita'.
         if (enc1 != 0) {
             int c = (int)settingsCursor + enc1;
             if (c < 0) c = 0;
             if (c > SETTING_COUNT - 1) c = SETTING_COUNT - 1;
             settingsCursor = (uint8_t)c;
         }
-        if (enc2 != 0) {
-            const uint8_t which = settingsCursor;
+        const uint8_t which = settingsCursor;
+        if (enc2 != 0 && !Settings::isAction(which)) {
             int idx = (int)setIndex[which] + enc2;
             if (idx < 0) idx = 0;
             if (idx > Settings::ENTRIES[which].count - 1) idx = Settings::ENTRIES[which].count - 1;
@@ -605,6 +630,7 @@ void loop() {
         view.voices = AudioEngine::activeVoices();
         for (int i = 0; i < SETTING_COUNT; ++i) view.setIndex[i] = setIndex[i];
         view.setCursor = settingsCursor;
+        view.setEditing = settingsEditing;
         view.clearedAgo = (clearedAt == 0) ? 0 : (now - clearedAt);
 
         Display::update(view);

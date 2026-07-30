@@ -3,7 +3,7 @@
 
 // Da alzare ad ogni release: il confronto con il manifest si basa su questa.
 // Formato "maggiore.minore.patch", tutti e tre i numeri 0..255.
-#define FW_VERSION "1.5.0"
+#define FW_VERSION "1.6.0"
 
 // Manifest degli aggiornamenti, un JSON di tre campi:
 //

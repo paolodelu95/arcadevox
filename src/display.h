@@ -1,16 +1,16 @@
-// display.h — GC9A01 tondo 240x240 su SPI, 8 schermate cicliche + schermata ADSR.
+// display.h — GC9A01 tondo 240x240 su SPI, 7 schermate cicliche + schermata ADSR.
 #pragma once
 
 #include <Arduino.h>
 
 #include "settings.h"
 
-// Ordine del ciclo: OSC, OCTAVE, LEVELS, SEQUENCER, VU, SCOPE, SETTINGS, NETWORK.
-#define SCREEN_COUNT 8     // schermate cicliche (la ADSR e' fuori dal ciclo)
+// Ordine del ciclo: OSC, OCTAVE, LEVELS, SEQUENCER, VU, SCOPE, SETTINGS.
+// La rete non ha piu' una schermata sua: e' una voce dentro SETTINGS.
+#define SCREEN_COUNT 7     // schermate cicliche (la ADSR e' fuori dal ciclo)
 #define SCREEN_VU 4        // VU meter ad ago
 #define SCREEN_SCOPE 5     // oscilloscopio dell'uscita
-#define SCREEN_SETTINGS 6  // sensibilita' degli encoder
-#define SCREEN_NETWORK 7   // ultima del ciclo: da qui si accende la radio
+#define SCREEN_SETTINGS 6  // ultima del ciclo: encoder e rete
 
 // Fotografia dello stato del synth passata al display ad ogni refresh.
 struct SynthView {
@@ -39,6 +39,7 @@ struct SynthView {
 
     uint8_t setIndex[SETTING_COUNT];  // valori scelti nella schermata SETTINGS
     uint8_t setCursor;                // riga selezionata
+    bool setEditing;                  // dentro al menu: il cursore e' visibile
 
     // Millisecondi da quando il pattern e' stato svuotato, 0 se non e' successo:
     // serve a tenere a schermo la conferma per un attimo e poi toglierla.

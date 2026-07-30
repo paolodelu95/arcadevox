@@ -629,31 +629,74 @@ void drawAdsrScreen(const SynthView &v, bool full) {
 //
 // I valori sono scritti in **giri di manopola** e non in frazioni di corsa:
 // "2.4 giri" dice quello che ti interessa davvero, "1/48 di corsa per scatto" no.
-void drawSettingsScreen(const SynthView &v, bool full) {
-    constexpr int ROW_Y0 = 62, ROW_DY = 34, ROW_H = 30;
+// Due stati. Fuori dal menu si leggono solo i valori, con l'invito a entrare;
+// dentro compare il cursore e i comandi cambiano significato: il tasto che
+// normalmente scorre le schermate qui scorre le voci, e tenendolo premuto si
+// esce. Le voci sono raggruppate per categoria perche' la rete e la sensibilita'
+// degli encoder non hanno niente a che vedere fra loro.
+constexpr int SET_TOP = 56;
+constexpr int SET_HEADER_H = 15;
+constexpr int SET_ROW_H = 22;
 
-    if (full) {
+// Quota della riga i-esima, tenendo conto delle intestazioni che la precedono.
+int settingsRowY(int which) {
+    int y = SET_TOP;
+    for (int i = 0; i <= which; ++i) {
+        if (Settings::ENTRIES[i].category) y += SET_HEADER_H;
+        if (i < which) y += SET_ROW_H;
+    }
+    return y;
+}
+
+void drawSettingsScreen(const SynthView &v, bool full) {
+    const bool editing = v.setEditing;
+
+    if (full || editing != prev.setEditing) {
         chrome("SETTINGS", HUD_NEON);
-        textCentered("ENC1 SCEGLIE   ENC2 CAMBIA", 206, 1, HUD_LABEL);
+        for (int i = 0; i < SETTING_COUNT; ++i) {
+            if (!Settings::ENTRIES[i].category) continue;
+            const int hy = settingsRowY(i) - SET_HEADER_H;
+            textAt(Settings::ENTRIES[i].category, 30, hy + 2, 1, HUD_LABEL);
+            const int lx = 30 + 6 * (int)strlen(Settings::ENTRIES[i].category) + 6;
+            gfx->drawFastHLine(lx, hy + 6, 200 - lx, dim565(HUD_NEON, 1, 4));
+        }
+        full = true;
     }
 
     for (int i = 0; i < SETTING_COUNT; ++i) {
-        const bool sel = (i == v.setCursor);
-        const bool wasSel = (i == prev.setCursor);
+        const bool sel = editing && (i == v.setCursor);
+        const bool wasSel = prev.setEditing && (i == prev.setCursor);
         if (!full && v.setIndex[i] == prev.setIndex[i] && sel == wasSel) continue;
 
-        const int y = ROW_Y0 + i * ROW_DY;
-        gfx->fillRect(26, y, 190, ROW_H, BLACK);
+        const int y = settingsRowY(i);
+        gfx->fillRect(26, y, 190, SET_ROW_H - 2, BLACK);
+        if (sel) gfx->fillRect(28, y + 1, 4, SET_ROW_H - 4, HUD_MAGENTA);
 
-        // La riga scelta si riconosce dalla barra piena a sinistra, non da una
-        // sfumatura di grigio: a colpo d'occhio funziona molto meglio.
-        gfx->fillRect(28, y + 2, 4, ROW_H - 4, sel ? HUD_MAGENTA : HUD_TRACK);
+        textAt(Settings::ENTRIES[i].label, 42, y + 6, 1, sel ? HUD_ICE : HUD_LABEL);
+        if (Settings::isAction(i)) {
+            textRight("ATTIVA", 208, y + 3, 2, sel ? HUD_AMBER : dim565(HUD_AMBER, 1, 2));
+        } else {
+            textRight(Settings::valueLabel(i, v.setIndex[i]), 208, y + 3, 2,
+                      sel ? HUD_AMBER : HUD_LABEL);
+        }
+    }
 
-        // Nome a sinistra piccolo, valore a destra grande: il valore e' quello
-        // che stai cambiando e deve leggersi senza avvicinarsi.
-        textAt(Settings::ENTRIES[i].label, 40, y + 11, 1, sel ? HUD_ICE : HUD_LABEL);
-        textRight(Settings::valueLabel(i, v.setIndex[i]), 212, y + 7, 2,
-                  sel ? HUD_AMBER : HUD_LABEL);
+    // Riga di aiuto: dice sempre cosa fa il tasto adesso, perche' lo stesso
+    // pulsante ha tre significati diversi a seconda di dove sei.
+    const char *hint;
+    if (!editing) {
+        hint = "TIENI PREMUTO PER MODIFICARE";
+    } else if (Settings::isAction(v.setCursor)) {
+        hint = "PLAY ATTIVA - IL SYNTH TACE";
+    } else {
+        hint = "CORTO SCEGLIE - LUNGO ESCE";
+    }
+    static const char *lastHint = nullptr;
+    if (full || hint != lastHint) {
+        clearBand(202, 10);
+        textCentered(hint, 202, 1, Settings::isAction(v.setCursor) && editing ? HUD_RED
+                                                                             : HUD_LABEL);
+        lastHint = hint;
     }
 }
 
@@ -1244,8 +1287,7 @@ void update(const SynthView &v) {
             case 3: drawSeqScreen(v, full); break;
             case SCREEN_VU: drawVuScreen(v, full); break;
             case SCREEN_SCOPE: drawScopeScreen(v, full); break;
-            case SCREEN_SETTINGS: drawSettingsScreen(v, full); break;
-            default: drawNetworkIdleScreen(v, full); break;
+            default: drawSettingsScreen(v, full); break;
         }
     }
 
@@ -1301,14 +1343,14 @@ void updateNetwork() {
 
     if (qrChanged) {
         gfx->fillScreen(BLACK);
-        drawQr(qr, 92);
+        drawQr(qr, 90);
     }
 
     // Sotto il codice: cosa sta succedendo, e le credenziali per chi le digita a
     // mano. La password e' scritta grande di proposito: se la fotocamera non
     // aggancia il QR — e capita, dipende dal telefono — questa riga e' l'unica
     // via d'uscita, e va letta da mezzo metro con il synth appoggiato al tavolo.
-    gfx->fillRect(10, 160, 220, 56, BLACK);
+    gfx->fillRect(10, 156, 220, 70, BLACK);
 
     // Una volta in rete la riga di stato porta l'indirizzo, che dal telefono e'
     // una scorciatoia per il portale. Le credenziali dell'access point restano
@@ -1320,13 +1362,16 @@ void updateNetwork() {
     } else {
         snprintf(head, sizeof(head), "%s", msg);
     }
-    textCentered(head, 162, 1, HUD_NEON);
-    textCentered(NetPortal::ssid(), 176, 1, HUD_ICE);
-    textCentered(NetPortal::password(), 190, 2, HUD_AMBER);
+    textCentered(head, 160, 1, HUD_NEON);
+    textCentered(NetPortal::ssid(), 172, 1, HUD_ICE);
+    textCentered(NetPortal::password(), 184, 2, HUD_AMBER);
     // La stessa password vale per la rete e per il portale, ma il nome utente
     // finora stava solo nel manuale: davanti alla finestra di login del browser
     // non serviva a niente.
-    textCentered("utente: " NET_AUTH_USER, 210, 1, HUD_LABEL);
+    textCentered("utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+    // La via d'uscita va scritta sulla schermata da cui si vuole uscire. Finora
+    // stava solo nel manuale, e da qui il synth sembrava un vicolo cieco.
+    textCentered("PLAY per uscire", 216, 1, HUD_LIME);
 }
 
 void drawOtaProgress(int pct) {

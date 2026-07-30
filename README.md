@@ -23,8 +23,9 @@ un inviluppo vero e un filtro che si apre.
 - **Arpeggiator** sulle note tenute, in ordine di pressione, passo 150 ms
 - **Step-sequencer** a 16 step con scrittura passo-passo, record quantizzato in overdub,
   preconteggio e metronomo
-- **Display GC9A01** tondo con 8 schermate cicliche — fra cui VU meter ad ago,
-  oscilloscopio dell'uscita e impostazioni — più quelle di edit ADSR e preconteggio
+- **Display GC9A01** tondo con 7 schermate cicliche — fra cui VU meter ad ago,
+  oscilloscopio dell'uscita e un menu impostazioni per categorie — più quelle di
+  edit ADSR e preconteggio
 - **Sensibilità degli encoder regolabile** dal pannello, in giri di manopola
 - **Memoria**: pattern e parametri sopravvivono allo spegnimento
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
@@ -139,9 +140,10 @@ per andare da zero a fondo scala. Ora si regola dalla schermata **SETTINGS**.
 | ADSR | attack e release in ADSR edit | 2.4 giri |
 | PASSO FINE | divisore col click dell'encoder | 1/4 |
 
-Sulla schermata SETTINGS **l'encoder 1 sceglie la riga e l'encoder 2 cambia il
-valore**: lì i due encoder non fanno cutoff e volume, che restano fermi finché
-non te ne vai. I valori sono scritti in giri di manopola perché è la grandezza
+Per modificarle **tieni premuto il pulsante *scorri display*** dalla schermata SETTINGS:
+si entra nel menu. Da dentro, una **pressione breve** dello stesso pulsante scorre le voci e
+una **lunga** esce. L'encoder 2 cambia il valore della voce scelta (l'encoder 1 la scorre, se
+preferisci): lì i due encoder non fanno cutoff e volume, che restano fermi finché non esci. I valori sono scritti in giri di manopola perché è la grandezza
 che senti sotto le dita, non frazioni di corsa.
 
 I default riproducono il comportamento precedente: aggiornando non trovi le
@@ -150,8 +152,9 @@ inattivo finché i click degli encoder non saranno cablati (vedi `pinout.h`).
 
 ## Aggiornare il firmware via WiFi
 
-Scorri le schermate fino a **NETWORK**, poi tieni premuto il pulsante *scorri display* per
-un secondo. Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio,
+Scorri fino a **SETTINGS**, tieni premuto il pulsante *scorri display* per entrare nel menu,
+scendi fino a **MODALITÀ WIFI** e premi **PLAY**. Servono tre gesti distinti perché da lì in
+poi il synth resta muto: non ci si finisce per sbaglio. Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio,
 quindi la modalità è esclusiva — e sul display compare un QR.
 
 1. Inquadra il QR con la fotocamera del telefono: è la rete stessa, ti ci agganci senza
@@ -227,7 +230,7 @@ src/
   audio_engine.*      pool di 8 voci, filtro, ADSR, metronomo, task I2S sul core 0
   input_handler.*     debounce, last-note-priority, encoder, coda degli attacchi
   sequencer.*         16 step, step edit, record quantizzato, preconteggio
-  display.*           GC9A01, 7 schermate cicliche (VU e scope compresi) + ADSR, QR
+  display.*           GC9A01, 7 schermate cicliche + menu impostazioni, ADSR, QR
   logo.h              wordmark della schermata di avvio (generato, non editare)
   storage.*           persistenza NVS con scrittura ritardata
   net_portal.*        access point, captive portal, OTA

@@ -16,18 +16,27 @@
 #define SETTING_CUTOFF 1
 #define SETTING_ADSR 2
 #define SETTING_FINE 3
-#define SETTING_COUNT 4
+#define SETTING_NET 4    // voce d'azione: non ha un valore, accende la radio
+#define SETTING_COUNT 5
+
+// Solo le prime quattro finiscono in NVS: l'ultima e' un comando, non uno stato.
+#define SETTING_STORED 4
 
 namespace Settings {
 
 struct Entry {
+    // Intestazione di categoria, oppure nullptr per proseguire quella di sopra.
+    const char *category;
     const char *label;
-    uint8_t count;                  // quanti valori ha questa voce
+    uint8_t count;                  // quanti valori ha, 0 se e' un'azione
     uint8_t byDefault;              // indice di partenza
     const char *const *valueLabels; // testo mostrato per ogni valore
 };
 
 extern const Entry ENTRIES[SETTING_COUNT];
+
+// Una voce d'azione si esegue, non si regola: gli encoder non la toccano.
+inline bool isAction(uint8_t which) { return ENTRIES[which].count == 0; }
 
 // Indice riportato dentro i limiti della sua voce: quello che arriva dalla NVS
 // non e' fidato, puo' venire da una versione con una scala piu' lunga.
