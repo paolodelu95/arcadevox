@@ -14,4 +14,8 @@ void update(uint32_t now);
 // Luminosita' massima, 0..1 (default 0.20).
 void setBrightness(float b);
 
+// Spegne il LED e lo lascia spento: in modalita' NETWORK le animazioni non
+// vengono piu' aggiornate e resterebbe congelato su un colore a caso.
+void off();
+
 }  // namespace StatusLed

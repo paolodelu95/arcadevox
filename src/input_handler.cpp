@@ -19,8 +19,8 @@ struct Button {
 
 // Indici nell'array `buttons`.
 enum {
-    B_NOTE0 = 0,  // 8 note consecutive: DO..DO'
-    B_JOY_UP = 8,
+    B_NOTE0 = 0,  // NOTE_COUNT note consecutive: DO..SI
+    B_JOY_UP = NOTE_COUNT,
     B_JOY_DOWN,
     B_JOY_LEFT,
     B_JOY_RIGHT,
@@ -30,6 +30,7 @@ enum {
     B_HOLD,
     B_ARP,
     B_BPM,
+    B_POLY,
     B_ENC1_SW,
     B_ENC2_SW,
     B_COUNT
@@ -39,10 +40,10 @@ Button buttons[B_COUNT];
 
 const int8_t BUTTON_PINS[B_COUNT] = {
     PIN_NOTE_DO,  PIN_NOTE_RE,  PIN_NOTE_MI,   PIN_NOTE_FA,
-    PIN_NOTE_SOL, PIN_NOTE_LA,  PIN_NOTE_SI,   PIN_NOTE_DO_H,
+    PIN_NOTE_SOL, PIN_NOTE_LA,  PIN_NOTE_SI,
     PIN_JOY_UP,   PIN_JOY_DOWN, PIN_JOY_LEFT,  PIN_JOY_RIGHT,
     PIN_BTN_DISPLAY, PIN_BTN_REC, PIN_BTN_PLAY, PIN_BTN_HOLD,
-    PIN_LEVER_ARP, PIN_LEVER_BPM,
+    PIN_LEVER_ARP, PIN_LEVER_BPM, PIN_BTN_POLY,
     PIN_ENC1_SW,  PIN_ENC2_SW,
 };
 
@@ -130,16 +131,45 @@ int encoderConsume(Encoder &e) {
 int8_t pressOrder[NOTE_COUNT];
 uint8_t pressCount = 0;
 
+// Coda circolare degli attacchi. Piu' capiente del numero di tasti: in un solo
+// giro di loop se ne possono accumulare comunque solo NOTE_COUNT, ma cosi' resta
+// spazio anche se il chiamante salta un giro.
+constexpr uint8_t NOTE_QUEUE_SIZE = 16;
+int8_t noteOnQueue[NOTE_QUEUE_SIZE];
+uint8_t noteOnHead = 0;
+uint8_t noteOnTail = 0;
+
+void pushNoteOn(int note) {
+    uint8_t next = (uint8_t)((noteOnTail + 1) % NOTE_QUEUE_SIZE);
+    if (next == noteOnHead) return;  // coda piena: l'evento piu' vecchio ha la precedenza
+    noteOnQueue[noteOnTail] = (int8_t)note;
+    noteOnTail = next;
+}
+
 // ------------------------------------------------------------- auto-repeat joystick
 constexpr uint32_t REPEAT_DELAY_MS = 400;  // prima ripetizione
 constexpr uint32_t REPEAT_RATE_MS = 90;    // ripetizioni successive
 uint32_t joyNextRepeat[4] = {0, 0, 0, 0};
 bool joyEvent[4] = {false, false, false, false};
 
-// --------------------------------------------------------------------- HOLD
-bool holdShortEvent = false;
-bool holdLongEvent = false;
-bool holdLongFired = false;
+// ------------------------------------------------------- pressione breve/lunga
+// Stessa meccanica per HOLD, REC e DISPLAY: ognuno porta due funzioni distinte
+// senza bisogno di altri pulsanti sul pannello, che sono finiti.
+struct PressTracker {
+    uint8_t button;    // indice in `buttons`
+    uint32_t longMs;   // soglia
+    bool longFired;    // il long-press di questa pressione e' gia' scattato
+    bool shortEvent;
+    bool longEvent;
+};
+
+PressTracker pressTrackers[] = {
+    {B_HOLD, HOLD_LONG_PRESS_MS, false, false, false},
+    {B_REC, REC_LONG_PRESS_MS, false, false, false},
+    {B_DISPLAY, DISPLAY_LONG_PRESS_MS, false, false, false},
+};
+
+enum { T_HOLD = 0, T_REC, T_DISPLAY, T_COUNT };
 
 void notePressed(int note) {
     for (uint8_t i = 0; i < pressCount; ++i) {
@@ -209,7 +239,10 @@ void update() {
     // --- note: aggiorno l'ordine di pressione ---
     for (int n = 0; n < NOTE_COUNT; ++n) {
         Button &b = buttons[B_NOTE0 + n];
-        if (consume(b.edgeDown)) notePressed(n);
+        if (consume(b.edgeDown)) {
+            notePressed(n);
+            pushNoteOn(n);
+        }
         if (consume(b.edgeUp)) noteReleased(n);
     }
 
@@ -229,16 +262,17 @@ void update() {
         consume(b.edgeUp);
     }
 
-    // --- HOLD: breve vs long-press ---
-    {
-        Button &b = buttons[B_HOLD];
-        if (consume(b.edgeDown)) holdLongFired = false;
-        if (b.state && !holdLongFired && (now - b.pressedAt) >= HOLD_LONG_PRESS_MS) {
-            holdLongFired = true;
-            holdLongEvent = true;
+    // --- pulsanti a doppia funzione: breve vs long-press ---
+    for (int i = 0; i < T_COUNT; ++i) {
+        PressTracker &t = pressTrackers[i];
+        Button &b = buttons[t.button];
+        if (consume(b.edgeDown)) t.longFired = false;
+        if (b.state && !t.longFired && (now - b.pressedAt) >= t.longMs) {
+            t.longFired = true;
+            t.longEvent = true;
         }
         if (consume(b.edgeUp)) {
-            if (!holdLongFired) holdShortEvent = true;
+            if (!t.longFired) t.shortEvent = true;
         }
     }
 }
@@ -252,19 +286,36 @@ int heldNoteByOrder(int index) {
     return pressOrder[index];
 }
 
+bool noteIsHeld(int note) {
+    if (note < 0 || note >= NOTE_COUNT) return false;
+    return buttons[B_NOTE0 + note].state;
+}
+
+int consumeNoteOn() {
+    if (noteOnHead == noteOnTail) return -1;
+    int n = noteOnQueue[noteOnHead];
+    noteOnHead = (uint8_t)((noteOnHead + 1) % NOTE_QUEUE_SIZE);
+    return n;
+}
+
 bool joyUp() { return consume(joyEvent[0]); }
 bool joyDown() { return consume(joyEvent[1]); }
 bool joyLeft() { return consume(joyEvent[2]); }
 bool joyRight() { return consume(joyEvent[3]); }
 
-bool displayPressed() { return consume(buttons[B_DISPLAY].edgeDown); }
-bool recPressed() { return consume(buttons[B_REC].edgeDown); }
 bool playPressed() { return consume(buttons[B_PLAY].edgeDown); }
 bool arpPressed() { return consume(buttons[B_ARP].edgeDown); }
 bool bpmPressed() { return consume(buttons[B_BPM].edgeDown); }
+bool polyPressed() { return consume(buttons[B_POLY].edgeDown); }
 
-bool holdShortPress() { return consume(holdShortEvent); }
-bool holdLongPress() { return consume(holdLongEvent); }
+bool holdShortPress() { return consume(pressTrackers[T_HOLD].shortEvent); }
+bool holdLongPress() { return consume(pressTrackers[T_HOLD].longEvent); }
+bool recShortPress() { return consume(pressTrackers[T_REC].shortEvent); }
+bool recLongPress() { return consume(pressTrackers[T_REC].longEvent); }
+bool displayShortPress() { return consume(pressTrackers[T_DISPLAY].shortEvent); }
+bool displayLongPress() { return consume(pressTrackers[T_DISPLAY].longEvent); }
+
+bool holdIsDown() { return buttons[B_HOLD].state; }
 
 int enc1Delta() { return encoderConsume(encoders[0]); }
 int enc2Delta() { return encoderConsume(encoders[1]); }

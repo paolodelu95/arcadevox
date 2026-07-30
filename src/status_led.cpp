@@ -114,6 +114,8 @@ void begin() {
     pattern = PAT_RAINBOW;
 }
 
+void off() { neopixelWrite(PIN_RGB_LED, 0, 0, 0); }
+
 void setBrightness(float b) {
     if (b < 0.0f) b = 0.0f;
     if (b > 1.0f) b = 1.0f;

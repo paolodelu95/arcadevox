@@ -28,11 +28,15 @@
 //    conflitto (innocuo, ma se preferisci evitarlo sposta ENC2 su 19/20 e riporta
 //    la seriale su UART0 mettendo ARDUINO_USB_CDC_ON_BOOT=0).
 
-// ------------------------------------------------------------------ note DO..DO'
+// ------------------------------------------------------------------ note DO..SI
 // Ordine fisico sul pannello tenuto in orizzontale (joystick in basso al centro),
 // letto da sinistra a destra: blu, giallo, verde+rosso impilati, verde+rosso
 // impilati, giallo, blu. Nelle coppie impilate il verde sta sopra.
 // La scala sale quindi da sinistra verso destra, come su una tastiera.
+//
+// L'ottavo pulsante (blu di destra, GPIO 13) non e' piu' una nota: e' passato
+// al selettore MONO/POLI, vedi sotto. La scala arriva quindi al SI, e il DO
+// superiore si raggiunge con il joystick dell'ottava.
 #define PIN_NOTE_DO   6
 #define PIN_NOTE_RE   7
 #define PIN_NOTE_MI   8
@@ -40,9 +44,8 @@
 #define PIN_NOTE_SOL  10
 #define PIN_NOTE_LA   11
 #define PIN_NOTE_SI   12
-#define PIN_NOTE_DO_H 13
 
-#define NOTE_COUNT 8
+#define NOTE_COUNT 7
 
 // -------------------------------------------------------------------- joystick
 // 4 microswitch digitali indipendenti (nessuna lettura analogica).
@@ -53,6 +56,7 @@
 
 // ------------------------------------------------------------ pulsanti funzione
 #define PIN_BTN_DISPLAY 18  // scorre le schermate del display
+#define PIN_BTN_POLY    13  // ex nota DO': commuta MONO / POLIFONICO
 #define PIN_BTN_REC     21  // sequencer: REC
 #define PIN_BTN_PLAY    1   // sequencer: PLAY/STOP
 #define PIN_BTN_HOLD    2   // press breve = HOLD, long-press >600ms = ADSR EDIT MODE

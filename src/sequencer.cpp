@@ -1,39 +1,67 @@
-// sequencer.cpp — 16 step quantizzati, record in tempo reale, loop di playback.
+// sequencer.cpp — 16 step, editor passo-passo, record quantizzato in overdub.
 //
-// Durata di uno step = sedicesimo di nota = 60000 / bpm / 4 ms.
-// Il ricalcolo e' immediato: cambiando preset BPM anche a sequenza in corso, il
-// tick successivo usa gia' la nuova durata.
+// Durata di uno step = un sedicesimo = 60000 / bpm / 4 ms. Il ricalcolo e'
+// immediato: cambiando tempo anche a sequenza in corso, il tick successivo usa
+// gia' la nuova durata.
+//
+// La testina (`stepIndex`) indica lo step che sta suonando adesso. Alla partenza
+// viene messa sull'ultimo step, cosi' il primo tick la porta sullo 0.
 
 #include "sequencer.h"
 
+#include "audio_engine.h"
+#include "pinout.h"  // NOTE_COUNT
+
 namespace {
 
-const int BPM_PRESETS[BPM_PRESET_COUNT] = {60, 80, 100, 120, 140, 160, 180};
+const int BPM_PRESETS[BPM_PRESET_COUNT] = {40, 60, 80, 100, 120, 140, 160, 180};
 
-int8_t steps[SEQ_STEPS];
+Sequencer::Step steps[SEQ_STEPS];
 Sequencer::Mode currentMode = Sequencer::SEQ_IDLE;
-uint8_t bpmIndex = 3;  // 120 BPM di default
-uint8_t stepIndex = 0;
+
+int bpmValue = 120;
+uint8_t stepIndex = SEQ_STEPS - 1;
 uint32_t nextTickAt = 0;
+uint8_t countInSteps = 0;
+
 int8_t seqNote = -1;
-bool tickFlag = false;
+int8_t seqOct = 0;
+bool triggerFlag = false;
+
+bool editActive = false;
+uint8_t cursorPos = 0;
+uint16_t rev = 0;
 
 void clearPattern() {
-    for (int i = 0; i < SEQ_STEPS; ++i) steps[i] = -1;
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        steps[i].note = SEQ_REST;
+        steps[i].oct = 0;
+    }
+    ++rev;
 }
 
-void startPlayback(uint32_t now) {
-    currentMode = Sequencer::SEQ_PLAYING;
-    stepIndex = 0;
-    seqNote = -1;
-    nextTickAt = now;  // primo step immediato
+// Manda in uscita lo step sotto la testina.
+void playCurrentStep() {
+    const Sequencer::Step &s = steps[stepIndex];
+    if (s.note == SEQ_TIE) {
+        // Legato: la nota in corso prosegue senza che l'inviluppo riparta.
+        return;
+    }
+    if (s.note == SEQ_REST) {
+        seqNote = -1;
+        return;
+    }
+    seqNote = s.note;
+    seqOct = s.oct;
+    triggerFlag = true;
 }
 
-void stopAll() {
-    currentMode = Sequencer::SEQ_IDLE;
+void startTransport(Sequencer::Mode m, uint32_t now) {
+    currentMode = m;
+    stepIndex = SEQ_STEPS - 1;  // il primo tick porta sullo 0
     seqNote = -1;
-    stepIndex = 0;
-    tickFlag = false;
+    triggerFlag = false;
+    nextTickAt = now;
 }
 
 }  // namespace
@@ -42,89 +70,209 @@ namespace Sequencer {
 
 void begin() {
     clearPattern();
-    stopAll();
+    stop();
 }
 
-int stepDurationMs() { return 60000 / BPM_PRESETS[bpmIndex] / 4; }
+int stepDurationMs() {
+    int d = 60000 / bpmValue / SEQ_PER_BEAT;
+    return (d < 1) ? 1 : d;
+}
 
-void update(uint32_t now, int liveNote) {
+void update(uint32_t now, bool erase) {
     if (currentMode == SEQ_IDLE) return;
     if ((int32_t)(now - nextTickAt) < 0) return;
 
-    nextTickAt = now + (uint32_t)stepDurationMs();
-    tickFlag = true;
+    const int dur = stepDurationMs();
+    // Griglia ancorata al tick precedente: niente deriva accumulata. Se pero'
+    // siamo in ritardo di piu' di uno step (BPM appena alzato, refresh lungo del
+    // display) ci si riaggancia al presente invece di rincorrere i tick persi.
+    nextTickAt += (uint32_t)dur;
+    if ((int32_t)(now - nextTickAt) > dur) nextTickAt = now + (uint32_t)dur;
 
-    if (currentMode == SEQ_RECORDING) {
-        // Registra cio' che e' tenuto premuto nel preciso istante del tick.
-        steps[stepIndex] = (int8_t)liveNote;
-        ++stepIndex;
-        if (stepIndex >= SEQ_STEPS) {
-            // Pattern completo: parte subito il playback in loop, suonando
-            // gia' lo step 0 su questo stesso tick.
-            startPlayback(now);
-            seqNote = steps[0];
-            stepIndex = 1;
-            nextTickAt = now + (uint32_t)stepDurationMs();
-        }
-        return;
+    stepIndex = (uint8_t)((stepIndex + 1) % SEQ_STEPS);
+
+    if (currentMode == SEQ_COUNTIN) {
+        if (countInSteps > 0) --countInSteps;
+        if (countInSteps == 0) currentMode = SEQ_RECORDING;
+    } else if (currentMode == SEQ_RECORDING && erase) {
+        steps[stepIndex].note = SEQ_REST;
+        steps[stepIndex].oct = 0;
+        ++rev;
     }
 
-    // SEQ_PLAYING
-    seqNote = steps[stepIndex];
-    stepIndex = (stepIndex + 1) % SEQ_STEPS;
+    playCurrentStep();
+
+    // Click sui movimenti: guida il preconteggio e la registrazione, muto in play.
+    if (currentMode != SEQ_PLAYING && (stepIndex % SEQ_PER_BEAT) == 0) {
+        AudioEngine::click(stepIndex == 0);
+    }
+}
+
+void noteEvent(uint32_t now, int note, int8_t oct) {
+    if (currentMode != SEQ_RECORDING) return;
+    if (note < 0 || note >= NOTE_COUNT) return;
+
+    // Quantizzazione al sedicesimo *piu' vicino*: se manca meno di mezzo step
+    // alla prossima linea di griglia, la nota le appartiene gia'. E' la
+    // differenza fra dover essere perfetti e poter suonare come un umano.
+    const int dur = stepDurationMs();
+    const int32_t toNext = (int32_t)(nextTickAt - now);
+    uint8_t target = stepIndex;
+    if (toNext < dur / 2) target = (uint8_t)((stepIndex + 1) % SEQ_STEPS);
+
+    steps[target].note = (int8_t)note;
+    steps[target].oct = oct;
+    ++rev;
 }
 
 void toggleRecord() {
-    uint32_t now = millis();
-    if (currentMode == SEQ_RECORDING) {
-        // Stop manuale anticipato: gli step rimanenti restano silenzio,
-        // poi si passa comunque in PLAY.
-        for (uint8_t i = stepIndex; i < SEQ_STEPS; ++i) steps[i] = -1;
-        startPlayback(now);
-        return;
+    const uint32_t now = millis();
+    switch (currentMode) {
+        case SEQ_RECORDING:
+            // Fine dell'overdub: il loop prosegue con quello che c'e'.
+            currentMode = SEQ_PLAYING;
+            break;
+        case SEQ_COUNTIN:
+            stop();  // ripensamento durante il preconteggio
+            break;
+        case SEQ_PLAYING:
+            // Il loop sta gia' girando e si sente: si entra in overdub subito,
+            // senza preconteggio.
+            currentMode = SEQ_RECORDING;
+            break;
+        case SEQ_IDLE:
+        default:
+            // Da fermo serve un riferimento: una battuta di click, durante la
+            // quale il pattern esistente suona gia'.
+            startTransport(SEQ_COUNTIN, now);
+            countInSteps = SEQ_STEPS;
+            break;
     }
-    clearPattern();
-    currentMode = SEQ_RECORDING;
-    stepIndex = 0;
-    seqNote = -1;
-    nextTickAt = now;  // il primo tick campiona subito
 }
 
 void togglePlay() {
     if (currentMode == SEQ_IDLE) {
-        startPlayback(millis());
+        startTransport(SEQ_PLAYING, millis());
     } else {
-        // Ferma sia il playback che un'eventuale registrazione in corso.
-        stopAll();
+        stop();
     }
 }
 
+void stop() {
+    currentMode = SEQ_IDLE;
+    stepIndex = SEQ_STEPS - 1;
+    countInSteps = 0;
+    seqNote = -1;
+    triggerFlag = false;
+}
+
+// ------------------------------------------------------------------- editor
+
+void setEditing(bool on) {
+    if (on == editActive) return;
+    editActive = on;
+    // Entrando, il cursore si posiziona dove si sta guardando: sulla testina se
+    // il loop gira, altrimenti all'inizio del pattern.
+    if (on) cursorPos = (currentMode == SEQ_IDLE) ? 0 : stepIndex;
+}
+
+void toggleEditing() { setEditing(!editActive); }
+
+bool editing() { return editActive; }
+
+int cursor() { return cursorPos; }
+
+void moveCursor(int delta) {
+    int p = ((int)cursorPos + delta) % SEQ_STEPS;
+    if (p < 0) p += SEQ_STEPS;
+    cursorPos = (uint8_t)p;
+}
+
+void writeAtCursor(int note, int8_t oct) {
+    steps[cursorPos].note = (int8_t)note;
+    steps[cursorPos].oct = (note < 0) ? 0 : oct;
+    ++rev;
+    // Step input: il cursore avanza da solo, cosi' si scrive una melodia
+    // premendo un tasto dopo l'altro senza altri comandi.
+    moveCursor(1);
+}
+
+// -------------------------------------------------------------------- tempo
+
 void cycleBpm() {
-    bpmIndex = (bpmIndex + 1) % BPM_PRESET_COUNT;
-    // La nuova durata vale gia' dal prossimo tick.
-    uint32_t now = millis();
+    // Primo preset piu' veloce di dove siamo adesso, poi si riparte dal basso:
+    // la leva resta prevedibile anche dopo una regolazione fine con l'encoder.
+    for (int i = 0; i < BPM_PRESET_COUNT; ++i) {
+        if (BPM_PRESETS[i] > bpmValue) {
+            setBpm(BPM_PRESETS[i]);
+            return;
+        }
+    }
+    setBpm(BPM_PRESETS[0]);
+}
+
+void nudgeBpm(int steps_) { setBpm(bpmValue + steps_); }
+
+void setBpm(int value) {
+    if (value < BPM_MIN) value = BPM_MIN;
+    if (value > BPM_MAX) value = BPM_MAX;
+    bpmValue = value;
+
+    // Se il nuovo step e' piu' corto dell'attesa residua, il tick va anticipato:
+    // il cambio di tempo si sente subito invece che dal movimento successivo.
     if (currentMode != SEQ_IDLE) {
-        uint32_t dur = (uint32_t)stepDurationMs();
+        const uint32_t now = millis();
+        const uint32_t dur = (uint32_t)stepDurationMs();
         if ((int32_t)(nextTickAt - now) > (int32_t)dur) nextTickAt = now + dur;
     }
 }
 
+int bpm() { return bpmValue; }
+
+// -------------------------------------------------------------------- stato
+
 Mode mode() { return currentMode; }
 
-int currentStep() {
-    if (currentMode == SEQ_RECORDING) return stepIndex;
-    // In play `stepIndex` punta gia' allo step successivo: mostro quello suonato.
-    return (stepIndex + SEQ_STEPS - 1) % SEQ_STEPS;
+int currentStep() { return stepIndex; }
+
+int countInBeats() {
+    if (currentMode != SEQ_COUNTIN) return 0;
+    return (countInSteps + SEQ_PER_BEAT - 1) / SEQ_PER_BEAT;
 }
 
-int bpm() { return BPM_PRESETS[bpmIndex]; }
+const Step &stepAt(int index) { return steps[index & (SEQ_STEPS - 1)]; }
 
-int outputNote() { return (currentMode == SEQ_PLAYING) ? seqNote : -1; }
+uint16_t revision() { return rev; }
 
-bool consumeTick() {
-    bool v = tickFlag;
-    tickFlag = false;
+int outputNote() { return (currentMode == SEQ_IDLE) ? -1 : seqNote; }
+
+int8_t outputOctave() { return seqOct; }
+
+bool consumeTrigger() {
+    bool v = triggerFlag;
+    triggerFlag = false;
     return v;
+}
+
+// -------------------------------------------------------------- persistenza
+
+void *patternData() { return steps; }
+
+size_t patternSize() { return sizeof(steps); }
+
+void patternChanged() { ++rev; }
+
+void sanitizePattern() {
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        Step &s = steps[i];
+        if (s.note >= NOTE_COUNT || s.note < SEQ_TIE) {
+            s.note = SEQ_REST;
+            s.oct = 0;
+        }
+        if (s.oct < -2) s.oct = -2;
+        if (s.oct > 2) s.oct = 2;
+    }
+    ++rev;
 }
 
 }  // namespace Sequencer

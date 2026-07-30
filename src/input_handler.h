@@ -7,6 +7,10 @@
 
 #define DEBOUNCE_MS 15
 #define HOLD_LONG_PRESS_MS 600
+#define REC_LONG_PRESS_MS 600
+// Piu' lungo degli altri: da qui si accende la radio, e non deve poter succedere
+// per una pressione distratta durante una session.
+#define DISPLAY_LONG_PRESS_MS 1000
 
 namespace Input {
 
@@ -20,6 +24,11 @@ int currentNote();
 int heldCount();
 int heldNoteByOrder(int index);
 
+// Coda degli attacchi di nota: restituisce il prossimo tasto premuto dall'ultima
+// lettura, -1 se non ce ne sono. Serve a registrare e a scrivere in STEP EDIT,
+// dove conta il singolo attacco e non la nota risultante dalla priorita'.
+int consumeNoteOn();
+
 // --- joystick (fronte di discesa + auto-repeat mentre e' tenuto) ---
 bool joyUp();
 bool joyDown();
@@ -27,15 +36,28 @@ bool joyLeft();
 bool joyRight();
 
 // --- pulsanti funzione (solo fronte di discesa) ---
-bool displayPressed();
-bool recPressed();
 bool playPressed();
 bool arpPressed();
 bool bpmPressed();
+bool polyPressed();  // ex tasto DO': commuta MONO / POLIFONICO
 
-// --- HOLD / ADSR edit ---
-bool holdShortPress();  // rilasciato prima di 600 ms
-bool holdLongPress();   // scatta appena si superano i 600 ms, ancora premuto
+// Nota tenuta adesso: true se il tasto `note` (0..NOTE_COUNT-1) e' premuto.
+// Serve alla modalita' polifonica, dove non basta sapere qual e' l'ultima.
+bool noteIsHeld(int note);
+
+// --- pulsanti a doppia funzione ---
+// Lo short-press scatta al rilascio (prima della soglia), il long-press appena la
+// soglia viene superata, col tasto ancora premuto: cosi' le due funzioni non si
+// pestano i piedi.
+bool holdShortPress();  // HOLD latch
+bool holdLongPress();   // ADSR edit mode
+bool recShortPress();   // REC / stop registrazione
+bool recLongPress();    // STEP EDIT mode
+bool displayShortPress();  // scorre le schermate
+bool displayLongPress();   // attiva la modalita' NETWORK (solo da quella schermata)
+
+// Stato istantaneo di HOLD: durante il record fa da tasto di cancellazione.
+bool holdIsDown();
 
 // --- encoder rotativi ---
 // Scatti (detent) accumulati dall'ultima chiamata: positivo = senso orario.
