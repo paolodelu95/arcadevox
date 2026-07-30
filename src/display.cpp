@@ -687,9 +687,9 @@ void drawSettingsScreen(const SynthView &v, bool full) {
     if (!editing) {
         hint = "TIENI PREMUTO PER MODIFICARE";
     } else if (Settings::isAction(v.setCursor)) {
-        hint = "PLAY ATTIVA - IL SYNTH TACE";
+        hint = "PREMI: QR   TIENI: ESCI";
     } else {
-        hint = "CORTO SCEGLIE - LUNGO ESCE";
+        hint = "PREMI: AVANTI  TIENI: ESCI";
     }
     static const char *lastHint = nullptr;
     if (full || hint != lastHint) {

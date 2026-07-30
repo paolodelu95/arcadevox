@@ -141,8 +141,8 @@ per andare da zero a fondo scala. Ora si regola dalla schermata **SETTINGS**.
 | PASSO FINE | divisore col click dell'encoder | 1/4 |
 
 Per modificarle **tieni premuto il pulsante *scorri display*** dalla schermata SETTINGS:
-si entra nel menu. Da dentro, una **pressione breve** dello stesso pulsante scorre le voci e
-una **lunga** esce. L'encoder 2 cambia il valore della voce scelta (l'encoder 1 la scorre, se
+si entra nel menu. Da dentro, una **pressione breve** dello stesso pulsante scende di una voce
+— e sull'ultima, *modalità WiFi*, la esegue mostrando il QR — mentre una **lunga** esce. L'encoder 2 cambia il valore della voce scelta (l'encoder 1 la scorre, se
 preferisci): lì i due encoder non fanno cutoff e volume, che restano fermi finché non esci. I valori sono scritti in giri di manopola perché è la grandezza
 che senti sotto le dita, non frazioni di corsa.
 
@@ -153,8 +153,9 @@ inattivo finché i click degli encoder non saranno cablati (vedi `pinout.h`).
 ## Aggiornare il firmware via WiFi
 
 Scorri fino a **SETTINGS**, tieni premuto il pulsante *scorri display* per entrare nel menu,
-scendi fino a **MODALITÀ WIFI** e premi **PLAY**. Servono tre gesti distinti perché da lì in
-poi il synth resta muto: non ci si finisce per sbaglio. Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio,
+poi scendi con pressioni brevi fino a **MODALITÀ WIFI**: lì una pressione breve mostra il QR.
+Il cursore non torna a capo apposta — si scende fino all'ultima voce e ci si ferma, così non
+si accende la radio credendo di tornare in cima. Per risalire c'è l'encoder 1. Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio,
 quindi la modalità è esclusiva — e sul display compare un QR.
 
 1. Inquadra il QR con la fotocamera del telefono: è la rete stessa, ti ci agganci senza

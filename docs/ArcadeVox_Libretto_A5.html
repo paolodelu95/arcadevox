@@ -402,7 +402,7 @@
       <tr><td class="num">13</td><td><span class="dot r"></span>Bilanciere rosso sinistro</td><td><b>Breve:</b> REC &mdash; avvia/ferma la registrazione<br><b>Lunga &gt;600 ms:</b> entra/esce da <b>STEP EDIT</b></td><td>&mdash;</td><td><span class="gpio">21</span></td></tr>
       <tr><td class="num">14</td><td><span class="dot k"></span>Bilanciere nero</td><td><b>Breve:</b> HOLD on/off<br><span class="mono">step edit: svuota lo step &middot; in REC tenuto: cancella</span><br><b>Lunga &gt;600 ms:</b> entra in edit mode</td><td><b>Lunga &gt;600 ms:</b> esce dall&rsquo;edit mode</td><td><span class="gpio">2</span></td></tr>
       <tr><td class="num">15</td><td><span class="dot r"></span>Bilanciere rosso destro</td><td><b>PLAY / STOP</b> della sequenza<br><span class="mono">in NETWORK: riavvia il synth</span></td><td>&mdash;</td><td><span class="gpio">1</span></td></tr>
-      <tr><td class="num">16</td><td>Leva destra, sul display</td><td><b>Breve:</b> scorre le schermate, oppure sceglie la voce se sei dentro alle impostazioni<br><b>Lunga &gt;1 s:</b> dalla schermata SETTINGS <b>entra</b> nel menu, e da dentro <b>esce</b></td><td>Ignorata (display bloccato su ADSR)</td><td><span class="gpio">18</span></td></tr>
+      <tr><td class="num">16</td><td>Leva destra, sul display</td><td><b>Breve:</b> scorre le schermate; dentro alle impostazioni scende di una voce, e sull&rsquo;ultima (<i>modalit&agrave; WiFi</i>) la esegue<br><b>Lunga &gt;1 s:</b> dalla schermata SETTINGS <b>entra</b> nel menu, e da dentro <b>esce</b></td><td>Ignorata (display bloccato su ADSR)</td><td><span class="gpio">18</span></td></tr>
       <tr><td class="num">17</td><td>Leva sinistra, al centro</td><td><b>Arpeggiator</b> ON / OFF<br><span class="mono">step edit: scrive un legato</span></td><td>&mdash;</td><td><span class="gpio">41</span></td></tr>
       <tr><td class="num">18</td><td>Leva sinistra, d&rsquo;angolo</td><td><b>Preset BPM</b>: 40&rarr;60&rarr;80&rarr;100&rarr;120&rarr;140&rarr;160&rarr;180</td><td>&mdash;</td><td><span class="gpio">0</span></td></tr>
       <tr><td class="num">19</td><td>Encoder 1</td><td><b>Cutoff filtro</b> 80 Hz &ndash; 8 kHz<br><span class="mono">~64 scatti sull&rsquo;intera corsa &middot; step edit: cursore</span></td><td><b>Attack</b> 2 &ndash; 500 ms<br><span class="mono">~48 scatti</span></td><td><span class="gpio">4 / 5</span></td></tr>
@@ -761,7 +761,7 @@
       il display resta sulla griglia, cos&igrave; vedi sempre cosa stai scrivendo.</p>
 
       <h2><span class="n">6b</span>Aggiornare il firmware via WiFi</h2>
-      <p style="margin-top:0">Vai sulla schermata <b>SETTINGS</b>, tieni premuta la leva del display per entrare nel menu, scendi fino a <b>MODALIT&Agrave; WIFI</b> e premi <b>PLAY</b>. Per uscire dalla modalit&agrave; rete: <b>PLAY</b>, che riavvia il synth &mdash; c&rsquo;&egrave; scritto anche sul display sotto al QR.</p>
+      <p style="margin-top:0">Vai sulla schermata <b>SETTINGS</b>, tieni premuta la leva del display per entrare nel menu, scendi con pressioni brevi fino a <b>MODALIT&Agrave; WIFI</b> e premi ancora: compare il QR. Per uscire dalla modalit&agrave; rete: <b>PLAY</b>, che riavvia il synth &mdash; c&rsquo;&egrave; scritto anche sul display sotto al QR.</p>
       <p style="display:none">Vai sulla schermata <b>NETWORK</b> e tieni premuta la leva
       <b>(16)</b> per un secondo. Il synth <b>ammutolisce</b> &mdash; lo stack WiFi occupa lo stesso
       core del motore audio, quindi la modalit&agrave; &egrave; esclusiva &mdash; e mostra un QR.</p>

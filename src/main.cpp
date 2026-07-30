@@ -264,21 +264,23 @@ void loop() {
         }
     }
     if (Input::displayShortPress()) {
-        if (settingsEditing) {
-            settingsCursor = (uint8_t)((settingsCursor + 1) % SETTING_COUNT);
-        } else {
+        if (!settingsEditing) {
             Display::nextScreen();
+        } else if (settingsCursor == SETTING_NET) {
+            // Sull'ultima voce la pressione breve non scorre: esegue. E' la stessa
+            // mano che scende lungo il menu e poi preme ancora una volta, senza
+            // cambiare tasto ne' dita.
+            //
+            // Il cursore non torna a capo proprio per questo: scorrendo si arriva
+            // qui e ci si ferma, cosi' non si accende la radio credendo di
+            // tornare in cima. Per risalire c'e' l'encoder 1, o si esce e si
+            // rientra.
+            Storage::flush(snapshotState());  // niente va perso spegnendo l'audio
+            NetPortal::begin();
+            return;
+        } else {
+            settingsCursor = (uint8_t)(settingsCursor + 1);
         }
-    }
-
-    if (settingsEditing && settingsCursor == SETTING_NET && Input::playShortPress()) {
-        // Accendere la radio rende il synth muto fino al riavvio: e' l'azione piu'
-        // pesante del pannello, e per arrivarci servono ormai tre gesti distinti
-        // (schermata, pressione lunga, PLAY sulla voce giusta). Non ci si finisce
-        // per sbaglio nel mezzo di una session.
-        Storage::flush(snapshotState());  // niente va perso spegnendo l'audio
-        NetPortal::begin();
-        return;
     }
 
     if (Input::recLongPress()) {
@@ -287,11 +289,9 @@ void loop() {
         Sequencer::toggleEditing();
     }
     if (Input::recShortPress()) Sequencer::toggleRecord();
-    // Dentro al menu PLAY conferma una voce, non avvia il loop: consumarlo qui
-    // farebbe partire la sequenza mentre stai tarando le manopole.
-    if (!settingsEditing && Input::playShortPress()) Sequencer::togglePlay();
+    if (Input::playShortPress()) Sequencer::togglePlay();
 
-    if (!settingsEditing && Input::playLongPress()) {
+    if (Input::playLongPress()) {
         // Svuota tutti i 16 step. Non c'e' modo di tornare indietro, per questo
         // la soglia e' piu' alta degli altri long-press e il display lo conferma.
         Sequencer::clearAll();
