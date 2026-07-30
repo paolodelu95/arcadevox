@@ -1,4 +1,4 @@
-# ArcadeVox — SprigSynth
+# ArcadeVox
 
 Sintetizzatore DIY su **ESP32-S3**, mono o polifonico, costruito attorno a un pannello di comandi
 arcade riciclato da un vecchio controller per Euro Truck Simulator.
@@ -137,7 +137,7 @@ quindi la modalità è esclusiva — e sul display compare un QR.
 3. Da lì puoi **caricare un `firmware.bin`** preso dal telefono, oppure dare al synth le
    credenziali del WiFi di casa e fargli **cercare gli aggiornamenti da internet**.
 
-Utente `sprig`, password quella scritta sul display accanto al QR. Si esce con **PLAY**, che
+Utente `arcade`, password quella scritta sul display accanto al QR. Si esce con **PLAY**, che
 riavvia il synth.
 
 Due cose da sapere:
@@ -173,13 +173,16 @@ compatibile con quel core.
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/SprigSynth_Manuale.pdf`](docs/SprigSynth_Manuale.pdf) | Manuale completo A4: blueprint, funzioni, collegamenti, guida all'uso |
-| [`docs/SprigSynth_Libretto_A5_stampa.pdf`](docs/SprigSynth_Libretto_A5_stampa.pdf) | Lo stesso manuale imposto per stampare un libretto A5 |
-| [`docs/SprigSynth_Libretto_A5_lettura.pdf`](docs/SprigSynth_Libretto_A5_lettura.pdf) | Versione A5 in ordine sequenziale, per lo schermo |
+| [`docs/ArcadeVox_Manuale.html`](docs/ArcadeVox_Manuale.html) | Manuale completo A4: blueprint, funzioni, collegamenti, guida all'uso |
+| [`docs/ArcadeVox_Libretto_A5.html`](docs/ArcadeVox_Libretto_A5.html) | Lo stesso manuale imposto per stampare un libretto A5 |
 | [`PROGRESS.md`](PROGRESS.md) | Stato dei milestone e differenze rispetto al brief iniziale |
 | [`CLAUDE_2.md`](CLAUDE_2.md) | Il brief di progetto originale |
 
-I PDF sono generati da `docs/*.html`: si rigenerano stampandoli da browser in PDF.
+Gli HTML sono la sorgente: i PDF si generano stampandoli da browser.
+
+> **I tre `docs/SprigSynth_*.pdf` sono scaduti.** Vengono da prima dell'ultima revisione
+> degli HTML e da prima del cambio di nome, quindi dentro riportano ancora *SprigSynth*.
+> Vanno rigenerati dal browser e rinominati; finché non succede, fa fede l'HTML.
 
 ## Struttura
 
@@ -199,4 +202,8 @@ src/
 
 tools/
   make_logo.py        rigenera src/logo.h dal font Handel Gothic
+
+firmware/
+  manifest.json       la release pubblicata, che il synth va a cercare
+  firmware.bin        l'immagine corrispondente
 ```

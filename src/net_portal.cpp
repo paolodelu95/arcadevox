@@ -31,7 +31,7 @@
 namespace {
 
 constexpr uint16_t DNS_PORT = 53;
-constexpr const char *AUTH_USER = "sprig";
+constexpr const char *AUTH_USER = "arcade";
 
 DNSServer dns;
 WebServer server(80);
@@ -39,8 +39,8 @@ WebServer server(80);
 bool started = false;
 NetPortal::Stage currentStage = NetPortal::NET_OFF;
 
-char apSsid[24] = "SprigSynth";
-char apPass[16] = "sprigsynth";
+char apSsid[24] = "ArcadeVox";
+char apPass[16] = "arcadevox";
 char qrText[80] = "";
 char portal[32] = "http://192.168.4.1/";
 char staIpText[20] = "";
@@ -87,7 +87,7 @@ String jsonField(const String &src, const char *key) {
 // ------------------------------------------------------------------- HTML
 const char PAGE_HEAD[] PROGMEM =
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
-    "<title>SprigSynth</title><style>"
+    "<title>ArcadeVox</title><style>"
     "body{background:#111;color:#eee;font:16px system-ui,sans-serif;margin:0;padding:20px;"
     "max-width:480px;margin:auto}"
     "h1{font-size:20px;color:#0ff;margin:.2em 0}h2{font-size:15px;color:#888;margin:1.6em 0 .4em;"
@@ -102,7 +102,7 @@ const char PAGE_HEAD[] PROGMEM =
 
 String pageStatus() {
     String s = FPSTR(PAGE_HEAD);
-    s += "<h1>SprigSynth</h1><small>firmware <span class=v>" FW_VERSION "</span>";
+    s += "<h1>ArcadeVox</h1><small>firmware <span class=v>" FW_VERSION "</span>";
     if (staIpText[0]) {
         s += " &middot; in rete come <span class=v>";
         s += staIpText;
@@ -150,7 +150,7 @@ String pageMessage(const char *title, const String &body, bool ok) {
 
 bool requireAuth() {
     if (server.authenticate(AUTH_USER, apPass)) return true;
-    server.requestAuthentication(BASIC_AUTH, "SprigSynth");
+    server.requestAuthentication(BASIC_AUTH, "ArcadeVox");
     return false;
 }
 
@@ -347,10 +347,10 @@ void begin() {
 
     uint8_t mac[6];
     WiFi.macAddress(mac);
-    snprintf(apSsid, sizeof(apSsid), "SprigSynth-%02X%02X", mac[4], mac[5]);
+    snprintf(apSsid, sizeof(apSsid), "ArcadeVox-%02X%02X", mac[4], mac[5]);
     // Password derivata dal MAC: sempre la stessa a ogni accensione, quindi si
     // puo' stampare sul display, ma non e' indovinabile da fuori.
-    snprintf(apPass, sizeof(apPass), "sprig%02X%02X", mac[3], mac[4]);
+    snprintf(apPass, sizeof(apPass), "arcade%02X%02X", mac[3], mac[4]);
 
     WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);  // l'AP resta su anche dopo essere entrati in rete

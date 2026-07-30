@@ -52,15 +52,121 @@ void textCentered(const char *s, int y, uint8_t size, uint16_t color) {
     textAt(s, CX - w / 2, y, size, color);
 }
 
+// Testo allineato a destra: i valori numerici che cambiano di cifre restano
+// ancorati al bordo invece di ballare.
+void textRight(const char *s, int xEnd, int y, uint8_t size, uint16_t color) {
+    textAt(s, xEnd - 6 * size * (int)strlen(s), y, size, color);
+}
+
 // Cancella una fascia orizzontale (usata prima di riscrivere un valore dinamico).
 void clearBand(int y, int h) { gfx->fillRect(8, y, 224, h, BLACK); }
 
-void chrome(const char *title, uint16_t titleColor) {
+// ------------------------------------------------------------------- colore
+//
+// Tutto il display parla la stessa lingua della schermata di avvio: fondo nero,
+// struttura in ciano, accenti magenta e ambra. La regola di leggibilita' che
+// viene prima dello stile: i *valori* si scrivono chiari e grandi su nero, e il
+// colore lo portano etichette e strutture, mai il numero che devi leggere.
+
+constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+}
+
+// Interpolazione fra due colori, t = 0..1. Si lavora sui campi a 5/6/5 bit
+// direttamente: convertire in 8 bit e tornare indietro perderebbe di piu'.
+uint16_t mix565(uint16_t a, uint16_t b, float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    const int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
+    const int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
+    return (uint16_t)((((int)(ar + (br - ar) * t)) << 11) |
+                      (((int)(ag + (bg - ag) * t)) << 5) | ((int)(ab + (bb - ab) * t)));
+}
+
+// Colore attenuato a num/den, per ricavare tracce e stati spenti da un accento.
+uint16_t dim565(uint16_t c, int num, int den) {
+    return (uint16_t)(((((c >> 11) & 0x1F) * num / den) << 11) |
+                      ((((c >> 5) & 0x3F) * num / den) << 5) | ((c & 0x1F) * num / den));
+}
+
+const uint16_t HUD_NEON = rgb565(0, 255, 255);      // struttura, titoli
+const uint16_t HUD_MAGENTA = rgb565(255, 32, 140);  // accento caldo
+const uint16_t HUD_AMBER = rgb565(255, 196, 64);    // valori in salita
+const uint16_t HUD_ICE = rgb565(210, 250, 255);     // testo dei valori
+const uint16_t HUD_LIME = rgb565(120, 255, 120);    // stato buono
+const uint16_t HUD_RED = rgb565(255, 60, 60);       // allarme
+const uint16_t HUD_TRACK = rgb565(0, 46, 58);       // segmenti spenti
+const uint16_t HUD_LABEL = rgb565(0, 150, 180);     // etichette piccole
+
+// ------------------------------------------------------------------- chrome
+//
+// Cornice comune a tutte le schermate: anello, titolo fra parentesi HUD e una
+// riga di separazione accesa al centro. Sotto la riga, da y=54, comincia l'area
+// dei contenuti.
+constexpr int CONTENT_TOP = 54;
+
+void chrome(const char *title, uint16_t accent) {
     gfx->fillScreen(BLACK);
-    gfx->drawCircle(CX, CY, 118, DARKGREY);
-    gfx->drawCircle(CX, CY, 117, DARKGREY);
-    textCentered(title, 30, 2, titleColor);
-    gfx->drawFastHLine(60, 52, 120, titleColor);
+    gfx->drawCircle(CX, CY, 118, dim565(accent, 1, 3));
+    gfx->drawCircle(CX, CY, 117, dim565(accent, 1, 6));
+
+    textCentered(title, 22, 2, accent);
+
+    // Parentesi ai lati del titolo. La lunghezza si adatta: con un titolo lungo
+    // lo spazio dentro il cerchio finisce, e un trattino che sborda si vedrebbe
+    // tagliato dalla cornice tonda.
+    const int tw = 12 * (int)strlen(title);
+    const uint16_t bracket = dim565(accent, 2, 3);
+    const int inner = tw / 2 + 8;
+    const int outer = 74;  // mezza larghezza utile alla quota delle parentesi
+    if (outer - inner >= 10) {
+        for (int side = 0; side < 2; ++side) {
+            const int x0 = (side == 0) ? (CX - outer) : (CX + inner);
+            gfx->drawFastHLine(x0, 30, outer - inner, bracket);
+            gfx->drawFastVLine((side == 0) ? x0 : (x0 + outer - inner - 1), 24, 7, bracket);
+        }
+    }
+
+    gfx->drawFastHLine(40, 46, 160, dim565(accent, 1, 4));
+    gfx->drawFastHLine(CX - 30, 46, 60, accent);
+    gfx->drawFastHLine(CX - 30, 47, 60, dim565(accent, 1, 2));
+}
+
+// --------------------------------------------------------------- primitive HUD
+
+// Barra a segmenti. I segmenti spenti restano visibili come traccia: il valore
+// si legge come frazione della corsa e non come lunghezza assoluta, che a colpo
+// d'occhio e' molto piu' facile da stimare. Il colore scorre da `lo` a `hi`
+// lungo la barra, cosi' anche la zona alta si riconosce senza leggere il numero.
+void hudBar(int x, int y, int w, int h, float frac, uint16_t lo, uint16_t hi) {
+    if (frac < 0.0f) frac = 0.0f;
+    if (frac > 1.0f) frac = 1.0f;
+
+    constexpr int SEG = 6, GAP = 2;
+    const int count = (w + GAP) / (SEG + GAP);
+    const int lit = (int)(frac * count + 0.5f);
+
+    for (int i = 0; i < count; ++i) {
+        const uint16_t c =
+            (i < lit) ? mix565(lo, hi, (count > 1) ? (float)i / (float)(count - 1) : 0.0f)
+                      : HUD_TRACK;
+        gfx->fillRect(x + i * (SEG + GAP), y, SEG, h, c);
+    }
+}
+
+// Etichetta piccola su fondo pieno: si usa per gli stati (PLAY, REC, HOLD) dove
+// conta riconoscere il colore prima ancora di leggere la parola.
+void hudChip(int x, int y, const char *text, uint16_t bg, uint8_t size) {
+    const int w = 6 * size * (int)strlen(text) + 10;
+    const int h = 8 * size + 6;
+    gfx->fillRect(x, y, w, h, bg);
+    textAt(text, x + 5, y + 3, size, BLACK);
+}
+
+int hudChipWidth(const char *text, uint8_t size) { return 6 * size * (int)strlen(text) + 10; }
+
+void hudChipCentered(int y, const char *text, uint16_t bg, uint8_t size) {
+    hudChip(CX - hudChipWidth(text, size) / 2, y, text, bg, size);
 }
 
 // Valore -1..+1 della forma d'onda alla fase t (0..1). Stessa forma del motore audio.
@@ -79,10 +185,18 @@ float iconValue(uint8_t wave, float t) {
 }
 
 // Icona disegnata con primitive grafiche (nessuna bitmap): 2 cicli, ampiezza 26 px.
+// Sotto ci passa una griglia appena accennata, la stessa dell'oscilloscopio: le
+// due schermate mostrano la stessa cosa e devono somigliarsi.
 void drawWaveIcon(uint8_t wave, int cy, uint16_t color) {
     constexpr int HALF_W = 60;
     constexpr float AMP = 26.0f;
     constexpr int PERIOD = 60;  // px per ciclo -> 2 cicli in 120 px
+
+    for (int dy = -26; dy <= 26; dy += 13) {
+        if (dy == 0) continue;
+        gfx->drawFastHLine(CX - HALF_W, cy + dy, 2 * HALF_W, HUD_TRACK);
+    }
+    for (int x = CX - HALF_W; x < CX + HALF_W; x += 6) gfx->drawFastHLine(x, cy, 3, HUD_LABEL);
 
     int prevX = CX - HALF_W;
     int prevY = cy - (int)(AMP * iconValue(wave, 0.0f));
@@ -96,75 +210,143 @@ void drawWaveIcon(uint8_t wave, int cy, uint16_t color) {
         prevX = x;
         prevY = y;
     }
-    gfx->drawFastHLine(CX - HALF_W, cy, 2 * HALF_W, DARKGREY);
 }
 
-// Barra orizzontale con cornice, riempimento 0..1.
-void drawBar(int x, int y, int w, int h, float frac, uint16_t color) {
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-    gfx->drawRect(x, y, w, h, DARKGREY);
-    int fill = (int)((w - 4) * frac);
-    gfx->fillRect(x + 2, y + 2, fill, h - 4, color);
-    gfx->fillRect(x + 2 + fill, y + 2, (w - 4) - fill, h - 4, BLACK);
+// Otto caselle, una per voce del pool: quante ne stanno suonando si conta a
+// colpo d'occhio, senza leggere un numero.
+void drawVoiceSlots(int y, uint8_t voices, bool poly) {
+    constexpr int SLOT = 14, GAP = 4;
+    constexpr int total = MAX_VOICES * SLOT + (MAX_VOICES - 1) * GAP;
+    const int x0 = CX - total / 2;
+    for (int i = 0; i < MAX_VOICES; ++i) {
+        const int x = x0 + i * (SLOT + GAP);
+        if (i < voices) {
+            gfx->fillRect(x, y, SLOT, SLOT, poly ? HUD_LIME : HUD_AMBER);
+        } else {
+            gfx->drawRect(x, y, SLOT, SLOT, HUD_TRACK);
+        }
+    }
 }
 
 // ----------------------------------------------------------------- schermate
 
 void drawWaveScreen(const SynthView &v, bool full) {
-    if (full) chrome("WAVE", CYAN);
+    if (full) {
+        chrome("OSC", HUD_NEON);
+        textCentered("FORMA D'ONDA", CONTENT_TOP, 1, HUD_LABEL);
+    }
     if (full || v.waveform != prev.waveform) {
-        gfx->fillRect(50, 80, 140, 64, BLACK);
-        drawWaveIcon(v.waveform, 112, CYAN);
-        clearBand(158, 24);
-        textCentered(WAVEFORM_NAMES[v.waveform], 158, 3, WHITE);
+        gfx->fillRect(56, 72, 128, 60, BLACK);
+        drawWaveIcon(v.waveform, 102, HUD_NEON);
+        clearBand(142, 24);
+        textCentered(WAVEFORM_NAMES[v.waveform], 142, 3, HUD_ICE);
     }
     // La schermata della voce e' il posto giusto per dire quante ne suonano.
     if (full || v.poly != prev.poly || v.voices != prev.voices) {
-        clearBand(192, 16);
-        char buf[20];
-        if (v.poly) {
-            snprintf(buf, sizeof(buf), "POLI  %d/%d voci", (int)v.voices, MAX_VOICES);
-        } else {
-            snprintf(buf, sizeof(buf), "MONO");
-        }
-        textCentered(buf, 192, 1, v.poly ? GREENYELLOW : DARKGREY);
+        gfx->fillRect(40, 176, 160, 14, BLACK);
+        drawVoiceSlots(176, v.voices, v.poly);
+        clearBand(198, 8);
+        textCentered(v.poly ? "POLIFONICO" : "MONOFONICO", 198, 1,
+                     v.poly ? HUD_LIME : HUD_LABEL);
     }
 }
 
 void drawOctaveScreen(const SynthView &v, bool full) {
-    if (full) chrome("OCTAVE", GREENYELLOW);
-    if (full || v.octave != prev.octave) {
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%+d", (int)v.octave);
-        gfx->fillRect(20, 90, 200, 70, BLACK);
-        textCentered(buf, 96, 8, (v.octave == 0) ? WHITE : GREENYELLOW);
-        clearBand(180, 16);
-        textCentered("x2^oct", 180, 2, DARKGREY);
+    if (full) {
+        chrome("OCTAVE", HUD_MAGENTA);
+        textCentered("REGISTRO", CONTENT_TOP, 1, HUD_LABEL);
+    }
+    if (!full && v.octave == prev.octave) return;
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%+d", (int)v.octave);
+    gfx->fillRect(20, 70, 200, 66, BLACK);
+    textCentered(buf, 70, 8, (v.octave == 0) ? HUD_ICE : HUD_MAGENTA);
+
+    // Selettore a cinque caselle: si vede subito dove sei nella corsa e quanto
+    // margine resta, cosa che il solo numero non dice.
+    constexpr int CHIP_W = 26, CHIP_H = 20, CHIP_GAP = 8;
+    constexpr int total = 5 * CHIP_W + 4 * CHIP_GAP;
+    const int x0 = CX - total / 2;
+    for (int i = 0; i < 5; ++i) {
+        const int x = x0 + i * (CHIP_W + CHIP_GAP);
+        const bool here = (i - 2) == v.octave;
+        char lbl[4];
+        snprintf(lbl, sizeof(lbl), "%+d", i - 2);
+        if (here) {
+            gfx->fillRect(x, 148, CHIP_W, CHIP_H, HUD_MAGENTA);
+            textAt(lbl, x + 7, 154, 1, BLACK);
+        } else {
+            // Ripulire prima: la casella accesa un attimo fa era piena, e il solo
+            // contorno non basta a portarne via il fondo.
+            gfx->fillRect(x, 148, CHIP_W, CHIP_H, BLACK);
+            gfx->drawRect(x, 148, CHIP_W, CHIP_H, HUD_TRACK);
+            textAt(lbl, x + 7, 154, 1, HUD_LABEL);
+        }
+    }
+
+    // Il moltiplicatore in chiaro: e' quello che senti, l'esponente e' un modo
+    // indiretto di dirlo.
+    static const char *const MUL[5] = {"x 0.25", "x 0.50", "x 1.00", "x 2.00", "x 4.00"};
+    int idx = v.octave + 2;
+    if (idx < 0) idx = 0;
+    if (idx > 4) idx = 4;
+    clearBand(180, 16);
+    textCentered(MUL[idx], 180, 2, HUD_LABEL);
+}
+
+// Risposta del passa-basso one-pole disegnata in piccolo: |H| = 1/sqrt(1+(f/fc)^2)
+// su asse logaritmico 80 Hz..8 kHz, lo stesso della barra qui sopra. Serve a
+// vedere *dove* taglia, non solo a che numero e' arrivata la manopola.
+void drawFilterCurve(int x, int y, int w, int h, float cutoffHz) {
+    gfx->fillRect(x, y, w, h, BLACK);
+    gfx->drawFastHLine(x, y + h - 1, w, HUD_TRACK);
+
+    const float decades = logf(100.0f);
+    const int cx = x + (int)((float)w * logf(cutoffHz / 80.0f) / decades);
+    if (cx > x && cx < x + w) {
+        for (int yy = y; yy < y + h; yy += 3) gfx->drawPixel(cx, yy, dim565(HUD_MAGENTA, 1, 2));
+    }
+
+    int prevY = y;
+    for (int i = 0; i < w; ++i) {
+        const float f = 80.0f * expf(decades * (float)i / (float)(w - 1));
+        const float r = f / cutoffHz;
+        const float mag = 1.0f / sqrtf(1.0f + r * r);
+        int yy = y + h - 1 - (int)(mag * (float)(h - 2));
+        if (i == 0) prevY = yy;
+        const int top = (yy < prevY) ? yy : prevY;
+        const int hh = ((yy < prevY) ? (prevY - yy) : (yy - prevY)) + 1;
+        gfx->drawFastVLine(x + i, top, hh, HUD_MAGENTA);
+        prevY = yy;
     }
 }
 
 void drawLevelsScreen(const SynthView &v, bool full) {
+    constexpr int BX = 44, BW = 152;
     if (full) {
-        chrome("LEVELS", ORANGE);
-        textAt("CUTOFF", 45, 78, 2, WHITE);
-        textAt("VOLUME", 45, 148, 2, WHITE);
+        chrome("LEVELS", HUD_AMBER);
+        textAt("CUTOFF", BX, 58, 1, HUD_LABEL);
+        textAt("VOLUME", BX, 124, 1, HUD_LABEL);
     }
+
     // cutoff: mappatura log 80..8000 Hz per una barra percettivamente lineare
-    float cf = logf(v.cutoffHz / 80.0f) / logf(100.0f);
+    const float cf = logf(v.cutoffHz / 80.0f) / logf(100.0f);
     if (full || fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f) {
-        drawBar(45, 98, 150, 24, cf, ORANGE);
         char buf[16];
-        snprintf(buf, sizeof(buf), "%5d Hz", (int)v.cutoffHz);
-        gfx->fillRect(45, 126, 150, 14, BLACK);
-        textAt(buf, 45, 126, 1, DARKGREY);
+        snprintf(buf, sizeof(buf), "%d Hz", (int)v.cutoffHz);
+        gfx->fillRect(BX + 60, 54, BW - 60, 16, BLACK);
+        textRight(buf, BX + BW, 54, 2, HUD_ICE);
+        hudBar(BX, 74, BW, 22, cf, HUD_NEON, HUD_MAGENTA);
+        drawFilterCurve(BX, 174, BW, 30, v.cutoffHz);
     }
+
     if (full || fabsf(v.volume - prev.volume) > 0.01f) {
-        drawBar(45, 168, 150, 24, v.volume, GREEN);
         char buf[16];
-        snprintf(buf, sizeof(buf), "%3d %%", (int)(v.volume * 100.0f));
-        gfx->fillRect(45, 196, 150, 14, BLACK);
-        textAt(buf, 45, 196, 1, DARKGREY);
+        snprintf(buf, sizeof(buf), "%d %%", (int)(v.volume * 100.0f + 0.5f));
+        gfx->fillRect(BX + 60, 120, BW - 60, 16, BLACK);
+        textRight(buf, BX + BW, 120, 2, HUD_ICE);
+        hudBar(BX, 140, BW, 22, v.volume, HUD_LIME, HUD_RED);
     }
 }
 
@@ -178,8 +360,11 @@ const char *const NOTE_NAMES_IT[NOTE_COUNT] = {"DO", "RE", "MI", "FA", "SOL", "L
 inline bool validNote(int8_t n) { return n >= 0 && n < NOTE_COUNT; }
 
 // Colore della cella in base all'ottava con cui lo step e' stato scritto
-// (indice = oct + 2): il registro si legge a colpo d'occhio.
-const uint16_t OCT_COLORS[5] = {PURPLE, BLUE, CYAN, GREENYELLOW, ORANGE};
+// (indice = oct + 2): il registro si legge a colpo d'occhio. Sono tutti toni
+// abbastanza chiari da reggere l'iniziale nera scritta sopra — con l'indaco e il
+// viola di prima, in basso, la lettera spariva.
+const uint16_t OCT_COLORS[5] = {rgb565(150, 110, 255), rgb565(80, 170, 255), rgb565(0, 230, 230),
+                                rgb565(140, 240, 120), rgb565(255, 190, 70)};
 
 uint16_t octColor(int8_t oct) {
     int i = oct + 2;
@@ -210,10 +395,14 @@ void drawStepCell(const SynthView &v, int i) {
 
     if (s.note == SEQ_TIE) {
         // Legato: nessuna nota nuova, solo il proseguimento della precedente.
-        gfx->fillRect(x, y, GRID_CELL, GRID_CELL, NAVY);
-        gfx->fillRect(x + 3, y + GRID_CELL / 2 - 1, GRID_CELL - 6, 3, LIGHTGREY);
+        gfx->fillRect(x, y, GRID_CELL, GRID_CELL, BLACK);
+        gfx->drawRect(x, y, GRID_CELL, GRID_CELL, HUD_TRACK);
+        gfx->fillRect(x + 3, y + GRID_CELL / 2 - 1, GRID_CELL - 6, 3, HUD_ICE);
     } else if (!validNote(s.note)) {
-        gfx->fillRect(x, y, GRID_CELL, GRID_CELL, NAVY);  // pausa
+        // Pausa: casella vuota con il solo contorno. Lasciandola piena, com'era
+        // prima, la griglia sembrava scritta anche dove non c'era niente.
+        gfx->fillRect(x, y, GRID_CELL, GRID_CELL, BLACK);
+        gfx->drawRect(x, y, GRID_CELL, GRID_CELL, HUD_TRACK);
     } else {
         gfx->fillRect(x, y, GRID_CELL, GRID_CELL, octColor(s.oct));
         gfx->setTextSize(1);
@@ -222,9 +411,13 @@ void drawStepCell(const SynthView &v, int i) {
         gfx->print(NOTE_LETTERS[s.note]);
     }
 
+    // Battere: le caselle 1, 5, 9 e 13 portano un trattino sopra, cosi' i quattro
+    // movimenti si contano senza doverli cercare.
+    if (i % 4 == 0) gfx->drawFastHLine(x, y - 2, GRID_CELL, HUD_LABEL);
+
     // La testina passa sopra al contenuto senza cancellarlo: cornice spessa.
     if (playhead) {
-        uint16_t c = (v.seqMode == Sequencer::SEQ_RECORDING) ? RED : GREEN;
+        uint16_t c = (v.seqMode == Sequencer::SEQ_RECORDING) ? HUD_RED : HUD_LIME;
         gfx->drawRect(x, y, GRID_CELL, GRID_CELL, c);
         gfx->drawRect(x + 1, y + 1, GRID_CELL - 2, GRID_CELL - 2, c);
     }
@@ -234,16 +427,31 @@ void drawStepCell(const SynthView &v, int i) {
 }
 
 // Preconteggio: il pattern gira gia', ma qui conta solo sapere quando si parte.
+// Oltre alla cifra ci sono quattro pallini che si spengono: il conto alla
+// rovescia si segue con la coda dell'occhio, senza rileggere il numero.
 void drawCountIn(const SynthView &v, bool full) {
-    if (full) chrome("COUNT IN", RED);
-    if (full || v.countIn != prev.countIn) {
-        char buf[4];
-        snprintf(buf, sizeof(buf), "%d", (int)v.countIn);
-        gfx->fillRect(60, 80, 120, 90, BLACK);
-        textCentered(buf, 84, 10, RED);
-        clearBand(184, 16);
-        textCentered("SUONA AL VIA", 184, 1, DARKGREY);
+    if (full) chrome("COUNT IN", HUD_RED);
+    if (!full && v.countIn == prev.countIn) return;
+
+    char buf[4];
+    snprintf(buf, sizeof(buf), "%d", (int)v.countIn);
+    gfx->fillRect(60, 76, 120, 84, BLACK);
+    textCentered(buf, 76, 10, HUD_RED);
+
+    constexpr int DOT_R = 8, DOT_GAP = 30;
+    const int x0 = CX - (3 * DOT_GAP) / 2;
+    for (int i = 0; i < 4; ++i) {
+        const int x = x0 + i * DOT_GAP;
+        if (i < v.countIn) {
+            gfx->fillCircle(x, 178, DOT_R, HUD_RED);
+        } else {
+            gfx->fillCircle(x, 178, DOT_R, BLACK);
+            gfx->drawCircle(x, 178, DOT_R, HUD_TRACK);
+        }
     }
+
+    clearBand(200, 8);
+    textCentered("SUONA AL VIA", 200, 1, HUD_LABEL);
 }
 
 void drawSeqScreen(const SynthView &v, bool full) {
@@ -254,21 +462,25 @@ void drawSeqScreen(const SynthView &v, bool full) {
     // Uscendo dal preconteggio la schermata va ricostruita da zero.
     if (prev.countIn > 0) full = true;
 
-    if (full) chrome(v.seqEditing ? "STEP EDIT" : "SEQUENCER", v.seqEditing ? WHITE : MAGENTA);
+    if (full) {
+        chrome(v.seqEditing ? "STEP EDIT" : "SEQUENCER", v.seqEditing ? HUD_ICE : HUD_MAGENTA);
+    }
 
     const bool modeChanged = full || v.seqMode != prev.seqMode || v.seqEditing != prev.seqEditing;
     if (modeChanged) {
-        clearBand(58, 22);
+        // Lo stato del trasporto e' una targhetta piena: il colore lo riconosci
+        // prima di aver letto la parola, che e' quello che serve mentre suoni.
+        clearBand(56, 22);
         const char *label = "STOP";
-        uint16_t col = DARKGREY;
+        uint16_t col = HUD_LABEL;
         if (v.seqMode == Sequencer::SEQ_RECORDING) {
             label = "REC";
-            col = RED;
+            col = HUD_RED;
         } else if (v.seqMode == Sequencer::SEQ_PLAYING) {
             label = "PLAY";
-            col = GREEN;
+            col = HUD_LIME;
         }
-        textCentered(label, 58, 2, col);
+        hudChipCentered(56, label, col, 2);
     }
 
     const bool patternChanged = full || modeChanged || v.seqRev != prev.seqRev;
@@ -304,25 +516,46 @@ void drawSeqScreen(const SynthView &v, bool full) {
             snprintf(buf, sizeof(buf), "%02d/%d", v.seqStep + 1, SEQ_STEPS);
         }
         clearBand(140, 18);
-        textCentered(buf, 140, 2, v.seqEditing ? WHITE : LIGHTGREY);
+        textCentered(buf, 140, 2, v.seqEditing ? WHITE : HUD_ICE);
     }
 
     if (full || v.hold != prev.hold || v.arp != prev.arp || v.bpm != prev.bpm ||
         v.poly != prev.poly) {
-        clearBand(166, 18);
+        clearBand(164, 18);
         char buf[24];
-        snprintf(buf, sizeof(buf), "BPM %3d", (int)v.bpm);
-        textCentered(buf, 166, 2, YELLOW);
+        snprintf(buf, sizeof(buf), "%d BPM", (int)v.bpm);
+        textCentered(buf, 164, 2, HUD_AMBER);
+
+        // Tre targhette invece di una riga di testo: acceso e spento si
+        // distinguono per pieno contro contorno, non per sfumatura di grigio.
         clearBand(190, 16);
-        char st[32];
-        snprintf(st, sizeof(st), "HOLD %s ARP %s %s", v.hold ? "ON " : "OFF",
-                 v.arp ? "ON " : "OFF", v.poly ? "POLI" : "MONO");
-        textCentered(st, 190, 1, (v.hold || v.arp) ? CYAN : DARKGREY);
+        struct Flag {
+            const char *label;
+            bool on;
+            uint16_t color;
+        } flags[3] = {
+            {"HOLD", v.hold, HUD_NEON},
+            {"ARP", v.arp, HUD_MAGENTA},
+            {v.poly ? "POLI" : "MONO", v.poly, HUD_LIME},
+        };
+        int total = 0;
+        for (int i = 0; i < 3; ++i) total += hudChipWidth(flags[i].label, 1) + 6;
+        int x = CX - (total - 6) / 2;
+        for (int i = 0; i < 3; ++i) {
+            const int w = hudChipWidth(flags[i].label, 1);
+            if (flags[i].on) {
+                hudChip(x, 190, flags[i].label, flags[i].color, 1);
+            } else {
+                gfx->drawRect(x, 190, w, 14, HUD_TRACK);
+                textAt(flags[i].label, x + 5, 193, 1, HUD_LABEL);
+            }
+            x += w + 6;
+        }
     }
 }
 
 void drawAdsrScreen(const SynthView &v, bool full) {
-    if (full) chrome("ADSR EDIT", RED);
+    if (full) chrome("ADSR", HUD_RED);
 
     struct Row {
         const char *label;
@@ -334,23 +567,23 @@ void drawAdsrScreen(const SynthView &v, bool full) {
     // frazioni normalizzate sui range dichiarati, per le mini-barre
     rows[0].label = "A";
     rows[0].frac = logf(v.attackMs / 2.0f) / logf(250.0f);
-    snprintf(rows[0].value, sizeof(rows[0].value), "%4d ms", (int)v.attackMs);
-    rows[0].color = RED;
+    snprintf(rows[0].value, sizeof(rows[0].value), "%d ms", (int)v.attackMs);
+    rows[0].color = HUD_RED;
 
     rows[1].label = "D";
     rows[1].frac = (v.decayMs - 5.0f) / 995.0f;
-    snprintf(rows[1].value, sizeof(rows[1].value), "%4d ms", (int)v.decayMs);
-    rows[1].color = ORANGE;
+    snprintf(rows[1].value, sizeof(rows[1].value), "%d ms", (int)v.decayMs);
+    rows[1].color = HUD_MAGENTA;
 
     rows[2].label = "S";
     rows[2].frac = v.sustain;
-    snprintf(rows[2].value, sizeof(rows[2].value), "%4d %%", (int)(v.sustain * 100.0f));
-    rows[2].color = YELLOW;
+    snprintf(rows[2].value, sizeof(rows[2].value), "%d %%", (int)(v.sustain * 100.0f + 0.5f));
+    rows[2].color = HUD_AMBER;
 
     rows[3].label = "R";
     rows[3].frac = logf(v.releaseMs / 10.0f) / logf(200.0f);
-    snprintf(rows[3].value, sizeof(rows[3].value), "%4d ms", (int)v.releaseMs);
-    rows[3].color = GREEN;
+    snprintf(rows[3].value, sizeof(rows[3].value), "%d ms", (int)v.releaseMs);
+    rows[3].color = HUD_LIME;
 
     bool changed[4] = {
         full || fabsf(v.attackMs - prev.attackMs) > 0.5f,
@@ -360,14 +593,17 @@ void drawAdsrScreen(const SynthView &v, bool full) {
     };
 
     // Righe strette abbastanza da restare dentro l'area circolare anche in basso.
-    const int y0 = 70, dy = 34;
+    // La lettera del parametro sta su una targhetta piena: quattro barre uguali
+    // una sopra l'altra si confondono, il quadrato colorato le ancora.
+    const int y0 = 66, dy = 36;
     for (int i = 0; i < 4; ++i) {
         if (!changed[i]) continue;
-        int y = y0 + i * dy;
-        gfx->fillRect(30, y, 182, 24, BLACK);
-        textAt(rows[i].label, 34, y + 4, 2, rows[i].color);
-        drawBar(54, y, 104, 22, rows[i].frac, rows[i].color);
-        textAt(rows[i].value, 166, y + 7, 1, WHITE);
+        const int y = y0 + i * dy;
+        gfx->fillRect(28, y, 186, 26, BLACK);
+        gfx->fillRect(30, y, 18, 18, rows[i].color);
+        textAt(rows[i].label, 33, y + 1, 2, BLACK);
+        hudBar(54, y, 96, 18, rows[i].frac, dim565(rows[i].color, 1, 2), rows[i].color);
+        textRight(rows[i].value, 212, y + 5, 1, HUD_ICE);
     }
 }
 
@@ -439,7 +675,7 @@ void vuScale() {
         const float p = (float)i / 44.0f;
         int x, y;
         vuPoint(p, VU_ARC_R, x, y);
-        const uint16_t c = (p > VU_RED_ZONE) ? RED : GREEN;
+        const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_LIME;
         gfx->writeLine(px, py, x, y, c);
         gfx->writeLine(px, py - 1, x, y - 1, c);
         px = x;
@@ -449,7 +685,7 @@ void vuScale() {
 
     for (int i = 0; i <= 4; ++i) {
         const float p = (float)i / 4.0f;
-        const uint16_t c = (p > VU_RED_ZONE) ? RED : LIGHTGREY;
+        const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_ICE;
         int x0, y0, x1, y1;
         vuPoint(p, VU_TICK_R, x0, y0);
         vuPoint(p, VU_ARC_R, x1, y1);
@@ -473,11 +709,11 @@ void drawVuScreen(const SynthView &, bool full) {
     static char lastPk[20] = "";
 
     if (full) {
-        chrome("VU METER", GREEN);
-        textAt("dBFS", 56, 58, 1, DARKGREY);
-        textAt("CLIP", 146, 58, 1, DARKGREY);
+        chrome("VU", HUD_LIME);
+        textAt("dBFS", 56, 58, 1, HUD_LABEL);
+        textAt("CLIP", 146, 58, 1, HUD_LABEL);
         vuScale();
-        gfx->fillCircle(VU_PX, VU_PY, 5, LIGHTGREY);
+        gfx->fillCircle(VU_PX, VU_PY, 5, HUD_ICE);
         lastNeedle = -1.0f;
         lastMark = -1.0f;
         peakHold = 0.0f;
@@ -509,19 +745,19 @@ void drawVuScreen(const SynthView &, bool full) {
 
     if (fabsf(pos - lastNeedle) > 0.002f) {
         if (lastNeedle >= 0.0f) vuNeedle(lastNeedle, BLACK);
-        vuNeedle(pos, WHITE);
-        gfx->fillCircle(VU_PX, VU_PY, 5, LIGHTGREY);  // il perno copre la base
+        vuNeedle(pos, HUD_ICE);
+        gfx->fillCircle(VU_PX, VU_PY, 5, HUD_ICE);  // il perno copre la base
         lastNeedle = pos;
     }
     if (fabsf(peakHold - lastMark) > 0.002f) {
         if (lastMark >= 0.0f) vuMark(lastMark, BLACK);
-        vuMark(peakHold, (peakHold > VU_RED_ZONE) ? RED : YELLOW);
+        vuMark(peakHold, (peakHold > VU_RED_ZONE) ? HUD_RED : HUD_AMBER);
         lastMark = peakHold;
     }
 
     const bool clip = (peak >= 0.999f);
     if (clip != lastClip) {
-        gfx->fillCircle(182, 62, 5, clip ? RED : DARKGREY);
+        gfx->fillCircle(182, 62, 5, clip ? HUD_RED : HUD_TRACK);
         lastClip = clip;
     }
 
@@ -533,7 +769,7 @@ void drawVuScreen(const SynthView &, bool full) {
     }
     if (strcmp(buf, lastRms) != 0) {
         gfx->fillRect(50, 202, 140, 16, BLACK);
-        textCentered(buf, 202, 2, WHITE);
+        textCentered(buf, 202, 2, HUD_ICE);
         strncpy(lastRms, buf, sizeof(lastRms) - 1);
     }
 
@@ -545,7 +781,7 @@ void drawVuScreen(const SynthView &, bool full) {
     }
     if (strcmp(pk, lastPk) != 0) {
         gfx->fillRect(72, 222, 96, 8, BLACK);
-        textCentered(pk, 222, 1, DARKGREY);
+        textCentered(pk, 222, 1, HUD_LABEL);
         strncpy(lastPk, pk, sizeof(lastPk) - 1);
     }
 }
@@ -561,13 +797,13 @@ constexpr int SC_X0 = 30;
 constexpr int SC_W = SCOPE_SAMPLES;  // 180
 constexpr int SC_CY = 130;
 constexpr int SC_H2 = 50;
-constexpr uint16_t SC_GRID = 0x2104;  // grigio quasi nero
+constexpr uint16_t SC_GRID = HUD_TRACK;
 const int SC_GRID_Y[4] = {SC_CY - SC_H2, SC_CY - SC_H2 / 2, SC_CY + SC_H2 / 2, SC_CY + SC_H2};
 
 void scopeGrid() {
     for (int g = 0; g < 4; ++g) gfx->drawFastHLine(SC_X0, SC_GRID_Y[g], SC_W, SC_GRID);
     // asse dello zero tratteggiato: si distingue dalle altre a colpo d'occhio
-    for (int i = 0; i < SC_W; i += 6) gfx->drawFastHLine(SC_X0 + i, SC_CY, 3, DARKGREY);
+    for (int i = 0; i < SC_W; i += 6) gfx->drawFastHLine(SC_X0 + i, SC_CY, 3, HUD_LABEL);
 }
 
 inline bool scopeIsDash(int i) { return (i % 6) < 3; }
@@ -581,7 +817,7 @@ void drawScopeScreen(const SynthView &v, bool full) {
     static char lastInfo[28] = "";
 
     if (full) {
-        chrome("SCOPE", CYAN);
+        chrome("SCOPE", HUD_NEON);
         scopeGrid();
         traced = false;
         zoom = 1.0f;
@@ -627,7 +863,7 @@ void drawScopeScreen(const SynthView &v, bool full) {
                 }
             }
             if (scopeIsDash(i) && SC_CY >= colTop[i] && SC_CY < colTop[i] + colH[i]) {
-                gfx->writePixel(x, SC_CY, DARKGREY);
+                gfx->writePixel(x, SC_CY, HUD_LABEL);
             }
         }
 
@@ -635,7 +871,7 @@ void drawScopeScreen(const SynthView &v, bool full) {
         // ripidi (quadra, dente di sega) la traccia resta continua.
         const int top = (y < prevY) ? y : prevY;
         const int h = ((y < prevY) ? (prevY - y) : (y - prevY)) + 1;
-        gfx->writeFastVLine(x, top, h, GREENYELLOW);
+        gfx->writeFastVLine(x, top, h, HUD_LIME);
 
         colTop[i] = (int16_t)top;
         colH[i] = (uint8_t)h;
@@ -648,7 +884,7 @@ void drawScopeScreen(const SynthView &v, bool full) {
     snprintf(info, sizeof(info), "%s  zoom x%.1f", WAVEFORM_NAMES[v.waveform], zoom);
     if (strcmp(info, lastInfo) != 0) {
         gfx->fillRect(20, 192, 200, 8, BLACK);
-        textCentered(info, 192, 1, DARKGREY);
+        textCentered(info, 192, 1, HUD_LABEL);
         strncpy(lastInfo, info, sizeof(lastInfo) - 1);
     }
 }
@@ -659,14 +895,22 @@ void drawScopeScreen(const SynthView &v, bool full) {
 // accenderla, perche' da li' in poi il synth resta muto fino al riavvio.
 void drawNetworkIdleScreen(const SynthView &, bool full) {
     if (!full) return;
-    chrome("NETWORK", BLUE);
-    textCentered("Aggiornamento", 76, 2, WHITE);
-    textCentered("firmware via WiFi", 98, 2, WHITE);
-    gfx->drawFastHLine(70, 124, 100, DARKGREY);
-    textCentered("tieni premuto", 136, 1, DARKGREY);
-    textCentered("SCORRI DISPLAY", 150, 2, CYAN);
-    textCentered("per 1 secondo", 174, 1, DARKGREY);
-    textCentered("il synth restera' muto", 194, 1, ORANGE);
+    chrome("NETWORK", HUD_NEON);
+    textCentered("AGGIORNAMENTO FIRMWARE", CONTENT_TOP, 1, HUD_LABEL);
+    textCentered("via WiFi", 70, 2, HUD_ICE);
+
+    // Il gesto e' il contenuto della schermata: sta su una targhetta, non in
+    // mezzo a una frase.
+    textCentered("tieni premuto", 104, 1, HUD_LABEL);
+    hudChipCentered(118, "SCORRI DISPLAY", HUD_NEON, 1);
+    textCentered("per 1 secondo", 140, 1, HUD_LABEL);
+
+    // Avvertenza in fondo, con la barra rossa a sinistra: e' l'unica cosa della
+    // schermata che vale la pena leggere due volte.
+    gfx->fillRect(34, 168, 3, 34, HUD_RED);
+    textAt("DA QUI IN POI", 46, 170, 1, HUD_RED);
+    textAt("il synth resta muto", 46, 182, 1, HUD_LABEL);
+    textAt("fino al riavvio", 46, 194, 1, HUD_LABEL);
 }
 
 // ---------------------------------------------------------------- QR code
@@ -723,32 +967,14 @@ void drawQr(const char *text, int cy) {
 // bordi. Provata anche una versione con joystick e altoparlante come icone
 // laterali: a 20 px diventavano scarabocchi, quindi via.
 
-constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
-    return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
-}
-
-// Interpolazione fra due colori, t = 0..1. Si lavora sui campi a 5/6/5 bit
-// direttamente: convertire in 8 bit e tornare indietro perderebbe di piu'.
-uint16_t mix565(uint16_t a, uint16_t b, float t) {
-    const int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
-    const int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
-    return (uint16_t)((((int)(ar + (br - ar) * t)) << 11) |
-                      (((int)(ag + (bg - ag) * t)) << 5) | ((int)(ab + (bb - ab) * t)));
-}
-
-// Colore attenuato a num/den: serve a rendere i livelli intermedi della
-// maschera del wordmark, che e' antialiasata a 4 livelli.
-uint16_t dim565(uint16_t c, int num, int den) {
-    return (uint16_t)(((((c >> 11) & 0x1F) * num / den) << 11) |
-                      ((((c >> 5) & 0x3F) * num / den) << 5) | ((c & 0x1F) * num / den));
-}
-
-const uint16_t LOGO_MAGENTA = rgb565(255, 32, 140);
-const uint16_t LOGO_AMBER = rgb565(255, 196, 64);
-const uint16_t LOGO_NEON = rgb565(0, 255, 255);
+// La tavolozza del logo e' quella dell'interfaccia (vedi la sezione colore in
+// cima): qui restano solo i due toni che servono alla sola scena di avvio.
+const uint16_t LOGO_MAGENTA = HUD_MAGENTA;
+const uint16_t LOGO_AMBER = HUD_AMBER;
+const uint16_t LOGO_NEON = HUD_NEON;
+const uint16_t LOGO_ICE = HUD_ICE;
 const uint16_t LOGO_DIMCYAN = rgb565(0, 90, 110);
 const uint16_t LOGO_GRID = rgb565(0, 120, 150);
-const uint16_t LOGO_ICE = rgb565(150, 240, 255);
 
 constexpr int SUN_CX = 120;
 constexpr int SUN_CY = 78;
@@ -1009,11 +1235,11 @@ void updateNetwork() {
     if (st == NetPortal::NET_FAILED) {
         // Un aggiornamento fallito lascia lo schermo sulla barra di
         // avanzamento: senza questo non si saprebbe mai com'e' andata.
-        chrome("FALLITO", RED);
-        textCentered(msg, 100, 2, WHITE);
-        textCentered("il firmware attuale", 140, 1, DARKGREY);
-        textCentered("e' rimasto intatto", 154, 1, DARKGREY);
-        textCentered("PLAY per riavviare", 184, 1, CYAN);
+        chrome("FALLITO", HUD_RED);
+        textCentered(msg, 96, 2, HUD_ICE);
+        textCentered("il firmware attuale", 136, 1, HUD_LABEL);
+        textCentered("e' rimasto intatto", 148, 1, HUD_LABEL);
+        hudChipCentered(180, "PLAY PER RIAVVIARE", HUD_NEON, 1);
         return;
     }
 
@@ -1025,8 +1251,8 @@ void updateNetwork() {
     // Tre righe sotto il codice: cosa sta succedendo, e le credenziali scritte
     // in chiaro per chi preferisce digitarle a mano.
     gfx->fillRect(10, 164, 220, 48, BLACK);
-    textCentered(msg, 166, 1, CYAN);
-    textCentered(NetPortal::ssid(), 180, 1, WHITE);
+    textCentered(msg, 166, 1, HUD_NEON);
+    textCentered(NetPortal::ssid(), 180, 1, HUD_ICE);
 
     char line[40];
     if (NetPortal::staIp()[0] != '\0') {
@@ -1034,7 +1260,7 @@ void updateNetwork() {
     } else {
         snprintf(line, sizeof(line), "pass: %s", NetPortal::password());
     }
-    textCentered(line, 194, 1, DARKGREY);
+    textCentered(line, 194, 1, HUD_LABEL);
 }
 
 void drawOtaProgress(int pct) {
@@ -1046,17 +1272,20 @@ void drawOtaProgress(int pct) {
     if (pct == lastPct) return;
     // Percentuale che torna indietro = trasferimento nuovo: si riparte da capo.
     if (lastPct < 0 || pct < lastPct) {
-        chrome("UPDATE", ORANGE);
-        textCentered("non spegnere", 190, 1, RED);
+        chrome("UPDATE", HUD_AMBER);
+        textCentered("SCRITTURA IN CORSO", CONTENT_TOP, 1, HUD_LABEL);
+        gfx->fillRect(34, 186, 3, 22, HUD_RED);
+        textAt("NON SPEGNERE", 46, 190, 1, HUD_RED);
+        textAt("l'aggiornamento e' a meta'", 46, 202, 1, HUD_LABEL);
     }
     lastPct = pct;
 
-    drawBar(45, 108, 150, 26, pct / 100.0f, ORANGE);
+    hudBar(45, 104, 150, 26, pct / 100.0f, HUD_AMBER, HUD_LIME);
 
     char buf[8];
     snprintf(buf, sizeof(buf), "%d %%", pct);
-    gfx->fillRect(60, 146, 120, 24, BLACK);
-    textCentered(buf, 146, 3, WHITE);
+    gfx->fillRect(60, 142, 120, 24, BLACK);
+    textCentered(buf, 142, 3, HUD_ICE);
 }
 
 }  // namespace Display

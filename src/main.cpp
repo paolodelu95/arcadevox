@@ -1,4 +1,4 @@
-// SprigSynth — sintetizzatore mono/polifonico su ESP32-S3 N16R8.
+// ArcadeVox — sintetizzatore mono/polifonico su ESP32-S3 N16R8.
 //
 //   core 0 : motore audio (task FreeRTOS dedicato, vedi audio_engine.cpp)
 //   core 1 : questo loop — input, logica, sequencer, display
@@ -204,7 +204,7 @@ void setup() {
 
     Display::begin();
 
-    Serial.println(F("SprigSynth pronto."));
+    Serial.println(F("ArcadeVox pronto."));
 }
 
 // ------------------------------------------------------------------- loop

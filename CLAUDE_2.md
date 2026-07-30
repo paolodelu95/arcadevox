@@ -1,4 +1,4 @@
-# SprigSynth — Brief di Progetto per Claude Code
+# ArcadeVox — Brief di Progetto per Claude Code
 
 ## Contesto
 Sto costruendo un sintetizzatore hardware DIY basato su ESP32-S3. Ho già progettato

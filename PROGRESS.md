@@ -1,4 +1,4 @@
-# SprigSynth — PROGRESS
+# ArcadeVox — PROGRESS
 
 Sintetizzatore monofonico ESP32-S3 N16R8 · pannello arcade riciclato · MAX98357 (I2S) · GC9A01 (SPI)
 
@@ -140,7 +140,7 @@ modello dei sequencer veri.
 - [x] **Modalità esclusiva**: `AudioEngine::shutdown()` ferma il task e libera l'I2S prima di
       alzare la radio. Lo stack WiFi gira sul core 0, lo stesso dell'audio, con priorità 23
       contro 10: convivendo farebbe sottoscorrere il DMA. Si esce con PLAY → riavvio
-- [x] SoftAP WPA2 `SprigSynth-XXXX`, password derivata dal MAC (stabile fra i riavvii,
+- [x] SoftAP WPA2 `ArcadeVox-XXXX`, password derivata dal MAC (stabile fra i riavvii,
       quindi stampabile sul display, ma non indovinabile)
 - [x] **QR sul display** (`ricmoo/QRCode`, versione 3, 4 px per modulo): prima il payload
       `WIFI:` che aggancia lo smartphone senza digitare nulla, poi — appena un client si

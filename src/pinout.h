@@ -1,4 +1,4 @@
-// pinout.h — mappatura GPIO definitiva di SprigSynth (ESP32-S3 N16R8)
+// pinout.h — mappatura GPIO definitiva di ArcadeVox (ESP32-S3 N16R8)
 //
 // Tutti gli ingressi digitali (note, joystick, pulsanti, leve) usano il pull-up
 // interno: i contatti sono a 2 terminali verso GND, nessuna resistenza esterna.

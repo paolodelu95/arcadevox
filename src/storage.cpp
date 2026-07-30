@@ -9,6 +9,12 @@
 namespace {
 
 constexpr uint32_t STATE_MAGIC = 0x53505247;  // "SPRG": marca la versione del blob
+
+// Namespace e magic restano quelli di prima nonostante il cambio di nome del
+// progetto: sono chiavi dentro la NVS, non testo che qualcuno legga. Ribattezzarli
+// renderebbe irraggiungibile quello che c'e' gia' scritto sulle schede in giro —
+// parametri, pattern e credenziali WiFi — che ripartirebbero dai valori di
+// fabbrica al primo avvio dopo l'aggiornamento.
 const char *NAMESPACE = "sprig";
 const char *KEY_STATE = "state";
 const char *KEY_PATTERN = "patt";
