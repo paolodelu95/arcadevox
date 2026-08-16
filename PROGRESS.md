@@ -233,3 +233,59 @@ dopo una battuta di preconteggio.
 - Nessuna matrice MAX7219, nessun joystick analogico: fuori specifica.
 - **La polifonia invece è entrata** (vedi M2b), a costo dell'ottavo tasto nota: il DO acuto
   non ha più un pulsante suo e si raggiunge con il joystick dell'ottava. Scala DO–SI.
+
+---
+
+# 2.0.0 — la scheda nuova (agosto 2026)
+
+Il pannello riciclato dal controller per Euro Truck Simulator è andato in pensione: al suo
+posto c'è un PCB disegnato apposta, e il firmware è cambiato dappertutto. Il cablaggio
+completo, ricavato dallo schematico e dalla netlist EasyEDA, sta in
+[`docs/HARDWARE.md`](docs/HARDWARE.md).
+
+## Cosa cambia nell'hardware
+
+| | 1.x | 2.0 |
+|---|---|---|
+| MCU | DevKitC-1 **N16R8** (PSRAM ottale) | DevKitC-1 **N8**, niente PSRAM |
+| Tasti | 8 arcade su 8 GPIO | 20 Cherry MX su matrice 4×5 via MCP23017 |
+| Note | 7 (DO–SI) | **13**, un'ottava cromatica intera |
+| Funzioni | 5 pulsanti/leve sparsi | **7 tasti funzione** in fila, doppia funzione ciascuno |
+| Encoder | 2, senza pulsante cablato | **4**, pulsanti compresi |
+| Luci | solo il WS2812 di bordo | **20 SK6812**, uno per tasto |
+| Display/joystick | sul pannello | su connettore, montati a destra |
+
+Il `platformio.ini` è stato rifatto per la N8: con `memory_type = qio_opi` e le partizioni da
+16 MB la scheda non si avvia proprio.
+
+## Cosa cambia nel firmware
+
+- **`input_handler`** riscritto: scansione della matrice sull'MCP23017 (colonne in uscita,
+  righe in ingresso — il verso lo impongono i diodi, vedi HARDWARE.md), quattro encoder in
+  quadratura su interrupt, quattro pulsanti d'albero, joystick sui GPIO.
+- **`keylight`** (nuovo): driver RMT per la catena di 20 SK6812, colori per famiglia di
+  tasto, e la procedura di apprendimento dell'ordine della catena — che lo schematico non
+  dice, quindi la scheda se lo impara.
+- **`audio_engine`**: filtro one-pole → **variabili di stato a due poli con risonanza**;
+  aggiunti **8 BIT** (decimazione + quantizzazione sul segnale finale), eco, drive,
+  sub-oscillatore, detune, portamento, LFO con tre bersagli, due forme d'onda nuove (pulse e
+  noise), 16 voci con tetto a 10 simultanee.
+- **`settings`**: scale musicali e tonica, luminosità delle luci, apprendimento della catena,
+  e la voce che prova le sei permutazioni dei fili audio a caldo.
+- **`display`**: schermata FX nuova, risonanza nella schermata LEVELS con la curva del filtro
+  che mostra la gobba, menu a finestra scorrevole (dieci voci su un vetro tondo), schermata
+  di apprendimento delle luci, messaggi in sovrimpressione.
+
+## Le due incognite dello schematico, e come sono state chiuse
+
+1. **I tre fili dell'audio non hanno un nome.** Il connettore porta 3V3, GND e tre segnali
+   numerati: quale sia BCLK, LRC e DIN lo decide il cavo. Invece di indovinare, il firmware
+   parte dall'ordine più probabile e mette le altre cinque permutazioni in una voce di menu
+   che agisce a caldo.
+2. **L'ordine della catena di LED è noto solo in testa.** Il primo LED è quello del DO;
+   il resto passa da etichette di rete e non è ricostruibile. Da qui la procedura di
+   apprendimento: venti pressioni, una volta sola, e la mappa finisce in NVS.
+
+Una terza cosa è emersa e va segnalata al progettista, non risolta nel firmware: su **ENC4**
+le resistenze R8/R9 sono in serie sulle linee A/B invece che verso i 3,3 V. Funziona lo
+stesso grazie al pull-up interno, ma con meno margine di rumore degli altri tre encoder.

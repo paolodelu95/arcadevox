@@ -1,79 +1,118 @@
 # ArcadeVox
 
-Sintetizzatore DIY su **ESP32-S3**, mono o polifonico, costruito attorno a un pannello di comandi
-arcade riciclato da un vecchio controller per Euro Truck Simulator.
+Sintetizzatore DIY su **ESP32-S3**, mono o polifonico, su PCB dedicato: 20 tasti Cherry MX
+hot-swap illuminati, 4 encoder, joystick e display tondo.
 
 <img src="docs/arcadevox_boot.gif" width="240" align="right" alt="Schermata di avvio">
 
-![Layout del pannello](docs/pannello.svg)
+> **Versione 2.0** — scheda nuova. Il pannello riciclato da un controller per Euro Truck
+> Simulator ha lasciato il posto a un PCB disegnato apposta: la tastiera è passata da 7
+> pulsanti arcade a **13 tasti cromatici** più **7 tasti funzione**, gli encoder da 2 a 4,
+> e ogni tasto ha il suo LED RGB. Il firmware di conseguenza è cambiato dappertutto: vedi
+> [`docs/HARDWARE.md`](docs/HARDWARE.md) per il cablaggio completo.
+
+![Blueprint del pannello](docs/pannello.svg)
 
 ## Cos'è
 
 Un synth hardware completo che gira su due core: il motore audio ha il core 0 tutto per sé,
-mentre input, sequencer e display stanno sul core 1. Monofonico o polifonico a scelta, con
-un inviluppo vero e un filtro che si apre.
+mentre input, sequencer, luci e display stanno sul core 1. Monofonico o polifonico a scelta,
+con un inviluppo vero e un filtro risonante.
 
-- **Oscillatore** a phase-accumulator, 4 forme d'onda: sine, square, saw, triangle
-- **Filtro** passa-basso one-pole IIR, cutoff 80 Hz – 8 kHz con mappatura esponenziale
-- **Inviluppo ADSR** reale, con state machine, tutto regolabile dal pannello
+- **Oscillatore** a phase-accumulator, 6 forme d'onda: sine, square, saw, triangle, pulse, noise
+- **Filtro risonante** a variabili di stato (2 poli): cutoff 80 Hz – 7,2 kHz e **risonanza**
+  fino a un soffio dall'autoscillazione, una manopola per ciascuno
+- **8 BIT** su un tasto: bitcrusher più decimazione, quattro gradini da 12 a 4 bit
+- **Eco, drive, sub-oscillatore, detune, portamento e LFO** (vibrato / filtro / tremolo)
+- **Inviluppo ADSR** reale, un encoder per parametro
 - **Uscita I2S** 44.1 kHz / 16 bit verso un MAX98357
-- **MONO / POLIFONICO** commutabile dal pannello: 8 voci, ognuna con fase, inviluppo e
-  filtro suoi
-- **7 tasti nota** (DO–SI) con last-note-priority e memoria dell'ordine di pressione
-- **Arpeggiator** sulle note tenute, in ordine di pressione, passo 150 ms
+- **MONO / POLIFONICO** commutabile: 16 voci, ognuna con fase, inviluppo e filtro suoi
+- **13 tasti nota** — un'ottava cromatica intera — con last-note-priority e memoria
+  dell'ordine di pressione
+- **Scale e tonica**: cromatica, maggiore, minore, pentatonica, blues, dorica, araba
+- **Modalità accordo**: un tasto, una triade (quinta, maggiore, minore, sospeso, ottava)
+- **Arpeggiator** in cinque modi (su, giù, su/giù, casuale, ordine di pressione), a tempo
+  con il sequencer
 - **Step-sequencer** a 16 step con scrittura passo-passo, record quantizzato in overdub,
   preconteggio e metronomo
-- **Display GC9A01** tondo con 7 schermate cicliche — fra cui VU meter ad ago,
-  oscilloscopio dell'uscita e un menu impostazioni per categorie — più quelle di
-  edit ADSR e preconteggio
-- **Sensibilità degli encoder regolabile** dal pannello, in giri di manopola
-- **Memoria**: pattern e parametri sopravvivono allo spegnimento
+- **20 LED RGB sotto i tasti**: la tastiera si disegna da sola, le funzioni attive si
+  accendono, l'ordine della catena la scheda **se lo impara** da sola
+- **Display GC9A01** tondo con 8 schermate cicliche — fra cui effetti, VU meter ad ago,
+  oscilloscopio e un menu impostazioni per categorie
+- **Memoria**: pattern, parametri e mappa dei LED sopravvivono allo spegnimento
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
-- **LED RGB** di bordo con tre giochi di luce in loop
 
 ## Hardware
 
 | Parte | Modello |
 |---|---|
-| MCU | ESP32-S3-WROOM-1 **N16R8** (16 MB flash, 8 MB PSRAM ottale) |
+| MCU | ESP32-S3-DevKitC-1 **N8** (8 MB flash, niente PSRAM) |
+| Tastiera | 20 Cherry MX hot-swap con SK6812 integrato, matrice 4×5 con diodo per tasto |
+| Espansore | MCP23017 su I2C: 4 colonne + 5 righe + i 4 pulsanti degli encoder |
+| Encoder | 4 × EC11 con pulsante d'albero |
 | Audio | MAX98357 (DAC I2S + amplificatore) su altoparlante 4–8 Ω |
-| Display | GC9A01, TFT tondo 240x240, SPI |
-| Pannello | 8 pulsanti arcade Ø22 (7 note + selettore MONO/POLI), joystick a 4 microswitch, 2 encoder, 3 bilancieri, 3 leve |
+| Display | GC9A01, TFT tondo 240×240, SPI |
+| Joystick | 4 microswitch digitali |
 
-Tutti i contatti sono a 2 terminali verso GND e usano i pull-up interni: nessuna resistenza
-esterna. I comandi sono tutti momentanei — ogni stato ON/OFF vive nel firmware.
+Il dettaglio dei connettori, dei diodi e delle scelte di scansione sta in
+[`docs/HARDWARE.md`](docs/HARDWARE.md), ricavato dallo schematico e dalla netlist del
+progetto EasyEDA.
 
 ## Pinout
 
 | GPIO | Funzione | GPIO | Funzione |
 |---|---|---|---|
-| 6–12 | Note DO … SI | 38 / 39 / 40 | I2S BCLK / LRCLK / DIN |
-| 13 | Selettore MONO / POLIFONICO | 42 / 47 | SPI SCLK / MOSI |
-| 14–17 | Joystick su / giù / sx / dx | 3 / 45 / 46 | Display CS / DC / RST |
-| 18 | Scorri schermate · NETWORK (>1 s) | 48 | LED RGB di bordo |
-| 21 / 1 | REC · STEP EDIT (>600 ms) / PLAY-STOP · svuota pattern (>800 ms) | | |
-| 2 | HOLD (breve) · ADSR edit (>600 ms) | 4 / 5 | Encoder 1 (A/B) |
-| 41 / 0 | Leva arpeggiator / preset BPM | 43 / 44 | Encoder 2 (A/B) |
+| 4 / 5 | I2C SDA / SCL verso l'MCP23017 | 13 / 14 | Display SCLK / MOSI |
+| 6 / 7 | Encoder 1 A / B | 15 / 16 / 17 | Display RST / DC / CS |
+| 8 / 9 | Encoder 2 A / B | 18 / 21 / 1 | I tre segnali I2S (vedi sotto) |
+| 10 / 11 | Encoder 3 A / B | 12 | Dato della catena di LED |
+| 40 / 39 | Encoder 4 A / B | 2 / 41 / 42 / 47 | Joystick su / giù / sx / dx |
+| — | I 20 tasti passano dall'espansore | 48 | LED RGB di bordo |
 
-Due trappole di questa scheda, entrambe già risolte nel codice:
+**I tre fili dell'audio non hanno un nome sullo schematico.** Il connettore porta 3V3, GND e
+tre segnali numerati: quale sia il BCLK, quale l'LRCLK e quale il DIN lo decide il cavo. Il
+firmware parte con l'ordine serigrafato sui moduli MAX98357 (LRC, BCK, DIN) e, se non è
+quello, la voce **AUDIO → USCITA** del menu prova le altre cinque combinazioni a caldo,
+senza ricompilare niente.
 
-- **GPIO 48 è il LED RGB saldato sulla DevKitC-1.** Usarlo per altro lo lascia acceso bianco
-  fisso: per questo il CS del display sta sul GPIO 3.
-- **GPIO 43/44 sono la UART0.** Occupandoli con l'encoder 2, flash e monitor vanno fatti
-  dalla porta **USB** della scheda, non dalla porta **UART**.
-- **GPIO 35/36/37 sono esposti sul connettore ma inutilizzabili**: sono le linee della PSRAM
-  ottale interna al modulo.
+## I comandi
+
+**13 tasti nota** in basso e al centro, disposti come un pezzo di pianoforte: i tasti neri
+nella fila di mezzo, i bianchi in quella sotto. **7 tasti funzione** nella fila in alto: ognuno
+fa una cosa premuto e un'altra tenuto premuto.
+
+| Tasto | Pressione breve | Tenuto premuto |
+|---|---|---|
+| **FN1** | arpeggiator on/off | cambia modo (su, giù, su/giù, casuale, ordine) |
+| **FN2** | **8 BIT** on/off | cambia profondità: 12, 8, 6, 4 bit |
+| **FN3** | REC | STEP EDIT |
+| **FN4** | play / stop | svuota il pattern |
+| **FN5** | HOLD | ADSR edit |
+| **FN6** | mono / polifonico | modalità accordo |
+| **FN7** | schermata successiva | menu impostazioni |
+
+I quattro encoder cambiano mestiere secondo dove ti trovi:
+
+| | uso normale | ADSR edit | menu impostazioni | step edit |
+|---|---|---|---|---|
+| **ENC 1** | cutoff | attack | scorre le voci | scorre il cursore |
+| **ENC 2** | **risonanza** | decay | cambia il valore | — |
+| **ENC 3** | volume | sustain | — | — |
+| **ENC 4** | parametro a scelta | release | — | BPM |
+
+Il **click dell'albero** dei primi tre inserisce il passo fine; quello del quarto sceglie cosa
+comanda l'encoder 4 fra BPM, eco (mix e tempo), velocità e profondità dell'LFO, drive, sub,
+detune e glide. Il joystick fa ottava (su/giù) e forma d'onda (sinistra/destra).
 
 ## Mono e polifonico
 
-L'ultimo pulsante blu di destra (GPIO 13), che prima suonava il DO acuto, **commuta fra
-monofonico e polifonico**. La scala sulla tastiera arriva quindi al SI: il DO superiore si
-raggiunge con il joystick dell'ottava.
-
-Il motore ha **8 voci**, ognuna con fase, inviluppo e filtro propri — una nota nuova non
-eredita lo stato di quella precedente. Gli identificativi sono esattamente quanti servono
-(7 tasti + 1 per il sequencer), quindi ogni voce è dedicata: niente allocazione dinamica,
-niente *voice stealing*, comportamento sempre prevedibile.
+**FN6** commuta fra monofonico e polifonico. Il motore ha **16 voci**, ognuna con fase,
+inviluppo e filtro propri — una nota nuova non eredita lo stato di quella precedente. Gli
+identificativi sono esattamente quanti servono (13 tasti, 1 per il sequencer, 2 per le note
+aggiunte dagli accordi), quindi ogni voce è dedicata: niente allocazione dinamica, niente
+*voice stealing*, comportamento sempre prevedibile. Se ne suonassero comunque più di dieci
+insieme, il motore lascia fuori dal giro quelle più spente — code di rilascio — invece di
+mancare un blocco e far sentire un buco.
 
 | | MONO | POLIFONICO |
 |---|---|---|
@@ -93,7 +132,7 @@ anche mentre il loop gira.
 
 ### STEP EDIT — scrivere con calma
 
-Tieni premuto **REC** per mezzo secondo. Compare un cursore bianco sulla griglia: da lì in
+Tieni premuto **FN3** per mezzo secondo. Compare un cursore bianco sulla griglia: da lì in
 poi non c'è nessuna fretta, il tempo non scorre.
 
 | Comando | Cosa fa |
@@ -102,12 +141,12 @@ poi non c'è nessuna fretta, il tempo non scorre.
 | joystick ↑ ↓ | ottava dello step che stai per scrivere |
 | joystick ← → | sposta il cursore |
 | encoder 1 | scorre il cursore velocemente |
-| encoder 2 | BPM continuo, 40–240 |
-| HOLD (breve) | svuota lo step e avanza |
-| leva ARP | scrive un **legato**: la nota precedente prosegue senza ripartire |
-| PLAY (breve) | avvia o ferma il loop — puoi continuare a scrivere mentre suona |
-| PLAY (lungo) | **svuota tutti i 16 step**: non si torna indietro |
-| REC (lungo) | esce |
+| encoder 4 | BPM continuo, 40–240 |
+| FN5 (breve) | svuota lo step e avanza |
+| FN1 (breve) | scrive un **legato**: la nota precedente prosegue senza ripartire |
+| FN4 (breve) | avvia o ferma il loop — puoi continuare a scrivere mentre suona |
+| FN4 (lungo) | **svuota tutti i 16 step**: non si torna indietro |
+| FN3 (lungo) | esce |
 
 Il tasto che scrive e fa avanzare il cursore è il *step input* di MPC e Roland MC: si digita
 una melodia premendo un tasto dopo l'altro, come si scrive su una tastiera.
@@ -129,17 +168,46 @@ l'ottava, i legati una barretta. La cornice verde è la testina, quella bianca i
 
 ## ADSR edit
 
-Long-press di **HOLD** (>600 ms). I quattro parametri hanno quattro comandi diretti, senza
-modalità da ricordare:
+Long-press di **FN5** (>600 ms). Con quattro encoder la faccenda delle modalità da ricordare
+finisce: **un parametro per manopola**, nello stesso ordine in cui sono scritti sullo schermo.
 
-| Parametro | Comando | Perché lì |
-|---|---|---|
-| **A**ttack | encoder 1 | mappatura esponenziale, vuole una corsa continua |
-| **R**elease | encoder 2 | idem |
-| **D**ecay | joystick ↑ ↓ | passo fisso da 10 ms, l'auto-repeat basta |
-| **S**ustain | joystick ← → | passo fisso del 5% |
+| Parametro | Comando |
+|---|---|
+| **A**ttack | encoder 1 |
+| **D**ecay | encoder 2 |
+| **S**ustain | encoder 3 |
+| **R**elease | encoder 4 |
 
-La legenda è scritta in fondo alla schermata: `A R = ENCODER   D S = JOY`.
+Al joystick, che qui resterebbe senza lavoro, va il bersaglio dell'LFO: sinistra e destra
+scorrono fra spento, vibrato, filtro e tremolo. La legenda è scritta in fondo alla schermata:
+`1=A  2=D  3=S  4=R`.
+
+## 8 BIT
+
+**FN2** e tutto quello che esce diventa a 8 bit. L'effetto agisce sul segnale finale — non su
+una voce sola — e fa due cose insieme, che è quello che serve perché suoni davvero come un
+chip e non come un file rovinato:
+
+1. **decimazione**: il campione viene tenuto fermo per N giri, il che porta l'alias in banda
+   ed è ciò che mette quel velo metallico;
+2. **quantizzazione**: i livelli si riducono a 2ⁿ, e sulle code di rilascio si sente il
+   gradino.
+
+Tenendo premuto **FN2** si scorrono i quattro gradini: `12 BIT` (appena sporco), `8 BIT`
+(quello classico), `6 BIT`, `4 BIT` (console tascabile). Cambiare gradino accende anche
+l'effetto: nessuno gira quella manopola per sentire il silenzio.
+
+## Luci sotto i tasti
+
+Ogni tasto ha un SK6812 dentro, tutti in catena su un filo solo. Le note disegnano la
+tastiera (bianchi e neri hanno tinte diverse) e si accendono quando suonano; la sequenza si
+distingue perché è verde; i tasti funzione stanno sempre accesi appena appena, e si
+illuminano quando la loro funzione è inserita.
+
+**L'ordine della catena non è deducibile dallo schematico** oltre al primo LED, quindi la
+scheda non lo indovina: **SETTINGS → LUCI → IMPARA LUCI** accende un LED alla volta e aspetta
+che tu prema il tasto che si è illuminato. Venti pressioni, e la mappa finisce in NVS per
+sempre. La luminosità si regola nella voce sopra, da spenta a otto.
 
 ## Sensibilità degli encoder
 
@@ -147,22 +215,31 @@ Gli encoder sono incrementali, e quanto muove uno scatto era cablato nel codice:
 col volume a 1/50 di corsa per scatto servivano **due giri e mezzo** di manopola
 per andare da zero a fondo scala. Ora si regola dalla schermata **SETTINGS**.
 
-| Voce | Cosa muove | Default |
-|---|---|---|
-| VOLUME | encoder 2 in uso normale | 2.4 giri per l'intera corsa |
-| CUTOFF | encoder 1 in uso normale | 3.2 giri da 80 Hz a 8 kHz |
-| ADSR | attack e release in ADSR edit | 2.4 giri |
-| PASSO FINE | divisore col click dell'encoder | 1/4 |
+| Categoria | Voce | Cosa fa | Default |
+|---|---|---|---|
+| ENCODER | VOLUME | sensibilità dell'encoder 3 | 2.4 giri per l'intera corsa |
+| | CUTOFF | sensibilità degli encoder 1 e 2 | 3.2 giri da 80 Hz a 7,2 kHz |
+| | ADSR | sensibilità in ADSR edit e sull'encoder 4 | 2.4 giri |
+| | PASSO FINE | divisore col click dell'encoder | 1/4 |
+| TASTIERA | SCALA | cromatica, maggiore, minore, pentatonica, blues, dorica, araba | cromatica |
+| | TONICA | da quale nota parte la scala | DO |
+| LUCI | LUMINOSITÀ | da spente a 8 | 5 |
+| | IMPARA LUCI | insegna alla scheda l'ordine della catena | — |
+| AUDIO | USCITA | quale filo è BCK, LRC e DIN | LRC BCK DIN |
+| RETE | MODALITÀ WIFI | accende la radio e mostra il QR | — |
 
-Per modificarle **tieni premuto il pulsante *scorri display*** dalla schermata SETTINGS:
-si entra nel menu. Da dentro, una **pressione breve** dello stesso pulsante scende di una voce
-— e sull'ultima, *modalità WiFi*, la esegue mostrando il QR — mentre una **lunga** esce. L'encoder 2 cambia il valore della voce scelta (l'encoder 1 la scorre, se
-preferisci): lì i due encoder non fanno cutoff e volume, che restano fermi finché non esci. I valori sono scritti in giri di manopola perché è la grandezza
-che senti sotto le dita, non frazioni di corsa.
+Per modificarle **tieni premuto FN7** dalla schermata SETTINGS: si entra nel menu. Da dentro,
+una **pressione breve** dello stesso tasto scende di una voce — e sulle voci d'azione la
+esegue — mentre una **lunga** esce. L'encoder 2 cambia il valore della voce scelta, l'encoder
+1 la scorre: lì gli encoder non fanno cutoff e volume, che restano fermi finché non esci. I
+valori sono scritti in giri di manopola perché è la grandezza che senti sotto le dita, non
+frazioni di corsa.
 
-I default riproducono il comportamento precedente: aggiornando non trovi le
-manopole cambiate sotto le dita finché non decidi tu. Il *passo fine* resterà
-inattivo finché i click degli encoder non saranno cablati (vedi `pinout.h`).
+Le voci sono dieci e il vetro è tondo: se ne vedono cinque per volta, e la finestra segue il
+cursore. Due frecce ai lati dicono che sopra o sotto c'è dell'altro.
+
+Il *passo fine* adesso è raggiungibile davvero: sulla scheda nuova i pulsanti degli alberi
+sono cablati, e i primi tre encoder lo commutano col click.
 
 ## Aggiornare il firmware via WiFi
 
@@ -228,28 +305,26 @@ compatibile con quel core.
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Manuale.html`](docs/ArcadeVox_Manuale.html) | Manuale completo A4: blueprint, funzioni, collegamenti, guida all'uso |
-| [`docs/ArcadeVox_Libretto_A5.html`](docs/ArcadeVox_Libretto_A5.html) | Lo stesso manuale imposto per stampare un libretto A5 |
+| [`docs/ArcadeVox_Libretto.html`](docs/ArcadeVox_Libretto.html) | **Libretto 2.0**: blueprint, connettori pin per pin, montaggio, uso |
+| [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |
+| [`docs/pannello.svg`](docs/pannello.svg) | Blueprint del pannello, da solo |
 | [`PROGRESS.md`](PROGRESS.md) | Stato dei milestone e differenze rispetto al brief iniziale |
-| [`CLAUDE_2.md`](CLAUDE_2.md) | Il brief di progetto originale |
+| [`CLAUDE_2.md`](CLAUDE_2.md) | Il brief di progetto originale (scheda 1.x) |
 
-Gli HTML sono la sorgente: i PDF si generano stampandoli da browser.
-
-> **I tre `docs/SprigSynth_*.pdf` sono scaduti.** Vengono da prima dell'ultima revisione
-> degli HTML e da prima del cambio di nome, quindi dentro riportano ancora *SprigSynth*.
-> Vanno rigenerati dal browser e rinominati; finché non succede, fa fede l'HTML.
+Il libretto è un HTML: si stampa da browser, e il formato lo scegli tu.
 
 ## Struttura
 
 ```
 src/
   main.cpp            setup(), loop(), logica di priorità delle note
-  pinout.h            tutti i GPIO, centralizzati
+  pinout.h            tutta la scheda: matrice, encoder, connettori, LED
   version.h           versione del firmware e URL del manifest
-  audio_engine.*      pool di 8 voci, filtro, ADSR, metronomo, task I2S sul core 0
-  input_handler.*     debounce, last-note-priority, encoder, coda degli attacchi
+  audio_engine.*      16 voci, filtro risonante, ADSR, 8 BIT, eco, LFO, task I2S sul core 0
+  input_handler.*     matrice su MCP23017, 4 encoder, joystick, debounce
+  keylight.*          catena di 20 SK6812: driver RMT, colori, apprendimento della mappa
   sequencer.*         16 step, step edit, record quantizzato, preconteggio
-  display.*           GC9A01, 7 schermate cicliche + menu impostazioni, ADSR, QR
+  display.*           GC9A01, 8 schermate cicliche + menu, ADSR, effetti, QR
   logo.h              wordmark della schermata di avvio (generato, non editare)
   storage.*           persistenza NVS con scrittura ritardata
   net_portal.*        access point, captive portal, OTA

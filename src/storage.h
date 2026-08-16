@@ -42,6 +42,36 @@ struct SynthState {
     // mantiene. Zero significa "blob scritto prima della 1.12.0", quando la
     // scala scendeva dai giri alti ai bassi.
     uint8_t scaleRev;
+
+    // --- 2.0.0: scheda nuova (13 note, 4 encoder, luci, effetti) ---
+    // Tutto quello che segue e' in coda apposta: un blob della 1.x e' piu'
+    // corto, si rilegge lo stesso e questi campi restano a zero, che i
+    // chiamanti riportano ai valori di fabbrica. Chi aggiorna il firmware
+    // ritrova onda, ottava, cutoff, volume e ADSR come li aveva lasciati.
+    float resonance;
+    float drive;
+    float subLevel;
+    float detuneCents;
+    float glideMs;
+
+    float delayMs;
+    float delayFb;
+    float delayMix;
+
+    float lfoRate;
+    float lfoDepth;
+    uint8_t lfoTarget;
+
+    uint8_t crushOn;      // 8 BIT inserito all'ultimo spegnimento
+    uint8_t crushPreset;  // quale profondita' di crush
+    uint8_t arpMode;
+    uint8_t chordMode;
+    uint8_t enc4Assign;   // cosa comanda il quarto encoder
+
+    uint8_t setScale;  // indici delle voci nuove del menu impostazioni
+    uint8_t setRoot;
+    uint8_t setLed;
+    uint8_t setAudio;
 };
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.
@@ -58,6 +88,12 @@ void markDirty();
 // allora il chiamante si prende la briga di fotografare lo stato.
 bool savePending(uint32_t now);
 void flush(const SynthState &s);  // scrittura immediata
+
+// --- ordine della catena di LED sotto i tasti ---
+// Venti byte: per ogni tasto, la sua posizione nella catena. Lo schematico non
+// lo dice, lo impara la scheda (vedi keylight.h) e da li' in poi resta scritto.
+void saveLedMap(const uint8_t *map, size_t len);
+bool loadLedMap(uint8_t *map, size_t len);
 
 // --- credenziali della rete di casa (modalita' NETWORK) ---
 void saveWifi(const char *ssid, const char *pass);

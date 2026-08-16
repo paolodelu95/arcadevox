@@ -1,86 +1,165 @@
-// pinout.h — mappatura GPIO definitiva di ArcadeVox (ESP32-S3 N16R8)
+// pinout.h — mappatura definitiva della scheda ArcadeVox rev. 2026-08-17.
 //
-// Tutti gli ingressi digitali (note, joystick, pulsanti, leve) usano il pull-up
-// interno: i contatti sono a 2 terminali verso GND, nessuna resistenza esterna.
-// Premuto = LOW.
+// Questa e' la scheda vera, non piu' il pannello riciclato: ESP32-S3-DevKitC-1
+// **N8** (8 MB di flash, niente PSRAM) montato su un PCB con 20 tasti Cherry MX
+// hot-swap illuminati, 4 encoder, joystick a 4 microswitch, display tondo e
+// uscita audio I2S su connettore.
+//
+// Tutti i valori qui sotto sono ricavati dallo schematico e dalla netlist del
+// progetto EasyEDA: dove lo schematico non dice abbastanza (l'ordine dei tre
+// segnali audio) il commento lo segnala apertamente invece di far finta di
+// niente.
 #pragma once
 
-// ------------------------------------------------------------ encoder rotativi
-// Due encoder incrementali con detent (tipo EC11), letti in quadratura A/B con
-// interrupt. Contatti verso GND (comune a massa), pull-up interno.
-// Se un encoder risulta invertito, basta scambiare A e B qui sotto.
-#define PIN_ENC1_A 4   // cutoff (normale) / attack (ADSR edit mode)
-#define PIN_ENC1_B 5
-#define PIN_ENC2_A 43  // volume (normale) / release (ADSR edit mode)
-#define PIN_ENC2_B 44
-
-// Click (pulsante dell'albero): NON collegati su questo pannello.
-// La funzione "passo fine / passo grosso" e' gia' implementata: per abilitarla
-// basta assegnare qui un GPIO libero (19 o 20) e cablare il pulsante a GND.
-#define PIN_ENC1_SW -1
-#define PIN_ENC2_SW -1
-
-// ATTENZIONE — GPIO 43/44 sono i pin di UART0:
-//  - la seriale di debug passa dall'USB nativo (USB CDC), non dalla UART;
-//  - flash e monitor vanno fatti dalla porta "USB" della DevKitC-1, non da "UART";
-//  - al boot la ROM stampa il suo log su GPIO 43 pilotandolo come uscita: se il
-//    contatto dell'encoder e' chiuso proprio in quell'istante c'e' un breve
-//    conflitto (innocuo, ma se preferisci evitarlo sposta ENC2 su 19/20 e riporta
-//    la seriale su UART0 mettendo ARDUINO_USB_CDC_ON_BOOT=0).
-
-// ------------------------------------------------------------------ note DO..SI
-// Ordine fisico sul pannello tenuto in orizzontale (joystick in basso al centro),
-// letto da sinistra a destra: blu, giallo, verde+rosso impilati, verde+rosso
-// impilati, giallo, blu. Nelle coppie impilate il verde sta sopra.
-// La scala sale quindi da sinistra verso destra, come su una tastiera.
+// ============================================================================
+// Tasti: matrice 4 colonne x 5 righe sull'espansore I2C
+// ============================================================================
 //
-// L'ottavo pulsante (blu di destra, GPIO 13) non e' piu' una nota: e' passato
-// al selettore MONO/POLI, vedi sotto. La scala arriva quindi al SI, e il DO
-// superiore si raggiunge con il joystick dell'ottava.
-#define PIN_NOTE_DO   6
-#define PIN_NOTE_RE   7
-#define PIN_NOTE_MI   8
-#define PIN_NOTE_FA   9
-#define PIN_NOTE_SOL  10
-#define PIN_NOTE_LA   11
-#define PIN_NOTE_SI   12
+// I 20 tasti non sono cablati uno per GPIO: passano da un MCP23017 (U1) letto in
+// I2C. Ogni tasto ha il suo diodo 1N4148, quindi il ghosting non esiste e si
+// possono premere tutti i tasti che si vuole insieme.
+//
+// Verso dei diodi (dallo schematico): il catodo sta dal lato del tasto, l'anodo
+// dal lato della riga. La corrente puo' quindi scorrere solo RIGA -> TASTO ->
+// COLONNA, e la scansione e' obbligata:
+//
+//   colonne = uscite, una alla volta a livello basso;
+//   righe   = ingressi con pull-up; tasto premuto = riga bassa.
+//
+// Invertire i ruoli non leggerebbe *niente*: i diodi bloccherebbero.
+#define MCP_ADDR 0x20  // A0/A1/A2 a massa
 
-#define NOTE_COUNT 7
+// Porta B: 4 colonne in uscita + i 4 pulsanti degli encoder in ingresso.
+#define MCP_COL0_BIT 0  // GPB0
+#define MCP_COL1_BIT 1  // GPB1
+#define MCP_COL2_BIT 2  // GPB2
+#define MCP_COL3_BIT 3  // GPB3
+#define MCP_ENC1_SW_BIT 4  // GPB4
+#define MCP_ENC2_SW_BIT 5  // GPB5
+#define MCP_ENC3_SW_BIT 6  // GPB6
+#define MCP_ENC4_SW_BIT 7  // GPB7
 
-// -------------------------------------------------------------------- joystick
-// 4 microswitch digitali indipendenti (nessuna lettura analogica).
-#define PIN_JOY_UP    14  // ottava +1   / decay +    (edit mode)
-#define PIN_JOY_DOWN  15  // ottava -1   / decay -    (edit mode)
-#define PIN_JOY_LEFT  16  // onda prec.  / sustain -  (edit mode)
-#define PIN_JOY_RIGHT 17  // onda succ.  / sustain +  (edit mode)
+// Porta A: 5 righe in ingresso (GPA0..GPA4). GPA5..GPA7 non sono cablate.
+#define MATRIX_COLS 4
+#define MATRIX_ROWS 5
 
-// ------------------------------------------------------------ pulsanti funzione
-#define PIN_BTN_DISPLAY 18  // scorre le schermate del display
-#define PIN_BTN_POLY    13  // ex nota DO': commuta MONO / POLIFONICO
-#define PIN_BTN_REC     21  // sequencer: REC
-#define PIN_BTN_PLAY    1   // sequencer: PLAY/STOP
-#define PIN_BTN_HOLD    2   // press breve = HOLD, long-press >600ms = ADSR EDIT MODE
-#define PIN_LEVER_ARP   41  // leva: arpeggiator ON/OFF
-#define PIN_LEVER_BPM   0   // leva: ciclo preset BPM  (STRAPPING PIN: non tenere
-                            // premuto all'accensione o la board entra in download mode)
+// ------------------------------------------------------------------ posizioni
+// Indice di un tasto nella matrice = riga * MATRIX_COLS + colonna.
+// Corrispondenza presa dallo schematico (riga per riga, da sinistra a destra):
+//
+//   ROW0 : DO    DO#   RE    RE#
+//   ROW1 : MI    FA    FA#   SOL
+//   ROW2 : SOL#  LA    LA#   SI
+//   ROW3 : DO'   FN1   FN2   FN3
+//   ROW4 : FN4   FN5   FN6   FN7
+//
+// Sul pannello i tasti sono disposti come un pezzo di pianoforte: i tasti neri
+// (le alterazioni) stanno nella fila di mezzo, i bianchi in basso, le sette
+// funzioni in alto.
+#define KEY_AT(row, col) ((row) * MATRIX_COLS + (col))
 
-// ------------------------------------------------------------- audio I2S (MAX98357)
-#define PIN_I2S_BCLK  38
-#define PIN_I2S_LRCLK 39
-#define PIN_I2S_DOUT  40
+// Le 13 note vanno da DO a DO' incluso: un'ottava cromatica completa.
+#define NOTE_COUNT 13
+// Le 7 funzioni.
+#define FN_COUNT 7
 
-// --------------------------------------------------------------- display GC9A01 (SPI)
-#define PIN_TFT_SCLK 42
-#define PIN_TFT_MOSI 47
-#define PIN_TFT_CS   3   // NON usare il 48: e' il LED RGB di bordo (vedi sotto)
-#define PIN_TFT_DC   45  // strapping pin, ma qui e' un'uscita: nessun problema al boot
-#define PIN_TFT_RST  46  // idem
+// Indice di matrice di ogni nota, in ordine di scala cromatica.
+#define MATRIX_NOTE_SLOTS \
+    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }
+// Indice di matrice di FN1..FN7.
+#define MATRIX_FN_SLOTS \
+    { 13, 14, 15, 16, 17, 18, 19 }
 
-// ------------------------------------------------------------ LED RGB di bordo
-// Sulla ESP32-S3-DevKitC-1 il GPIO 48 e' cablato al WS2812 saldato sulla scheda
-// (PIN_NEOPIXEL nel variant Arduino). Usandolo per altro, il LED riceve dati
-// casuali e resta acceso fisso: per questo il CS del display sta sul GPIO 3.
+// ============================================================================
+// Encoder rotativi (4) — direttamente sui GPIO
+// ============================================================================
+//
+// Contatti A/B verso il comune C a massa. ENC1..ENC3 hanno il pull-up esterno da
+// 10k (R2..R7); ENC4 no: sullo schematico R8/R9 sono finite *in serie* sulle sue
+// linee invece che verso i 3,3 V. Funziona lo stesso — il pull-up interno da
+// ~45k vince sui 10k in serie e il livello basso resta valido — ma ha meno
+// margine di rumore degli altri tre. Se un giorno ENC4 dovesse fare scatti
+// fantasma, e' li' che si guarda, non nel firmware.
+//
+// Il pull-up interno resta acceso su tutti e quattro: dove c'e' gia' quello
+// esterno non fa danno, dove manca fa il lavoro.
+#define PIN_ENC1_A 6
+#define PIN_ENC1_B 7
+#define PIN_ENC2_A 8
+#define PIN_ENC2_B 9
+#define PIN_ENC3_A 10
+#define PIN_ENC3_B 11
+#define PIN_ENC4_A 40
+#define PIN_ENC4_B 39
+
+// I pulsanti degli alberi non sono sui GPIO: passano dall'espansore, vedi
+// MCP_ENC*_SW_BIT qui sopra. Finalmente ci sono davvero, e il "passo fine" non
+// e' piu' una funzione scritta e mai raggiungibile.
+
+// ============================================================================
+// Joystick a 4 microswitch
+// ============================================================================
+// Connettore J_JOY: 4 direzioni verso GND, pull-up interno. Premuto = LOW.
+#define PIN_JOY_UP 2
+#define PIN_JOY_DOWN 41
+#define PIN_JOY_LEFT 42
+#define PIN_JOY_RIGHT 47
+
+// ============================================================================
+// I2C verso l'espansore MCP23017
+// ============================================================================
+#define PIN_I2C_SDA 4
+#define PIN_I2C_SCL 5
+// 400 kHz: una scansione completa della matrice sono 5 righe x 2 transazioni,
+// circa 300 us. A 100 kHz sarebbe piu' di un millisecondo per giro di loop.
+#define I2C_FREQ_HZ 400000
+
+// ============================================================================
+// LED RGB sotto i tasti (SK6812 dentro ogni Cherry MX hot-swap)
+// ============================================================================
+// Catena unica di 20 LED alimentata dai 5 V del connettore J_PWR; il dato passa
+// da GPIO12 attraverso R1 (330 ohm).
+#define PIN_KEYLED_DATA 12
+#define KEYLED_COUNT 20
+
+// ============================================================================
+// Display GC9A01 (SPI) — connettore J_DISPLAY a 7 poli
+// ============================================================================
+// Ordine dei poli sul connettore: 1=3V3  2=GND  3..7 = i cinque segnali, nello
+// stesso ordine in cui stanno stampati sui moduli GC9A01 in commercio
+// (SCL, SDA, RES, DC, CS). Il BLK del modulo va ai 3,3 V: la retroilluminazione
+// e' sempre accesa e non occupa un filo.
+#define PIN_TFT_SCLK 13  // J_DISPLAY.3
+#define PIN_TFT_MOSI 14  // J_DISPLAY.4
+#define PIN_TFT_RST 15   // J_DISPLAY.5
+#define PIN_TFT_DC 16    // J_DISPLAY.6
+#define PIN_TFT_CS 17    // J_DISPLAY.7
+
+// ============================================================================
+// Audio I2S (MAX98357) — connettore J_AUDIO a 5 poli
+// ============================================================================
+// 1=3V3  2=GND  3=GPIO18  4=GPIO21  5=GPIO1.
+//
+// ATTENZIONE — lo schematico numera i tre segnali e basta: quale sia il BCLK,
+// quale il LRCLK e quale il DIN lo decide il filo che si infila nel connettore,
+// e li' nessun disegno puo' aiutare. Qui sotto c'e' l'ordine piu' probabile
+// (quello serigrafato sui moduli MAX98357: LRC, BCLK, DIN); se il synth dovesse
+// restare muto o suonare a una velocita' sbagliata non serve ricompilare: la
+// voce "USCITA AUDIO" nel menu impostazioni prova le altre combinazioni a caldo
+// e salva quella giusta.
+#define PIN_AUDIO_A 18  // J_AUDIO.3
+#define PIN_AUDIO_B 21  // J_AUDIO.4
+#define PIN_AUDIO_C 1   // J_AUDIO.5
+
+// ============================================================================
+// LED RGB di bordo della DevKitC-1
+// ============================================================================
+// Sulla ESP32-S3-DevKitC-1 il WS2812 di bordo sta sul GPIO 48, qui libero.
 #define PIN_RGB_LED 48
 
-// GPIO 19, 20: unici pin ancora liberi, ma sono le linee dell'USB nativo usate
-// per la seriale di debug: si liberano solo rinunciando all'USB CDC.
+// ============================================================================
+// GPIO ancora liberi
+// ============================================================================
+// 3, 46 (non cablati sul PCB), 19/20 (USB nativo: si liberano solo rinunciando
+// alla seriale via USB CDC), 35/36/37/38 (usati dalla flash/PSRAM su alcune
+// varianti del modulo: non toccarli), 0/45 (strapping).

@@ -35,6 +35,7 @@ Arduino_GFX *gfx = nullptr;
 uint8_t screen = 0;
 bool inAdsrScreen = false;
 bool inSeqOverride = false;  // STEP EDIT o preconteggio: la SEQ scavalca il ciclo
+bool inLedLearn = false;     // apprendimento dell'ordine dei LED sotto i tasti
 bool forceFull = true;
 
 SynthView prev;
@@ -333,7 +334,10 @@ void drawOctaveScreen(const SynthView &v, bool full) {
 // Risposta del passa-basso one-pole disegnata in piccolo: |H| = 1/sqrt(1+(f/fc)^2)
 // su asse logaritmico 80 Hz..8 kHz, lo stesso della barra qui sopra. Serve a
 // vedere *dove* taglia, non solo a che numero e' arrivata la manopola.
-void drawFilterCurve(int x, int y, int w, int h, float cutoffHz) {
+// Risposta del filtro a due poli, quello vero del motore: con la risonanza a
+// zero e' la solita discesa dolce, alzandola compare la gobba sul taglio. E'
+// l'unico modo di far capire cosa fa la seconda manopola senza suonare.
+void drawFilterCurve(int x, int y, int w, int h, float cutoffHz, float resonance) {
     gfx->fillRect(x, y, w, h, BLACK);
     gfx->drawFastHLine(x, y + h - 1, w, HUD_TRACK);
 
@@ -343,12 +347,21 @@ void drawFilterCurve(int x, int y, int w, int h, float cutoffHz) {
         for (int yy = y; yy < y + h; yy += 3) gfx->drawPixel(cx, yy, dim565(HUD_MAGENTA, 1, 2));
     }
 
+    // Stesso smorzamento usato dal motore audio: 2 senza risonanza, verso zero
+    // quando il filtro sta per mettersi a fischiare.
+    const float damp = 2.0f - 1.94f * resonance;
+
     int prevY = y;
     for (int i = 0; i < w; ++i) {
         const float f = 80.0f * expf(decades * (float)i / (float)(w - 1));
         const float r = f / cutoffHz;
-        const float mag = 1.0f / sqrtf(1.0f + r * r);
+        const float den = (1.0f - r * r);
+        float mag = 1.0f / sqrtf(den * den + (damp * r) * (damp * r));
+        // Il picco puo' andare a venti volte: si comprime, altrimenti la gobba
+        // esce dal riquadro e con lei il resto della curva.
+        mag = mag / (1.0f + mag * 0.35f);
         int yy = y + h - 1 - (int)(mag * (float)(h - 2));
+        if (yy < y) yy = y;
         if (i == 0) prevY = yy;
         const int top = (yy < prevY) ? yy : prevY;
         const int hh = ((yy < prevY) ? (prevY - yy) : (yy - prevY)) + 1;
@@ -361,9 +374,10 @@ void drawLevelsScreen(const SynthView &v, bool full) {
     constexpr int BX = 44, BW = 152;
     if (full) {
         chrome("LEVELS", HUD_AMBER);
-        textAt("CUTOFF", BX, 58, 1, HUD_LABEL);
-        textAt("VOLUME", BX, 124, 1, HUD_LABEL);
-        textCentered("ENC 1 CUTOFF   ENC 2 VOLUME", 164, 1, HUD_LABEL);
+        textAt("CUTOFF", BX, 54, 1, HUD_LABEL);
+        textAt("RISONANZA", BX, 100, 1, HUD_LABEL);
+        textAt("VOLUME", BX, 146, 1, HUD_LABEL);
+        textCentered("1 CUT  2 RIS  3 VOL", 196, 1, HUD_LABEL);
     }
 
     // cutoff: mappatura log 80..8000 Hz per una barra percettivamente lineare
@@ -371,26 +385,134 @@ void drawLevelsScreen(const SynthView &v, bool full) {
     if (full || fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d Hz", (int)v.cutoffHz);
-        gfx->fillRect(BX + 60, 54, BW - 60, 16, BLACK);
-        textRight(buf, BX + BW, 54, 2, HUD_ICE);
-        hudBar(BX, 74, BW, 22, cf, HUD_NEON, HUD_MAGENTA);
-        drawFilterCurve(BX, 174, BW, 30, v.cutoffHz);
+        gfx->fillRect(BX + 66, 50, BW - 66, 16, BLACK);
+        textRight(buf, BX + BW, 50, 2, HUD_ICE);
+        hudBar(BX, 68, BW, 20, cf, HUD_NEON, HUD_MAGENTA);
+    }
+
+    // La risonanza cambia la forma della curva, non solo un numero: la si
+    // ridisegna insieme alla barra, perche' e' li' che si capisce cosa fa.
+    if (full || fabsf(v.resonance - prev.resonance) > 0.005f ||
+        fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d %%", (int)(v.resonance * 100.0f + 0.5f));
+        gfx->fillRect(BX + 66, 96, BW - 66, 16, BLACK);
+        textRight(buf, BX + BW, 96, 2, v.resonance > 0.85f ? HUD_RED : HUD_ICE);
+        hudBar(BX, 114, BW, 20, v.resonance, HUD_AMBER, HUD_RED);
+        drawFilterCurve(BX, 172, BW, 26, v.cutoffHz, v.resonance);
     }
 
     if (full || fabsf(v.volume - prev.volume) > 0.01f) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d %%", (int)(v.volume * 100.0f + 0.5f));
-        gfx->fillRect(BX + 60, 120, BW - 60, 16, BLACK);
-        textRight(buf, BX + BW, 120, 2, HUD_ICE);
-        hudBar(BX, 140, BW, 22, v.volume, HUD_LIME, HUD_RED);
+        gfx->fillRect(BX + 66, 142, BW - 66, 16, BLACK);
+        textRight(buf, BX + BW, 142, 2, HUD_ICE);
+        hudBar(BX, 160, BW, 10, v.volume, HUD_LIME, HUD_RED);
+    }
+}
+
+// --------------------------------------------------------- schermata EFFETTI
+//
+// Sette parametri che prima non esistevano, tutti sul quarto encoder: la
+// schermata serve soprattutto a ricordare quale sta comandando adesso, ed e'
+// per questo che la riga selezionata e' l'unica scritta in chiaro.
+void drawFxRow(int y, const char *label, float frac, const char *value, bool selected,
+               uint16_t lo, uint16_t hi) {
+    gfx->fillRect(38, y - 1, 164, 19, BLACK);
+    if (selected) gfx->fillRect(34, y, 3, 16, HUD_MAGENTA);
+    textAt(label, 42, y + 1, 1, selected ? HUD_ICE : HUD_LABEL);
+    hudBar(100, y + 1, 58, 8, frac, lo, hi);
+    textRight(value, 200, y + 1, 1, selected ? HUD_AMBER : HUD_LABEL);
+}
+
+void drawFxScreen(const SynthView &v, bool full) {
+    if (full) chrome("FX", HUD_MAGENTA);
+
+    // Il riquadro dell'8 BIT sta in cima e cambia colore: e' l'effetto che si
+    // accende e si spegne con un tasto, e deve vedersi da lontano.
+    if (full || v.crush != prev.crush || v.crushName != prev.crushName) {
+        gfx->fillRect(40, 44, 160, 24, BLACK);
+        hudChipCentered(46, v.crush ? v.crushName : "8 BIT OFF",
+                        v.crush ? rgb565(255, 120, 0) : HUD_TRACK, 2);
+    }
+
+    // Riga i-esima -> valore di Enc4Target che la evidenzia. La riga dell'LFO ne
+    // ha due (velocita' e profondita'), perche' e' l'unica con due manopole che
+    // guardano la stessa barra.
+    struct FxRow {
+        int y;
+        const char *label;
+        uint8_t e4a;
+        uint8_t e4b;
+        uint16_t lo;
+        uint16_t hi;
+    };
+    static const FxRow ROWS[7] = {
+        {74, "ECO", 1, 1, HUD_NEON, HUD_MAGENTA},
+        {92, "TEMPO", 2, 2, HUD_NEON, HUD_MAGENTA},
+        {110, "LFO", 3, 4, HUD_LIME, HUD_AMBER},
+        {128, "DRIVE", 5, 5, HUD_AMBER, HUD_RED},
+        {146, "SUB", 6, 6, HUD_NEON, HUD_LIME},
+        {164, "DETUNE", 7, 7, HUD_NEON, HUD_LIME},
+        {182, "GLIDE", 8, 8, HUD_NEON, HUD_LIME},
+    };
+
+    const float frac[7] = {
+        v.delayMix, (v.delayMs - 20.0f) / 375.0f, v.lfoDepth, v.drive,
+        v.subLevel, v.detuneCents / 50.0f,        v.glideMs / 500.0f,
+    };
+    const float fracPrev[7] = {
+        prev.delayMix, (prev.delayMs - 20.0f) / 375.0f, prev.lfoDepth, prev.drive,
+        prev.subLevel, prev.detuneCents / 50.0f,        prev.glideMs / 500.0f,
+    };
+
+    char buf[16];
+    for (int i = 0; i < 7; ++i) {
+        const bool sel = (v.enc4Index == ROWS[i].e4a) || (v.enc4Index == ROWS[i].e4b);
+        const bool wasSel = (prev.enc4Index == ROWS[i].e4a) || (prev.enc4Index == ROWS[i].e4b);
+        if (!full && sel == wasSel && fabsf(frac[i] - fracPrev[i]) < 0.005f &&
+            !(i == 2 && v.lfoTargetName != prev.lfoTargetName)) {
+            continue;
+        }
+        switch (i) {
+            case 0:
+            case 3:
+            case 4:
+                snprintf(buf, sizeof(buf), "%d%%", (int)(frac[i] * 100.0f + 0.5f));
+                break;
+            case 1:
+                snprintf(buf, sizeof(buf), "%dms", (int)v.delayMs);
+                break;
+            case 2:
+                snprintf(buf, sizeof(buf), "%s", v.lfoTargetName ? v.lfoTargetName : "");
+                break;
+            case 5:
+                snprintf(buf, sizeof(buf), "%dc", (int)v.detuneCents);
+                break;
+            default:
+                if (v.glideMs <= 0.0f) {
+                    snprintf(buf, sizeof(buf), "OFF");
+                } else {
+                    snprintf(buf, sizeof(buf), "%dms", (int)v.glideMs);
+                }
+                break;
+        }
+        drawFxRow(ROWS[i].y, ROWS[i].label, frac[i], buf, sel, ROWS[i].lo, ROWS[i].hi);
     }
 }
 
 // Iniziali usate dentro le celle: una lettera sola deve bastare, e in notazione
 // italiana SOL e SI collidono. La riga di dettaglio sotto la griglia scrive
 // comunque il nome per esteso, come sul pannello.
-const char NOTE_LETTERS[NOTE_COUNT] = {'C', 'D', 'E', 'F', 'G', 'A', 'B'};
-const char *const NOTE_NAMES_IT[NOTE_COUNT] = {"DO", "RE", "MI", "FA", "SOL", "LA", "SI"};
+// Con tredici tasti le alterazioni entrano in scena: nella cella ci sta una
+// lettera sola, quindi i tasti neri prendono la minuscola della nota che
+// alterano (c = DO#, d = RE#...). Si distingue a colpo d'occhio senza aggiungere
+// un secondo carattere che non ci starebbe.
+const char NOTE_LETTERS[NOTE_COUNT] = {'C', 'c', 'D', 'd', 'E', 'F', 'f',
+                                       'G', 'g', 'A', 'a', 'B', 'C'};
+const char *const NOTE_NAMES_IT[NOTE_COUNT] = {"DO",  "DO#", "RE",  "RE#", "MI",
+                                               "FA",  "FA#", "SOL", "SOL#", "LA",
+                                               "LA#", "SI",  "DO'"};
 
 // Le note non sono piu' una potenza di due: l'indice va controllato, non mascherato.
 inline bool validNote(int8_t n) { return n >= 0 && n < NOTE_COUNT; }
@@ -649,13 +771,11 @@ void drawAdsrScreen(const SynthView &v, bool full) {
         full || fabsf(v.releaseMs - prev.releaseMs) > 0.5f,
     };
 
-    // Ogni parametro ha il suo comando, senza modalita' da ricordare: A e R sui
-    // due encoder, D e S sul joystick. Finora pero' non c'era scritto da nessuna
-    // parte, e girando le manopole sembrava che meta' dei parametri non si
-    // potesse toccare. La legenda in fondo lo dice.
+    // Con quattro encoder la storia delle modalita' da ricordare finisce qui:
+    // un parametro per manopola, nello stesso ordine in cui sono scritti.
     if (full) {
         clearBand(196, 10);
-        textCentered("A R = ENCODER  D S = JOY", 196, 1, HUD_LABEL);
+        textCentered("1=A  2=D  3=S  4=R", 196, 1, HUD_LABEL);
     }
 
     // Righe strette abbastanza da restare dentro l'area circolare anche in basso.
@@ -692,14 +812,32 @@ void drawAdsrScreen(const SynthView &v, bool full) {
 // normalmente scorre le schermate qui scorre le voci, e tenendolo premuto si
 // esce. Le voci sono raggruppate per categoria perche' la rete e la sensibilita'
 // degli encoder non hanno niente a che vedere fra loro.
-constexpr int SET_TOP = 56;
+constexpr int SET_TOP = 50;
 constexpr int SET_HEADER_H = 15;
 constexpr int SET_ROW_H = 22;
+// Le voci sono dieci e il vetro e' tondo: cinque per volta sono quante ne
+// stanno senza che la prima e l'ultima finiscano sotto la ghiera. La finestra
+// segue il cursore invece di paginare, cosi' scorrendo non si perde il contesto.
+constexpr int SET_VISIBLE = 5;
 
-// Quota della riga i-esima, tenendo conto delle intestazioni che la precedono.
+int settingsFirst = 0;
+int settingsFirstDrawn = -1;
+
+// Prima voce della finestra, calcolata perche' il cursore ci stia dentro.
+int settingsWindowStart(int cursor) {
+    int first = settingsFirst;
+    if (cursor < first) first = cursor;
+    if (cursor > first + SET_VISIBLE - 1) first = cursor - SET_VISIBLE + 1;
+    if (first > SETTING_COUNT - SET_VISIBLE) first = SETTING_COUNT - SET_VISIBLE;
+    if (first < 0) first = 0;
+    return first;
+}
+
+// Quota della riga i-esima *dentro la finestra corrente*, contando le
+// intestazioni di categoria che la precedono.
 int settingsRowY(int which) {
     int y = SET_TOP;
-    for (int i = 0; i <= which; ++i) {
+    for (int i = settingsFirst; i <= which; ++i) {
         if (Settings::ENTRIES[i].category) y += SET_HEADER_H;
         if (i < which) y += SET_ROW_H;
     }
@@ -709,19 +847,27 @@ int settingsRowY(int which) {
 void drawSettingsScreen(const SynthView &v, bool full) {
     const bool editing = v.setEditing;
 
-    if (full || editing != prev.setEditing) {
+    settingsFirst = settingsWindowStart(editing ? v.setCursor : 0);
+    const int last = settingsFirst + SET_VISIBLE - 1;
+
+    if (full || editing != prev.setEditing || settingsFirst != settingsFirstDrawn) {
         chrome("SETTINGS", HUD_NEON);
-        for (int i = 0; i < SETTING_COUNT; ++i) {
+        for (int i = settingsFirst; i <= last; ++i) {
             if (!Settings::ENTRIES[i].category) continue;
             const int hy = settingsRowY(i) - SET_HEADER_H;
             textAt(Settings::ENTRIES[i].category, 30, hy + 2, 1, HUD_LABEL);
             const int lx = 30 + 6 * (int)strlen(Settings::ENTRIES[i].category) + 6;
             gfx->drawFastHLine(lx, hy + 6, 200 - lx, dim565(HUD_NEON, 1, 4));
         }
+        // Due frecce ai lati dicono che sopra o sotto c'e' dell'altro: senza,
+        // una finestra su dieci voci sembra il menu intero.
+        if (settingsFirst > 0) gfx->fillTriangle(212, 60, 206, 68, 218, 68, HUD_LABEL);
+        if (last < SETTING_COUNT - 1) gfx->fillTriangle(212, 186, 206, 178, 218, 178, HUD_LABEL);
+        settingsFirstDrawn = settingsFirst;
         full = true;
     }
 
-    for (int i = 0; i < SETTING_COUNT; ++i) {
+    for (int i = settingsFirst; i <= last; ++i) {
         const bool sel = editing && (i == v.setCursor);
         const bool wasSel = prev.setEditing && (i == prev.setCursor);
         if (!full && v.setIndex[i] == prev.setIndex[i] && sel == wasSel) continue;
@@ -759,7 +905,7 @@ void drawSettingsScreen(const SynthView &v, bool full) {
     if (!editing) {
         hint = "TIENI PREMUTO: MODIFICA";
     } else if (Settings::isAction(v.setCursor)) {
-        hint = "PREMI: QR   TIENI: ESCI";
+        hint = "PREMI: ESEGUI  ENC1: SU";
     } else {
         hint = "PREMI: GIU'  TIENI: ESCI";
     }
@@ -1333,6 +1479,41 @@ void splash() {
     delay(PACE_HOLD_MS);
 }
 
+// ------------------------------------------- apprendimento dei LED dei tasti
+//
+// Venti tasti, venti LED, e nessun documento che dica in che ordine sono
+// collegati fra loro: la scheda accende un LED e chiede di premere il tasto che
+// si e' illuminato. Venti pressioni e la mappa e' fatta per sempre.
+void drawLedLearnScreen(const SynthView &v, bool full) {
+    if (full) {
+        chrome("LUCI", HUD_LIME);
+        textCentered("PREMI IL TASTO", 74, 2, HUD_ICE);
+        textCentered("CHE SI E' ACCESO", 96, 2, HUD_ICE);
+        textCentered("FN7 A LUNGO: ANNULLA", 194, 1, HUD_LABEL);
+    }
+
+    if (full || v.ledLearnIndex != prev.ledLearnIndex) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d / %d", v.ledLearnIndex + 1, KEYLED_COUNT);
+        gfx->fillRect(50, 126, 140, 24, BLACK);
+        textCentered(buf, 126, 3, HUD_AMBER);
+        hudBar(50, 158, 140, 12, (float)v.ledLearnIndex / (float)KEYLED_COUNT, HUD_LIME,
+               HUD_NEON);
+    }
+}
+
+// --------------------------------------------------------------- messaggini
+// Una fascia in basso con dentro il nome di quello che e' appena cambiato.
+// Sta sopra qualunque schermata: quando premi un tasto vuoi sapere cosa hai
+// fatto, non cercare la pagina che te lo dice.
+void drawToast(const char *text) {
+    const int w = hudChipWidth(text, 2);
+    const int x = CX - w / 2;
+    gfx->fillRect(x - 3, 174, w + 6, 24, BLACK);
+    gfx->drawRect(x - 3, 174, w + 6, 24, dim565(HUD_MAGENTA, 1, 2));
+    hudChip(x, 177, text, HUD_MAGENTA, 2);
+}
+
 }  // namespace
 
 namespace Display {
@@ -1359,6 +1540,20 @@ uint8_t currentScreen() { return screen; }
 void update(const SynthView &v) {
     if (!gfx) return;
 
+    // L'apprendimento delle luci si prende lo schermo intero: mentre e' in corso
+    // la tastiera non suona, quindi non c'e' niente altro da guardare.
+    if (v.ledLearn != inLedLearn) {
+        inLedLearn = v.ledLearn;
+        forceFull = true;
+    }
+    if (inLedLearn) {
+        drawLedLearnScreen(v, forceFull || !prevValid);
+        forceFull = false;
+        prev = v;
+        prevValid = true;
+        return;
+    }
+
     // Le due modalita' di edit scavalcano il ciclo delle schermate: mentre sono
     // attive si guarda per forza quella che serve, e all'uscita si torna
     // esattamente dov'eravamo.
@@ -1384,14 +1579,24 @@ void update(const SynthView &v) {
         drawSeqScreen(v, full);
     } else {
         switch (screen) {
-            case 0: drawWaveScreen(v, full); break;
-            case 1: drawOctaveScreen(v, full); break;
-            case 2: drawLevelsScreen(v, full); break;
-            case 3: drawSeqScreen(v, full); break;
+            case SCREEN_OSC: drawWaveScreen(v, full); break;
+            case SCREEN_OCTAVE: drawOctaveScreen(v, full); break;
+            case SCREEN_LEVELS: drawLevelsScreen(v, full); break;
+            case SCREEN_FX: drawFxScreen(v, full); break;
+            case SCREEN_SEQ: drawSeqScreen(v, full); break;
             case SCREEN_VU: drawVuScreen(v, full); break;
             case SCREEN_SCOPE: drawScopeScreen(v, full); break;
             default: drawSettingsScreen(v, full); break;
         }
+    }
+
+    // Il messaggio in sovrimpressione sta sopra a tutto e non chiede il permesso
+    // a nessuna schermata: quando sparisce, quella sotto si ridisegna intera,
+    // che e' l'unico modo per non lasciare un buco nero dove stava la scritta.
+    if (v.toast) {
+        drawToast(v.toast);
+    } else if (prev.toast) {
+        forceFull = true;
     }
 
     prev = v;

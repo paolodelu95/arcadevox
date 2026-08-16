@@ -1,26 +1,28 @@
-// settings.h — sensibilita' degli encoder, condivisa fra logica e display.
+// settings.h — il menu delle impostazioni, condiviso fra logica e display.
 //
-// Gli encoder sono incrementali: quanto muove uno scatto e' una scelta di gusto,
-// e finora era cablata nel codice. Con il volume a 1/50 di corsa per scatto
-// servivano due giri e mezzo di manopola per andare da zero a fondo, che al banco
-// e' un'eternita'.
-//
-// Le voci non salvano il passo ma l'**indice** nella scala: cosi' una release
-// futura puo' ritoccare i valori senza che le schede gia' in giro si ritrovino
-// con una sensibilita' assurda.
+// Le voci non salvano il valore ma l'**indice** nella loro scala: cosi' una
+// release futura puo' ritoccare i numeri senza che le schede gia' in giro si
+// ritrovino con una sensibilita' o una luminosita' assurda.
 #pragma once
 
 #include <Arduino.h>
 
+// --- sensibilita' degli encoder ---
 #define SETTING_VOL 0
 #define SETTING_CUTOFF 1
 #define SETTING_ADSR 2
 #define SETTING_FINE 3
-#define SETTING_NET 4    // voce d'azione: non ha un valore, accende la radio
-#define SETTING_COUNT 5
-
-// Solo le prime quattro finiscono in NVS: l'ultima e' un comando, non uno stato.
-#define SETTING_STORED 4
+// --- impostazioni musicali ---
+#define SETTING_SCALE 4
+#define SETTING_ROOT 5
+// --- luci sotto i tasti ---
+#define SETTING_LED 6
+#define SETTING_LEDLEARN 7  // azione: impara l'ordine della catena
+// --- uscita audio ---
+#define SETTING_AUDIO 8
+// --- rete ---
+#define SETTING_NET 9  // azione: accende la radio
+#define SETTING_COUNT 10
 
 namespace Settings {
 
@@ -28,9 +30,9 @@ struct Entry {
     // Intestazione di categoria, oppure nullptr per proseguire quella di sopra.
     const char *category;
     const char *label;
-    uint8_t count;                  // quanti valori ha, 0 se e' un'azione
-    uint8_t byDefault;              // indice di partenza
-    const char *const *valueLabels; // testo mostrato per ogni valore
+    uint8_t count;                   // quanti valori ha, 0 se e' un'azione
+    uint8_t byDefault;               // indice di partenza
+    const char *const *valueLabels;  // testo mostrato per ogni valore
 };
 
 extern const Entry ENTRIES[SETTING_COUNT];
@@ -50,5 +52,17 @@ float step(uint8_t which, uint8_t index);
 
 // Divisore del passo fine (col click dell'encoder): 2, 4, 8 o 16.
 float fineDivider(uint8_t index);
+
+// --- scale ---
+// Semitono suonato dall'`degree`-esimo tasto (0..NOTE_COUNT-1) della scala
+// `scaleIdx`, senza contare la tonica. Sulla scala cromatica e' l'identita';
+// sulle altre i 13 tasti coprono quasi due ottave, perche' i gradi sono meno di
+// dodici e la tastiera si allunga da sola.
+int scaleSemitone(uint8_t scaleIdx, int degree);
+// True se quel tasto e' una tonica (la nota che da' il nome alla scala): serve
+// al display e alle luci per far vedere dove ricomincia l'ottava.
+bool scaleIsRoot(uint8_t scaleIdx, int degree);
+// Nome italiano della tonica scelta ("DO", "DO#", ...).
+const char *rootName(uint8_t rootIdx);
 
 }  // namespace Settings

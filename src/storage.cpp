@@ -22,6 +22,7 @@ const char *KEY_PATTERN = "patt";
 const char *KEY_SSID = "ssid";
 const char *KEY_PASS = "pass";
 const char *KEY_MANIFEST = "manifest";
+const char *KEY_LEDMAP = "ledmap";
 
 Preferences prefs;
 bool ready = false;
@@ -61,8 +62,16 @@ bool load(SynthState &s) {
     // giri piu' bassi. Si rilegge, il campo nuovo resta a zero, e chi lo usa sa
     // che quegli indici vanno rovesciati prima di crederci.
     constexpr size_t PRE_SCALE_BYTES = offsetof(SynthState, scaleRev);
+    // La 2.0.0 e' il salto piu' grosso: scheda nuova, tredici note, quattro
+    // encoder, luci ed effetti. Tutto il resto della struttura e' cresciuto in
+    // coda, quindi un blob della 1.x si rilegge per intero e si perde solo
+    // quello che nella 1.x non esisteva.
+    constexpr size_t PRE_V2_BYTES = offsetof(SynthState, resonance);
     const size_t stored = prefs.getBytesLength(KEY_STATE);
-    if (stored != sizeof(tmp) && stored != PRE_SCALE_BYTES && stored != LEGACY_BYTES) return false;
+    if (stored != sizeof(tmp) && stored != PRE_V2_BYTES && stored != PRE_SCALE_BYTES &&
+        stored != LEGACY_BYTES) {
+        return false;
+    }
     if (prefs.getBytes(KEY_STATE, &tmp, stored) != stored) return false;
     if (tmp.magic != STATE_MAGIC) return false;  // formato vecchio: si riparte dai default
 
@@ -115,6 +124,16 @@ void clearWifi() {
     if (!ready) return;
     prefs.remove(KEY_SSID);
     prefs.remove(KEY_PASS);
+}
+
+void saveLedMap(const uint8_t *map, size_t len) {
+    if (ready && map && len) prefs.putBytes(KEY_LEDMAP, map, len);
+}
+
+bool loadLedMap(uint8_t *map, size_t len) {
+    if (!ready || !map || !len) return false;
+    if (prefs.getBytesLength(KEY_LEDMAP) != len) return false;
+    return prefs.getBytes(KEY_LEDMAP, map, len) == len;
 }
 
 void saveManifestUrl(const char *url) {

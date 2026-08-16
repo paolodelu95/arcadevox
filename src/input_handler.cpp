@@ -1,58 +1,192 @@
-// input_handler.cpp — debounce, last-note-priority, press order, encoder in quadratura.
+// input_handler.cpp — matrice su MCP23017, 4 encoder in quadratura, joystick.
 //
-// Tutti i contatti sono verso GND con pull-up interno: premuto = LOW.
+// Tre sorgenti diverse che arrivano tutte allo stesso debounce:
+//
+//   matrice 4x5  -> MCP23017 via I2C   (20 tasti: 13 note + 7 funzioni)
+//   encoder A/B  -> GPIO con interrupt (nessuno scatto perso durante il redraw)
+//   click e joy  -> MCP e GPIO         (contatti verso GND, pull-up)
+//
+// Il bus I2C lo tocca solo questo file, e solo dal core 1: nessun lock serve.
 
 #include "input_handler.h"
 
+#include <Wire.h>
+
 namespace {
 
-// ------------------------------------------------------------------- debounce
+// ============================================================================
+// MCP23017
+// ============================================================================
+// Registri con IOCON.BANK = 0 (default all'accensione).
+constexpr uint8_t REG_IODIRA = 0x00;
+constexpr uint8_t REG_IODIRB = 0x01;
+constexpr uint8_t REG_GPPUA = 0x0C;
+constexpr uint8_t REG_GPPUB = 0x0D;
+constexpr uint8_t REG_GPIOA = 0x12;
+constexpr uint8_t REG_GPIOB = 0x13;
+constexpr uint8_t REG_OLATB = 0x15;
+
+// Maschera delle colonne (GPB0..GPB3) e dei click encoder (GPB4..GPB7).
+constexpr uint8_t COL_MASK = 0x0F;
+constexpr uint8_t ENCSW_MASK = 0xF0;
+
+bool mcpAlive = false;
+uint32_t mcpErrors = 0;
+
+bool mcpWrite(uint8_t reg, uint8_t value) {
+    Wire.beginTransmission(MCP_ADDR);
+    Wire.write(reg);
+    Wire.write(value);
+    if (Wire.endTransmission() == 0) return true;
+    ++mcpErrors;
+    return false;
+}
+
+bool mcpRead(uint8_t reg, uint8_t &value) {
+    Wire.beginTransmission(MCP_ADDR);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0) {
+        ++mcpErrors;
+        return false;
+    }
+    if (Wire.requestFrom((uint8_t)MCP_ADDR, (uint8_t)1) != 1) {
+        ++mcpErrors;
+        return false;
+    }
+    value = (uint8_t)Wire.read();
+    return true;
+}
+
+// Configurazione: porta A tutta in ingresso con pull-up (le 5 righe), porta B
+// con le 4 colonne in uscita e i 4 click in ingresso con pull-up.
+bool mcpConfigure() {
+    bool ok = true;
+    ok &= mcpWrite(REG_IODIRA, 0xFF);
+    ok &= mcpWrite(REG_GPPUA, 0xFF);
+    ok &= mcpWrite(REG_IODIRB, ENCSW_MASK);  // 0xF0: 0..3 uscite, 4..7 ingressi
+    ok &= mcpWrite(REG_GPPUB, ENCSW_MASK);
+    ok &= mcpWrite(REG_OLATB, COL_MASK);     // colonne a riposo alte
+    return ok;
+}
+
+// Stato grezzo della matrice: bit a 1 = tasto premuto.
+uint32_t matrixRaw = 0;
+uint8_t encSwRaw = 0xF0;  // bit alti = non premuti
+
+// Scansione completa: una colonna alla volta a livello basso, poi si legge la
+// porta delle righe. Costo circa 300 us a 400 kHz.
+//
+// Una volta al millisecondo basta e avanza: il debounce e' di 12 ms, e il loop
+// gira molto piu' spesso di cosi'. Scandire ad ogni giro terrebbe il bus I2C
+// occupato per un terzo del tempo senza leggere un tasto in piu'.
+constexpr uint32_t SCAN_INTERVAL_MS = 1;
+uint32_t lastScan = 0;
+
+void matrixScan() {
+    const uint32_t now = millis();
+    if (lastScan != 0 && (now - lastScan) < SCAN_INTERVAL_MS) return;
+    lastScan = now;
+
+    uint32_t bits = 0;
+    bool ok = true;
+    for (int c = 0; c < MATRIX_COLS; ++c) {
+        // Solo la colonna `c` bassa. I bit alti sono ingressi: scriverli non fa
+        // nulla, ma li lascio a 1 per non spegnere i pull-up per sbaglio.
+        const uint8_t olat = (uint8_t)((COL_MASK & ~(1u << c)) | ENCSW_MASK);
+        if (!mcpWrite(REG_OLATB, olat)) {
+            ok = false;
+            break;
+        }
+        uint8_t rows;
+        if (!mcpRead(REG_GPIOA, rows)) {
+            ok = false;
+            break;
+        }
+        for (int r = 0; r < MATRIX_ROWS; ++r) {
+            if ((rows & (1u << r)) == 0) bits |= 1u << KEY_AT(r, c);
+        }
+    }
+    // I click degli encoder non dipendono dalla colonna attiva: una lettura per
+    // giro basta e avanza.
+    uint8_t portb;
+    if (mcpRead(REG_GPIOB, portb)) {
+        encSwRaw = (uint8_t)(portb & ENCSW_MASK);
+    } else {
+        ok = false;
+    }
+    mcpWrite(REG_OLATB, COL_MASK | ENCSW_MASK);  // riposo
+
+    if (ok) {
+        matrixRaw = bits;
+        mcpAlive = true;
+    } else {
+        // Bus caduto: si tiene l'ultimo stato buono e si riconfigura, cosi' un
+        // disturbo passeggero non lascia una nota appesa per sempre.
+        mcpAlive = false;
+        matrixRaw = 0;
+        encSwRaw = ENCSW_MASK;
+        Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
+        mcpConfigure();
+    }
+}
+
+// ============================================================================
+// Debounce comune
+// ============================================================================
 struct Button {
-    int8_t pin;  // -1 = non cablato
     bool state;  // true = premuto (gia' debounced)
     bool rawLast;
     uint32_t lastChange;
-    bool edgeDown;  // fronte premuto, consumato dal chiamante
+    bool edgeDown;
     bool edgeUp;
     uint32_t pressedAt;
 };
 
-// Indici nell'array `buttons`.
+// Sorgenti: 20 tasti di matrice, 4 direzioni di joystick, 4 click di encoder.
 enum {
-    B_NOTE0 = 0,  // NOTE_COUNT note consecutive: DO..SI
-    B_JOY_UP = NOTE_COUNT,
+    B_MATRIX0 = 0,
+    B_JOY_UP = MATRIX_COLS * MATRIX_ROWS,
     B_JOY_DOWN,
     B_JOY_LEFT,
     B_JOY_RIGHT,
-    B_DISPLAY,
-    B_REC,
-    B_PLAY,
-    B_HOLD,
-    B_ARP,
-    B_BPM,
-    B_POLY,
-    B_ENC1_SW,
-    B_ENC2_SW,
-    B_COUNT
+    B_ENC_SW0,
+    B_COUNT = B_ENC_SW0 + 4
 };
 
 Button buttons[B_COUNT];
 
-const int8_t BUTTON_PINS[B_COUNT] = {
-    PIN_NOTE_DO,  PIN_NOTE_RE,  PIN_NOTE_MI,   PIN_NOTE_FA,
-    PIN_NOTE_SOL, PIN_NOTE_LA,  PIN_NOTE_SI,
-    PIN_JOY_UP,   PIN_JOY_DOWN, PIN_JOY_LEFT,  PIN_JOY_RIGHT,
-    PIN_BTN_DISPLAY, PIN_BTN_REC, PIN_BTN_PLAY, PIN_BTN_HOLD,
-    PIN_LEVER_ARP, PIN_LEVER_BPM, PIN_BTN_POLY,
-    PIN_ENC1_SW,  PIN_ENC2_SW,
-};
+const uint8_t JOY_PINS[4] = {PIN_JOY_UP, PIN_JOY_DOWN, PIN_JOY_LEFT, PIN_JOY_RIGHT};
 
-// ---------------------------------------------------------- encoder (quadratura)
+void feed(Button &b, bool raw, uint32_t now) {
+    if (raw != b.rawLast) {
+        b.rawLast = raw;
+        b.lastChange = now;
+    }
+    if (raw != b.state && (now - b.lastChange) >= DEBOUNCE_MS) {
+        b.state = raw;
+        if (raw) {
+            b.edgeDown = true;
+            b.pressedAt = now;
+        } else {
+            b.edgeUp = true;
+        }
+    }
+}
+
+bool consume(bool &flag) {
+    bool v = flag;
+    flag = false;
+    return v;
+}
+
+// ============================================================================
+// Encoder in quadratura
+// ============================================================================
 //
-// Macchina a stati "full step" di Ben Buxton: emette un solo evento per detent e
-// ignora i rimbalzi dei contatti, che con gli encoder meccanici sono la norma.
-// Ogni transizione su A o B genera un interrupt, cosi' nessuno scatto va perso
-// nemmeno mentre il loop e' occupato a ridisegnare il display.
+// Macchina a stati "full step" di Ben Buxton: un solo evento per detent e
+// nessun conto sbagliato sui rimbalzi, che con gli encoder meccanici sono la
+// norma. Ogni transizione su A o B genera un interrupt, cosi' nessuno scatto va
+// perso nemmeno mentre il loop sta ridisegnando il display.
 
 #define R_START 0x0
 #define R_CW_FINAL 0x1
@@ -66,19 +200,12 @@ const int8_t BUTTON_PINS[B_COUNT] = {
 #define DIR_CCW 0x20
 
 const uint8_t ENC_TABLE[7][4] = {
-    // R_START
     {R_START, R_CW_BEGIN, R_CCW_BEGIN, R_START},
-    // R_CW_FINAL
     {R_CW_NEXT, R_START, R_CW_FINAL, R_START | DIR_CW},
-    // R_CW_BEGIN
     {R_CW_NEXT, R_CW_BEGIN, R_START, R_START},
-    // R_CW_NEXT
     {R_CW_NEXT, R_CW_BEGIN, R_CW_FINAL, R_START},
-    // R_CCW_BEGIN
     {R_CCW_NEXT, R_START, R_CCW_BEGIN, R_START},
-    // R_CCW_FINAL
     {R_CCW_NEXT, R_CCW_FINAL, R_START, R_START | DIR_CCW},
-    // R_CCW_NEXT
     {R_CCW_NEXT, R_CCW_FINAL, R_CCW_BEGIN, R_START},
 };
 
@@ -90,14 +217,14 @@ struct Encoder {
     int32_t lastRead;        // usato solo dal loop
 };
 
-Encoder encoders[2];
+Encoder encoders[4];
 
-// Contatore monotono + lastRead: il consumo del delta non ha bisogno di sezioni
-// critiche e non puo' perdere scatti arrivati tra la lettura e l'azzeramento.
+// Contatore monotono + lastRead: consumare il delta non ha bisogno di sezioni
+// critiche e non puo' perdere scatti arrivati fra la lettura e l'azzeramento.
 void IRAM_ATTR encoderStep(Encoder &e) {
     uint8_t pinState = (uint8_t)((digitalRead(e.pinB) << 1) | digitalRead(e.pinA));
     e.state = ENC_TABLE[e.state & 0x0f][pinState];
-    uint8_t dir = e.state & 0x30;
+    const uint8_t dir = e.state & 0x30;
     if (dir == DIR_CW) {
         ++e.count;
     } else if (dir == DIR_CCW) {
@@ -107,6 +234,8 @@ void IRAM_ATTR encoderStep(Encoder &e) {
 
 void IRAM_ATTR isrEnc0() { encoderStep(encoders[0]); }
 void IRAM_ATTR isrEnc1() { encoderStep(encoders[1]); }
+void IRAM_ATTR isrEnc2() { encoderStep(encoders[2]); }
+void IRAM_ATTR isrEnc3() { encoderStep(encoders[3]); }
 
 void encoderBegin(Encoder &e, uint8_t pinA, uint8_t pinB, void (*isr)()) {
     e.pinA = pinA;
@@ -121,60 +250,39 @@ void encoderBegin(Encoder &e, uint8_t pinA, uint8_t pinB, void (*isr)()) {
 }
 
 int encoderConsume(Encoder &e) {
-    int32_t now = e.count;
-    int32_t delta = now - e.lastRead;
+    const int32_t now = e.count;
+    const int32_t delta = now - e.lastRead;
     e.lastRead = now;
     return (int)delta;
 }
 
-// -------------------------------------------------------- ordine di pressione note
+// ============================================================================
+// Note e funzioni
+// ============================================================================
+const uint8_t NOTE_SLOT[NOTE_COUNT] = MATRIX_NOTE_SLOTS;
+const uint8_t FN_SLOT[FN_COUNT] = MATRIX_FN_SLOTS;
+
 int8_t pressOrder[NOTE_COUNT];
 uint8_t pressCount = 0;
 
-// Coda circolare degli attacchi. Piu' capiente del numero di tasti: in un solo
-// giro di loop se ne possono accumulare comunque solo NOTE_COUNT, ma cosi' resta
-// spazio anche se il chiamante salta un giro.
-constexpr uint8_t NOTE_QUEUE_SIZE = 16;
+// Coda circolare degli attacchi. Piu' capiente del numero di tasti: in un giro
+// di loop se ne possono accumulare al massimo NOTE_COUNT, ma cosi' resta spazio
+// anche se il chiamante salta un giro.
+constexpr uint8_t NOTE_QUEUE_SIZE = 32;
 int8_t noteOnQueue[NOTE_QUEUE_SIZE];
 uint8_t noteOnHead = 0;
 uint8_t noteOnTail = 0;
 
 void pushNoteOn(int note) {
-    uint8_t next = (uint8_t)((noteOnTail + 1) % NOTE_QUEUE_SIZE);
-    if (next == noteOnHead) return;  // coda piena: l'evento piu' vecchio ha la precedenza
+    const uint8_t next = (uint8_t)((noteOnTail + 1) % NOTE_QUEUE_SIZE);
+    if (next == noteOnHead) return;  // coda piena: vince l'evento piu' vecchio
     noteOnQueue[noteOnTail] = (int8_t)note;
     noteOnTail = next;
 }
 
-// ------------------------------------------------------------- auto-repeat joystick
-constexpr uint32_t REPEAT_DELAY_MS = 400;  // prima ripetizione
-constexpr uint32_t REPEAT_RATE_MS = 90;    // ripetizioni successive
-uint32_t joyNextRepeat[4] = {0, 0, 0, 0};
-bool joyEvent[4] = {false, false, false, false};
-
-// ------------------------------------------------------- pressione breve/lunga
-// Stessa meccanica per HOLD, REC e DISPLAY: ognuno porta due funzioni distinte
-// senza bisogno di altri pulsanti sul pannello, che sono finiti.
-struct PressTracker {
-    uint8_t button;    // indice in `buttons`
-    uint32_t longMs;   // soglia
-    bool longFired;    // il long-press di questa pressione e' gia' scattato
-    bool shortEvent;
-    bool longEvent;
-};
-
-PressTracker pressTrackers[] = {
-    {B_HOLD, HOLD_LONG_PRESS_MS, false, false, false},
-    {B_REC, REC_LONG_PRESS_MS, false, false, false},
-    {B_DISPLAY, DISPLAY_LONG_PRESS_MS, false, false, false},
-    {B_PLAY, PLAY_LONG_PRESS_MS, false, false, false},
-};
-
-enum { T_HOLD = 0, T_REC, T_DISPLAY, T_PLAY, T_COUNT };
-
 void notePressed(int note) {
     for (uint8_t i = 0; i < pressCount; ++i) {
-        if (pressOrder[i] == note) return;  // gia' presente
+        if (pressOrder[i] == note) return;
     }
     if (pressCount < NOTE_COUNT) pressOrder[pressCount++] = (int8_t)note;
 }
@@ -189,10 +297,27 @@ void noteReleased(int note) {
     }
 }
 
-bool consume(bool &flag) {
-    bool v = flag;
-    flag = false;
-    return v;
+// ------------------------------------------------------------- auto-repeat joystick
+constexpr uint32_t REPEAT_DELAY_MS = 400;
+constexpr uint32_t REPEAT_RATE_MS = 90;
+uint32_t joyNextRepeat[4] = {0, 0, 0, 0};
+bool joyEvent[4] = {false, false, false, false};
+
+// ------------------------------------------------------- pressione breve/lunga
+struct PressTracker {
+    uint8_t button;
+    uint32_t longMs;
+    bool longFired;
+    bool shortEvent;
+    bool longEvent;
+};
+
+PressTracker fnTrackers[FN_COUNT];
+
+// Le due funzioni piu' distruttive (svuota pattern, accendi la radio) hanno la
+// soglia lunga; le altre quella normale.
+uint32_t fnThreshold(int fn) {
+    return (fn == FN_PLAY || fn == FN_SCREEN) ? FN_LONG_PRESS_SLOW_MS : FN_LONG_PRESS_MS;
 }
 
 }  // namespace
@@ -200,46 +325,42 @@ bool consume(bool &flag) {
 namespace Input {
 
 void begin() {
-    for (int i = 0; i < B_COUNT; ++i) {
-        buttons[i].pin = BUTTON_PINS[i];
-        buttons[i].state = false;
-        buttons[i].rawLast = false;
-        buttons[i].lastChange = 0;
-        buttons[i].edgeDown = false;
-        buttons[i].edgeUp = false;
-        buttons[i].pressedAt = 0;
-        if (buttons[i].pin >= 0) pinMode((uint8_t)buttons[i].pin, INPUT_PULLUP);
-    }
+    for (int i = 0; i < B_COUNT; ++i) buttons[i] = Button{};
+
+    for (int j = 0; j < 4; ++j) pinMode(JOY_PINS[j], INPUT_PULLUP);
+
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
+    mcpAlive = mcpConfigure();
 
     encoderBegin(encoders[0], PIN_ENC1_A, PIN_ENC1_B, isrEnc0);
     encoderBegin(encoders[1], PIN_ENC2_A, PIN_ENC2_B, isrEnc1);
+    encoderBegin(encoders[2], PIN_ENC3_A, PIN_ENC3_B, isrEnc2);
+    encoderBegin(encoders[3], PIN_ENC4_A, PIN_ENC4_B, isrEnc3);
+
+    for (int i = 0; i < FN_COUNT; ++i) {
+        fnTrackers[i] = PressTracker{(uint8_t)(B_MATRIX0 + FN_SLOT[i]), fnThreshold(i), false,
+                                     false, false};
+    }
 }
 
 void update() {
     const uint32_t now = millis();
 
-    for (int i = 0; i < B_COUNT; ++i) {
-        Button &b = buttons[i];
-        if (b.pin < 0) continue;  // click encoder non cablato
-        bool raw = (digitalRead((uint8_t)b.pin) == LOW);
-        if (raw != b.rawLast) {
-            b.rawLast = raw;
-            b.lastChange = now;
-        }
-        if (raw != b.state && (now - b.lastChange) >= DEBOUNCE_MS) {
-            b.state = raw;
-            if (raw) {
-                b.edgeDown = true;
-                b.pressedAt = now;
-            } else {
-                b.edgeUp = true;
-            }
-        }
+    matrixScan();
+
+    for (int k = 0; k < MATRIX_COLS * MATRIX_ROWS; ++k) {
+        feed(buttons[B_MATRIX0 + k], (matrixRaw & (1u << k)) != 0, now);
+    }
+    for (int j = 0; j < 4; ++j) {
+        feed(buttons[B_JOY_UP + j], digitalRead(JOY_PINS[j]) == LOW, now);
+    }
+    for (int e = 0; e < 4; ++e) {
+        feed(buttons[B_ENC_SW0 + e], (encSwRaw & (1u << (MCP_ENC1_SW_BIT + e))) == 0, now);
     }
 
-    // --- note: aggiorno l'ordine di pressione ---
+    // --- note: ordine di pressione e coda degli attacchi ---
     for (int n = 0; n < NOTE_COUNT; ++n) {
-        Button &b = buttons[B_NOTE0 + n];
+        Button &b = buttons[B_MATRIX0 + NOTE_SLOT[n]];
         if (consume(b.edgeDown)) {
             notePressed(n);
             pushNoteOn(n);
@@ -247,39 +368,37 @@ void update() {
         if (consume(b.edgeUp)) noteReleased(n);
     }
 
-    // --- joystick: fronte + auto-repeat (utile per Decay/Sustain in edit mode) ---
+    // --- joystick: fronte + auto-repeat ---
     for (int j = 0; j < 4; ++j) {
         Button &b = buttons[B_JOY_UP + j];
         if (consume(b.edgeDown)) {
             joyEvent[j] = true;
             joyNextRepeat[j] = now + REPEAT_DELAY_MS;
         }
-        if (b.state) {
-            if ((int32_t)(now - joyNextRepeat[j]) >= 0) {
-                joyEvent[j] = true;
-                joyNextRepeat[j] = now + REPEAT_RATE_MS;
-            }
+        if (b.state && (int32_t)(now - joyNextRepeat[j]) >= 0) {
+            joyEvent[j] = true;
+            joyNextRepeat[j] = now + REPEAT_RATE_MS;
         }
         consume(b.edgeUp);
     }
 
-    // --- pulsanti a doppia funzione: breve vs long-press ---
-    for (int i = 0; i < T_COUNT; ++i) {
-        PressTracker &t = pressTrackers[i];
+    // --- tasti funzione: breve vs lungo ---
+    for (int i = 0; i < FN_COUNT; ++i) {
+        PressTracker &t = fnTrackers[i];
         Button &b = buttons[t.button];
         if (consume(b.edgeDown)) t.longFired = false;
         if (b.state && !t.longFired && (now - b.pressedAt) >= t.longMs) {
             t.longFired = true;
             t.longEvent = true;
         }
-        if (consume(b.edgeUp)) {
-            if (!t.longFired) t.shortEvent = true;
-        }
+        if (consume(b.edgeUp) && !t.longFired) t.shortEvent = true;
     }
 }
 
-int currentNote() { return (pressCount > 0) ? pressOrder[pressCount - 1] : -1; }
+bool expanderOk() { return mcpAlive; }
+uint32_t expanderErrors() { return mcpErrors; }
 
+int currentNote() { return (pressCount > 0) ? pressOrder[pressCount - 1] : -1; }
 int heldCount() { return pressCount; }
 
 int heldNoteByOrder(int index) {
@@ -289,12 +408,12 @@ int heldNoteByOrder(int index) {
 
 bool noteIsHeld(int note) {
     if (note < 0 || note >= NOTE_COUNT) return false;
-    return buttons[B_NOTE0 + note].state;
+    return buttons[B_MATRIX0 + NOTE_SLOT[note]].state;
 }
 
 int consumeNoteOn() {
     if (noteOnHead == noteOnTail) return -1;
-    int n = noteOnQueue[noteOnHead];
+    const int n = noteOnQueue[noteOnHead];
     noteOnHead = (uint8_t)((noteOnHead + 1) % NOTE_QUEUE_SIZE);
     return n;
 }
@@ -304,28 +423,34 @@ bool joyDown() { return consume(joyEvent[1]); }
 bool joyLeft() { return consume(joyEvent[2]); }
 bool joyRight() { return consume(joyEvent[3]); }
 
-bool arpPressed() { return consume(buttons[B_ARP].edgeDown); }
-bool bpmPressed() { return consume(buttons[B_BPM].edgeDown); }
-bool polyPressed() { return consume(buttons[B_POLY].edgeDown); }
+bool fnShortPress(int fn) {
+    if (fn < 0 || fn >= FN_COUNT) return false;
+    return consume(fnTrackers[fn].shortEvent);
+}
 
-bool holdShortPress() { return consume(pressTrackers[T_HOLD].shortEvent); }
-bool holdLongPress() { return consume(pressTrackers[T_HOLD].longEvent); }
-bool recShortPress() { return consume(pressTrackers[T_REC].shortEvent); }
-bool recLongPress() { return consume(pressTrackers[T_REC].longEvent); }
-bool displayShortPress() { return consume(pressTrackers[T_DISPLAY].shortEvent); }
-bool displayLongPress() { return consume(pressTrackers[T_DISPLAY].longEvent); }
-// PLAY e' passato fra i pulsanti a doppia funzione: il fronte di discesa lo
-// consuma il tracker, quindi non esiste piu' una lettura "grezza" del tasto e
-// l'avvio del loop scatta al rilascio, come su REC e HOLD.
-bool playShortPress() { return consume(pressTrackers[T_PLAY].shortEvent); }
-bool playLongPress() { return consume(pressTrackers[T_PLAY].longEvent); }
+bool fnLongPress(int fn) {
+    if (fn < 0 || fn >= FN_COUNT) return false;
+    return consume(fnTrackers[fn].longEvent);
+}
 
-bool holdIsDown() { return buttons[B_HOLD].state; }
+bool fnIsDown(int fn) {
+    if (fn < 0 || fn >= FN_COUNT) return false;
+    return buttons[B_MATRIX0 + FN_SLOT[fn]].state;
+}
 
-int enc1Delta() { return encoderConsume(encoders[0]); }
-int enc2Delta() { return encoderConsume(encoders[1]); }
+int encDelta(int which) {
+    if (which < 0 || which >= 4) return 0;
+    return encoderConsume(encoders[which]);
+}
 
-bool enc1Click() { return consume(buttons[B_ENC1_SW].edgeDown); }
-bool enc2Click() { return consume(buttons[B_ENC2_SW].edgeDown); }
+bool encClick(int which) {
+    if (which < 0 || which >= 4) return false;
+    return consume(buttons[B_ENC_SW0 + which].edgeDown);
+}
+
+bool encIsDown(int which) {
+    if (which < 0 || which >= 4) return false;
+    return buttons[B_ENC_SW0 + which].state;
+}
 
 }  // namespace Input
