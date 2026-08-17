@@ -72,6 +72,7 @@ struct SynthState {
     uint8_t setRoot;
     uint8_t setLed;
     uint8_t setAudio;
+    uint8_t setTimbro;  // l'ultimo timbro di fabbrica caricato
 };
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.

@@ -14,8 +14,10 @@
 #include "display.h"
 #include "input_handler.h"
 #include "keylight.h"
+#include "midi_io.h"
 #include "net_portal.h"
 #include "pinout.h"
+#include "presets.h"
 #include "sequencer.h"
 #include "settings.h"
 #include "status_led.h"
@@ -115,6 +117,64 @@ static const char *const E4_NAMES[E4_COUNT] = {"BPM",   "ECO MIX", "ECO TEMPO", 
                                                "LFO PROF", "DRIVE", "SUB",    "DETUNE",
                                                "GLIDE"};
 
+// ------------------------------------------------------------------- MIDI IN
+//
+// Le note che arrivano dal cavo non hanno un tasto a cui appoggiarsi: la
+// tastiera occupa le voci 0..12 una per tasto, e una nota MIDI puo' essere
+// qualunque delle 128. Serve quindi un assegnatore vero, con il furto della
+// voce piu' vecchia quando finiscono — cosa che per i tasti fisici non serviva,
+// perche' li' le voci erano esattamente quante le dita.
+//
+// Regola di precedenza: **il tasto fisico vince sempre**. Se una voce serve a
+// un dito, la nota MIDI che ci stava sopra tace finche' il dito non si alza.
+// L'alternativa (zittire le dita) renderebbe lo strumento inservibile mentre un
+// sequencer esterno lo sta pilotando, che e' proprio quando ci vuoi suonare
+// sopra.
+static int8_t midiVoiceOfNote[128];
+static int8_t midiNoteOfVoice[NOTE_COUNT];
+static uint32_t midiVoiceAge[NOTE_COUNT];
+static float midiVelOfVoice[NOTE_COUNT];
+static bool midiRetrig[NOTE_COUNT];
+static uint32_t midiAgeCounter = 0;
+static float midiBend = 1.0f;   // moltiplicatore di frequenza del pitch bend
+static bool midiSustain = false;  // pedale (CC 64): tiene le note rilasciate
+static bool midiHeld[128];        // nota rilasciata ma trattenuta dal pedale
+static uint8_t midiActive = 0;
+
+static void midiReset() {
+    for (int i = 0; i < 128; ++i) {
+        midiVoiceOfNote[i] = -1;
+        midiHeld[i] = false;
+    }
+    for (int v = 0; v < NOTE_COUNT; ++v) {
+        midiNoteOfVoice[v] = -1;
+        midiVoiceAge[v] = 0;
+        midiVelOfVoice[v] = 1.0f;
+        midiRetrig[v] = false;
+    }
+    midiActive = 0;
+}
+
+// Frequenza temperata di una nota MIDI: il 69 e' il LA 440, come da standard.
+static inline float midiNoteFreq(uint8_t note) {
+    return 440.0f * exp2f(((float)note - 69.0f) / 12.0f);
+}
+
+// Voce libera per una nota nuova. In MONO la voce 0 resta della tastiera: e'
+// quella che il motore usa per la nota suonata a mano, e prestarla al MIDI
+// vorrebbe dire vedersela sparire sotto le dita ad ogni nota in arrivo.
+static int midiAllocate(int firstVoice) {
+    int oldest = -1;
+    for (int v = firstVoice; v < NOTE_COUNT; ++v) {
+        if (midiNoteOfVoice[v] < 0 && !Input::noteIsHeld(v)) return v;
+        if (midiNoteOfVoice[v] >= 0 &&
+            (oldest < 0 || midiVoiceAge[v] < midiVoiceAge[oldest])) {
+            oldest = v;
+        }
+    }
+    return oldest;  // tutte occupate: si ruba la piu' vecchia
+}
+
 // Quanto muove uno scatto di encoder non e' una costante: lo decide la schermata
 // SETTINGS, perche' e' una questione di gusto e cambia da mano a mano.
 static uint8_t setIndex[SETTING_COUNT];
@@ -142,6 +202,8 @@ static float driveAmt = 0.0f;
 static float subLevel = 0.0f;
 static float detuneCents = 0.0f;
 static float glideMs = 0.0f;
+static float filtEnvAmount = 0.0f;
+static float filtEnvMs = 300.0f;
 
 static float delayMs = 220.0f;
 static float delayFb = 0.35f;
@@ -243,6 +305,51 @@ static float noteFreqShifted(int note, int8_t oct, int semitones) {
     return noteFreqAt(note, oct) * exp2f((float)semitones / 12.0f);
 }
 
+static void pushAllParams();
+
+// Carica un timbro di fabbrica: sovrascrive i parametri correnti e li manda al
+// motore. Da qui in poi si e' liberi di ritoccare tutto — un preset e' un punto
+// di partenza, non una gabbia.
+static void loadPreset(uint8_t index) {
+    if (index >= PRESET_COUNT) return;
+    const Preset &p = PRESETS[index];
+
+    waveform = p.wave;
+    cutoffHz = p.cutoffHz;
+    resonance = p.resonance;
+    attackMs = p.attackMs;
+    decayMs = p.decayMs;
+    sustainLevel = p.sustain;
+    releaseMs = p.releaseMs;
+    filtEnvAmount = p.filtEnvAmount;
+    filtEnvMs = p.filtEnvMs;
+    subLevel = p.subLevel;
+    detuneCents = p.detuneCents;
+    driveAmt = p.drive;
+    glideMs = p.glideMs;
+    delayMix = p.delayMix;
+    delayMs = p.delayMs;
+    lfoRate = p.lfoRate;
+    lfoDepth = p.lfoDepth;
+    lfoTarget = p.lfoTarget;
+    crushOn = p.crush;
+    crushPreset = p.crushPreset;
+
+    // Le posizioni normalizzate degli encoder vanno riallineate ai valori
+    // appena caricati, o al primo scatto la manopola salterebbe dove stava
+    // prima del preset.
+    cutoffPos = expMapInv(cutoffHz, CUTOFF_MIN_HZ, CUTOFF_RATIO);
+    attackPos = expMapInv(attackMs, ATTACK_MIN_MS, ATTACK_RATIO);
+    decayPos = expMapInv(decayMs, DECAY_MIN_MS, DECAY_RATIO);
+    releasePos = expMapInv(releaseMs, RELEASE_MIN_MS, RELEASE_RATIO);
+    delayPos = expMapInv(delayMs, DELAY_MIN_MS, DELAY_RATIO);
+    lfoRatePos = expMapInv(lfoRate, LFO_MIN_HZ, LFO_RATIO);
+    glidePos = (glideMs > 0.0f) ? expMapInv(glideMs, GLIDE_MIN_MS, GLIDE_RATIO) : 0.0f;
+
+    pushAllParams();
+    Storage::markDirty();
+}
+
 // Fotografia dei parametri da mandare in NVS.
 static Storage::SynthState snapshotState() {
     Storage::SynthState s = {};
@@ -282,6 +389,7 @@ static Storage::SynthState snapshotState() {
     s.setRoot = setIndex[SETTING_ROOT];
     s.setLed = setIndex[SETTING_LED];
     s.setAudio = setIndex[SETTING_AUDIO];
+    s.setTimbro = setIndex[SETTING_TIMBRO];
     return s;
 }
 
@@ -300,6 +408,7 @@ static void pushAllParams() {
     AudioEngine::setSubLevel(subLevel);
     AudioEngine::setDetune(detuneCents);
     AudioEngine::setGlide(glideMs);
+    AudioEngine::setFilterEnv(filtEnvAmount, filtEnvMs);
     AudioEngine::setDelayTime(delayMs);
     AudioEngine::setDelayFeedback(delayFb);
     AudioEngine::setDelayMix(delayMix);
@@ -431,6 +540,140 @@ static uint32_t arpStepMs() {
     return (d < 30) ? 30 : (uint32_t)d;
 }
 
+// Libera la voce che stava suonando una nota MIDI.
+static void midiRelease(uint8_t note) {
+    const int8_t v = midiVoiceOfNote[note];
+    if (v >= 0) midiNoteOfVoice[v] = -1;
+    midiVoiceOfNote[note] = -1;
+    midiHeld[note] = false;
+}
+
+// Svuota la posta del cavo MIDI. Il tetto sul numero di messaggi per giro non e'
+// pignoleria: un DAW che manda un glissando puo' riempire la coda piu' in fretta
+// di quanto il loop la smaltisca, e restare qui dentro vorrebbe dire non
+// ridisegnare piu' il display.
+static void midiPump() {
+    for (int guard = 0; guard < 48; ++guard) {
+        const MidiEvent e = MidiIn::poll();
+        if (e.kind == MIDI_NONE) break;
+
+        switch (e.kind) {
+            case MIDI_NOTE_ON: {
+                // In MONO la voce 0 resta alla tastiera, vedi midiAllocate().
+                const int v = midiAllocate(polyMode ? 0 : 1);
+                if (v < 0) break;
+                if (midiNoteOfVoice[v] >= 0) midiVoiceOfNote[midiNoteOfVoice[v]] = -1;
+                midiVoiceOfNote[e.data1] = (int8_t)v;
+                midiNoteOfVoice[v] = (int8_t)e.data1;
+                midiVelOfVoice[v] = (float)e.data2 / 127.0f;
+                midiVoiceAge[v] = ++midiAgeCounter;
+                midiRetrig[v] = true;
+                midiHeld[e.data1] = false;
+                break;
+            }
+            case MIDI_NOTE_OFF:
+                // Col pedale premuto la nota non si spegne: si mette in attesa.
+                if (midiSustain) {
+                    midiHeld[e.data1] = true;
+                } else {
+                    midiRelease(e.data1);
+                }
+                break;
+
+            case MIDI_CC:
+                switch (e.data1) {
+                    case 1:  // rotella di modulazione -> profondita' dell'LFO
+                        lfoDepth = (float)e.data2 / 127.0f;
+                        AudioEngine::setLfoDepth(lfoDepth);
+                        if (lfoDepth > 0.0f && lfoTarget == LFO_OFF) {
+                            lfoTarget = LFO_PITCH;
+                            AudioEngine::setLfoTarget(lfoTarget);
+                        }
+                        break;
+                    case 7:  // volume di canale
+                        volume = (float)e.data2 / 127.0f;
+                        AudioEngine::setVolume(volume);
+                        break;
+                    case 64:  // pedale di risonanza
+                        midiSustain = e.data2 >= 64;
+                        if (!midiSustain) {
+                            for (int n = 0; n < 128; ++n) {
+                                if (midiHeld[n]) midiRelease((uint8_t)n);
+                            }
+                        }
+                        break;
+                    case 71:  // risonanza: e' il numero standard, e qui ce l'ha davvero
+                        resonance = (float)e.data2 / 127.0f;
+                        AudioEngine::setResonance(resonance);
+                        break;
+                    case 74:  // "brightness": il cutoff, per tutti i DAW del mondo
+                        cutoffPos = (float)e.data2 / 127.0f;
+                        cutoffHz = expMap(cutoffPos, CUTOFF_MIN_HZ, CUTOFF_RATIO);
+                        AudioEngine::setCutoff(cutoffHz);
+                        break;
+                    case 91:  // riverbero -> qui e' l'eco, che e' quello che abbiamo
+                        delayMix = (float)e.data2 / 127.0f;
+                        AudioEngine::setDelayMix(delayMix);
+                        break;
+                    case 94:  // detune
+                        detuneCents = (float)e.data2 / 127.0f * 50.0f;
+                        AudioEngine::setDetune(detuneCents);
+                        break;
+                    default:
+                        break;
+                }
+                Storage::markDirty();
+                break;
+
+            case MIDI_PROGRAM:
+                // Il cambio programma sceglie il timbro: e' il modo in cui un
+                // sequencer esterno si aspetta di poterlo fare.
+                setIndex[SETTING_TIMBRO] = (uint8_t)(e.data1 % PRESET_COUNT);
+                loadPreset(setIndex[SETTING_TIMBRO]);
+                toast(PRESETS[setIndex[SETTING_TIMBRO]].name);
+                break;
+
+            case MIDI_BEND:
+                // Due semitoni per parte, che e' il valore che tutti danno per
+                // scontato quando nessuno dichiara il contrario.
+                midiBend = exp2f(((float)e.bend / 8192.0f) * 2.0f / 12.0f);
+                break;
+
+            case MIDI_ALL_OFF:
+                midiSustain = false;
+                midiReset();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    uint8_t live = 0;
+    for (int v = 0; v < NOTE_COUNT; ++v) {
+        if (midiNoteOfVoice[v] >= 0) ++live;
+    }
+    midiActive = live;
+    MidiIn::noteCountSet(live);
+}
+
+// Tenendo premuto il tasto BOOT della DevKit si entra in modalita' rete.
+//
+// Serve perche' l'unica altra via e' il menu impostazioni, cioe' la tastiera: su
+// una scheda dove l'espansore non risponde — un ponticello ancora da fare, un
+// contatto sporco — l'aggiornamento via WiFi sarebbe irraggiungibile proprio
+// quando serve. Il tasto BOOT sta sul modulo, non sul PCB, e non dipende da
+// niente di tutto questo.
+static bool bootHeldSince(uint32_t now) {
+    static uint32_t downAt = 0;
+    if (digitalRead(0) == LOW) {
+        if (downAt == 0) downAt = now;
+        return (now - downAt) >= 2000;
+    }
+    downAt = 0;
+    return false;
+}
+
 // ------------------------------------------------------------------ setup
 void setup() {
     Serial.begin(115200);
@@ -438,6 +681,11 @@ void setup() {
     for (int i = 0; i < SETTING_COUNT; ++i) setIndex[i] = Settings::ENTRIES[i].byDefault;
 
     StatusLed::begin();  // per primo: spegne il LED RGB prima di ogni altra cosa
+    // Il MIDI va registrato prima che TinyUSB parta: dopo, l'elenco delle
+    // interfacce e' chiuso e il synth comparirebbe come sola porta seriale.
+    MidiIn::begin();
+    midiReset();
+    pinMode(0, INPUT_PULLUP);  // tasto BOOT: via di fuga verso la modalita' rete
     Input::begin();
     Keylight::begin();
     Sequencer::begin();
@@ -498,6 +746,7 @@ void setup() {
         setIndex[SETTING_ROOT] = Settings::clampIndex(SETTING_ROOT, saved.setRoot);
         setIndex[SETTING_LED] = Settings::clampIndex(SETTING_LED, saved.setLed);
         setIndex[SETTING_AUDIO] = Settings::clampIndex(SETTING_AUDIO, saved.setAudio);
+        setIndex[SETTING_TIMBRO] = Settings::clampIndex(SETTING_TIMBRO, saved.setTimbro);
 
         Sequencer::setBpm(saved.bpm);
         Serial.println(F("Stato ripristinato da NVS."));
@@ -550,6 +799,18 @@ void loop() {
     }
 
     StatusLed::update(now);
+    midiPump();
+
+    // Via di fuga: BOOT tenuto premuto due secondi accende la radio anche senza
+    // tastiera. Vale solo fuori dalle modalita' di edit, dove il tasto non c'e'
+    // comunque.
+    if (bootHeldSince(now)) {
+        Serial.println(F("BOOT tenuto premuto: entro in modalita' NETWORK."));
+        Storage::flush(snapshotState());
+        Keylight::allOff();
+        NetPortal::begin();
+        return;
+    }
 
     // ------------------------------------------- apprendimento delle luci
     // Finche' dura, la tastiera non suona: ogni pressione serve a dire "questo
@@ -811,13 +1072,18 @@ void loop() {
         }
         const uint8_t which = settingsCursor;
         if (enc[1] != 0 && !Settings::isAction(which)) {
+            // Il numero di posizioni lo chiede a valueCount(): il TIMBRO non lo
+            // sa dalla tabella, glielo dice presets.cpp.
+            const int last = (int)Settings::valueCount(which) - 1;
             int idx = (int)setIndex[which] + enc[1];
             if (idx < 0) idx = 0;
-            if (idx > Settings::ENTRIES[which].count - 1) idx = Settings::ENTRIES[which].count - 1;
+            if (idx > last) idx = last;
             setIndex[which] = (uint8_t)idx;
-            // Due voci hanno effetto immediato: l'uscita audio, che va provata
-            // ad orecchio, e le luci, che vanno viste.
+            // Tre voci hanno effetto immediato: l'uscita audio, che va provata
+            // ad orecchio, le luci, che vanno viste, e il timbro, che si sceglie
+            // proprio suonando mentre si gira la manopola.
             if (which == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[which]);
+            if (which == SETTING_TIMBRO) loadPreset(setIndex[which]);
             Storage::markDirty();
         }
     } else if (adsrEditMode) {
@@ -932,6 +1198,10 @@ void loop() {
     bool wantVoice[MAX_VOICES] = {false};
     float wantFreq[MAX_VOICES] = {0.0f};
     bool wantRetrig[MAX_VOICES] = {false};
+    // I tasti non hanno sensori di forza: la dinamica e' piena, e solo le note
+    // in arrivo dal MIDI portano la loro.
+    float wantVel[MAX_VOICES];
+    for (int i = 0; i < MAX_VOICES; ++i) wantVel[i] = 1.0f;
 
     if (!polyMode) {
         // MONO: una voce sola, la nota dal vivo ha priorita' sulla sequenza.
@@ -990,6 +1260,19 @@ void loop() {
         lastWasLive = false;
     }
 
+    // Le note che arrivano dal cavo occupano le voci rimaste. Il tasto fisico ha
+    // la precedenza: se una voce serve a un dito, la nota MIDI che ci stava
+    // sopra tace finche' il dito non si alza, invece di zittire chi sta suonando.
+    for (int v = 0; v < NOTE_COUNT; ++v) {
+        const int8_t n = midiNoteOfVoice[v];
+        if (n < 0 || wantVoice[v]) continue;
+        wantVoice[v] = true;
+        wantFreq[v] = midiNoteFreq((uint8_t)n) * midiBend;
+        wantVel[v] = midiVelOfVoice[v];
+        wantRetrig[v] = midiRetrig[v];
+    }
+    for (int v = 0; v < NOTE_COUNT; ++v) midiRetrig[v] = false;
+
     // Lo specchio si aggiorna solo se l'evento e' stato davvero accodato: se la
     // coda fosse piena, il giro successivo ritenta invece di dare per scontato
     // un comando mai arrivato.
@@ -999,7 +1282,7 @@ void loop() {
             continue;
         }
         if (!voiceSounding[i] || wantRetrig[i]) {
-            if (AudioEngine::voiceOn((uint8_t)i, wantFreq[i])) {
+            if (AudioEngine::voiceOn((uint8_t)i, wantFreq[i], wantVel[i])) {
                 voiceSounding[i] = true;
                 voiceFreq[i] = wantFreq[i];
             }

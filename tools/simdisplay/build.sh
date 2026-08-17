@@ -23,9 +23,12 @@ clang++ $CXXFLAGS -c "$HERE/sim_fakes.cpp"       -o "$BUILD/sim_fakes.o"
 # settings.cpp e' il sorgente vero: etichette, categorie e valueLabel() che
 # finiscono sullo schermo sono quelli del firmware, non una loro imitazione.
 clang++ $CXXFLAGS -c "$ROOT/src/settings.cpp"    -o "$BUILD/settings.o"
+# presets.cpp e' la tabella dei timbri, e settings.cpp ci pesca i nomi da mettere
+# nel menu: sono due sorgenti veri, non due imitazioni.
+clang++ $CXXFLAGS -c "$ROOT/src/presets.cpp"     -o "$BUILD/presets.o"
 clang   -std=c99 -O1 -w -I"$HERE/vendor" -c "$HERE/vendor/qrcode.c" -o "$BUILD/qrcode.o"
 
-clang++ -o "$BUILD/simdisplay" "$BUILD/sim_main.o" "$BUILD/sim_fakes.o" "$BUILD/settings.o" \
+clang++ -o "$BUILD/simdisplay" "$BUILD/sim_main.o" "$BUILD/sim_fakes.o" "$BUILD/settings.o" "$BUILD/presets.o" \
         "$BUILD/qrcode.o" -lm
 
 rm -f "$OUT"/*.ppm "$OUT"/*.png

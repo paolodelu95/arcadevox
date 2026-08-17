@@ -4,6 +4,7 @@
 
 #include "audio_engine.h"  // AUDIO_ORDER_NAMES / AUDIO_ORDER_COUNT
 #include "pinout.h"        // NOTE_COUNT
+#include "presets.h"
 
 namespace {
 
@@ -76,7 +77,11 @@ const Entry ENTRIES[SETTING_COUNT] = {
     {nullptr, "CUTOFF", 6, 4, TURNS},
     {nullptr, "ADSR", 6, 3, TURNS},
     {nullptr, "PASSO FINE", 4, 1, FINE_LABELS},
-    {"TASTIERA", "SCALA", SCALE_COUNT, 0, SCALE_LABELS},
+    // I nomi dei timbri stanno in presets.cpp e non in una tabella qui: sono
+    // gia' scritti accanto ai parametri che descrivono, ed e' li' che vanno
+    // tenuti allineati. valueLabel() sa dove pescarli.
+    {"TASTIERA", "TIMBRO", 0xFF, 0, nullptr},
+    {nullptr, "SCALA", SCALE_COUNT, 0, SCALE_LABELS},
     {nullptr, "TONICA", 12, 0, ROOT_LABELS},
     {"LUCI", "LUMINOSITA'", 9, 5, LED_LABELS},
     {nullptr, "IMPARA LUCI", 0, 0, nullptr},
@@ -84,13 +89,23 @@ const Entry ENTRIES[SETTING_COUNT] = {
     {"RETE", "MODALITA' WIFI", 0, 0, nullptr},
 };
 
+// Quante posizioni ha una voce. Il TIMBRO e' l'unica che non lo sa da sola: i
+// preset sono definiti in presets.cpp e il loro numero cambia aggiungendone uno,
+// senza dover ritoccare la tabella qui sopra.
+uint8_t valueCount(uint8_t which) {
+    if (which >= SETTING_COUNT) return 0;
+    if (which == SETTING_TIMBRO) return PRESET_COUNT;
+    return ENTRIES[which].count;
+}
+
 uint8_t clampIndex(uint8_t which, uint8_t index) {
-    if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return 0;
-    const uint8_t n = ENTRIES[which].count;
+    const uint8_t n = valueCount(which);
+    if (n == 0) return 0;
     return (index < n) ? index : ENTRIES[which].byDefault;
 }
 
 const char *valueLabel(uint8_t which, uint8_t index) {
+    if (which == SETTING_TIMBRO) return PRESETS[clampIndex(which, index)].name;
     if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return "";
     return ENTRIES[which].valueLabels[clampIndex(which, index)];
 }

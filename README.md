@@ -39,6 +39,10 @@ con un inviluppo vero e un filtro risonante.
   accendono, l'ordine della catena la scheda **se lo impara** da sola
 - **Display GC9A01** tondo con 8 schermate cicliche — fra cui effetti, VU meter ad ago,
   oscilloscopio e un menu impostazioni per categorie
+- **MIDI IN** dalla porta USB nativa: il synth compare al computer come strumento,
+  con dinamica vera, pitch bend, pedale di risonanza e i CC che tutti i DAW danno per scontati
+- **15 timbri di fabbrica** — pianoforte, chitarra, organo, archi, campane, acido, arcade… —
+  scelti dal menu o dal cambio programma MIDI
 - **Memoria**: pattern, parametri e mappa dei LED sopravvivono allo spegnimento
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
 
@@ -241,7 +245,62 @@ cursore. Due frecce ai lati dicono che sopra o sotto c'è dell'altro.
 Il *passo fine* adesso è raggiungibile davvero: sulla scheda nuova i pulsanti degli alberi
 sono cablati, e i primi tre encoder lo commutano col click.
 
+## MIDI IN
+
+Il synth si collega al computer con la **porta USB nativa** e compare come strumento MIDI:
+un dispositivo composito, porta seriale e MIDI sulla stessa presa. Non serve nessuna
+libreria esterna — la classe MIDI è già dentro la TinyUSB del core (`CONFIG_TINYUSB_MIDI_ENABLED=y`),
+basta registrare l'interfaccia prima che l'USB parta.
+
+Le note in arrivo hanno **dinamica vera**: la velocity scala il picco dell'inviluppo *e*
+quanto si apre il filtro, che è ciò che distingue un pianoforte suonato piano da uno
+suonato forte. I tasti del pannello invece sono interruttori e mandano sempre forza piena.
+
+| Messaggio | Cosa fa |
+|---|---|
+| Note on / off | suona, con dinamica; velocity 0 vale come note-off |
+| CC 1 (modulazione) | profondità dell'LFO (e lo accende sul vibrato se era spento) |
+| CC 7 | volume |
+| CC 64 | pedale di risonanza: tiene le note rilasciate |
+| CC 71 | **risonanza** del filtro |
+| CC 74 | cutoff |
+| CC 91 | mix dell'eco |
+| CC 94 | detune |
+| Program change | sceglie il **timbro** di fabbrica |
+| Pitch bend | ±2 semitoni |
+| CC 120 / 123 | spegne tutto |
+
+**Il tasto fisico ha sempre la precedenza.** Le voci sono sedici e la tastiera ne occupa una
+per tasto: se una voce serve a un dito, la nota MIDI che ci stava sopra tace finché il dito
+non si alza. L'alternativa — zittire le dita — renderebbe lo strumento inservibile proprio
+quando un sequencer lo sta pilotando e ci vuoi suonare sopra. Quando le voci finiscono si
+ruba la più vecchia.
+
+## I timbri di fabbrica
+
+Un synth sottrattivo non *riproduce* un pianoforte: quello lo fa un campionatore. Riproduce
+il suo **comportamento** — attacco secco, suono che si spegne da solo mentre tieni il tasto,
+timbro che si scurisce mentre la nota muore — e con quelle tre cose insieme l'orecchio dice
+"pianoforte". È così che si chiamano i preset di qualunque synth analogico dagli anni Settanta.
+
+L'ingrediente che lo rende possibile è l'**inviluppo di filtro**, aggiunto in questa versione:
+il filtro si spalanca all'attacco e si richiude da solo. Senza, un "pianoforte" resta un
+organo con l'attacco veloce.
+
+Sono quindici: BASE, PIANOFORTE, CHITARRA, ORGANO, BASSO, ARCHI, FLAUTO, CAMPANE,
+CLAVICEMBALO, VIBRAFONO, ACIDO, ARCADE, PAD SPAZIALE, TAMBURO, LASER. Si scelgono da
+**SETTINGS → TASTIERA → TIMBRO**, e si sentono mentre giri la manopola. Caricarne uno
+sovrascrive i parametri correnti: da lì in poi si ritocca liberamente, un preset è un punto
+di partenza e non una gabbia.
+
 ## Aggiornare il firmware via WiFi
+
+> **Scorciatoia senza tastiera.** La modalità rete si raggiunge dal menu impostazioni, cioè
+> dalla tastiera — che su una scheda con l'espansore non ancora funzionante non c'è. Per
+> questo **tenendo premuto il tasto BOOT della DevKit per due secondi** si entra in modalità
+> rete comunque: quel tasto sta sul modulo e non dipende da niente del PCB. Le credenziali
+> del portale finiscono anche sulla seriale, quindi si può aggiornare pure con il display
+> spento.
 
 Scorri fino a **SETTINGS**, tieni premuto il pulsante *scorri display* per entrare nel menu,
 poi scendi con pressioni brevi fino a **MODALITÀ WIFI**: lì una pressione breve mostra il QR.
@@ -296,6 +355,12 @@ pio run              # compila
 pio run -t upload    # carica (dalla porta USB nativa)
 pio device monitor   # seriale a 115200
 ```
+
+Dalla 2.1 l'USB è in modalità **OTG** (`ARDUINO_USB_MODE=0`), perché è l'unica delle due
+periferiche USB dell'S3 che sappia fare MIDI. Conseguenza pratica: la porta "USB" cambia
+identità quando il firmware parte. Se un caricamento non dovesse agganciarla ci sono due
+strade che funzionano sempre — la porta **UART** della DevKitC-1, che ha un convertitore suo,
+oppure tenere premuto **BOOT** mentre si preme **RESET** per entrare nel bootloader della ROM.
 
 Il `platformio.ini` è pinnato al core Arduino 2.0.x, perché il motore audio usa il driver
 legacy `driver/i2s.h`; di conseguenza anche Arduino_GFX è fermo alla 1.4.9, l'ultima

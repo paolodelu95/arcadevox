@@ -13,16 +13,17 @@
 #define SETTING_ADSR 2
 #define SETTING_FINE 3
 // --- impostazioni musicali ---
-#define SETTING_SCALE 4
-#define SETTING_ROOT 5
+#define SETTING_TIMBRO 4
+#define SETTING_SCALE 5
+#define SETTING_ROOT 6
 // --- luci sotto i tasti ---
-#define SETTING_LED 6
-#define SETTING_LEDLEARN 7  // azione: impara l'ordine della catena
+#define SETTING_LED 7
+#define SETTING_LEDLEARN 8  // azione: impara l'ordine della catena
 // --- uscita audio ---
-#define SETTING_AUDIO 8
+#define SETTING_AUDIO 9
 // --- rete ---
-#define SETTING_NET 9  // azione: accende la radio
-#define SETTING_COUNT 10
+#define SETTING_NET 10  // azione: accende la radio
+#define SETTING_COUNT 11
 
 namespace Settings {
 
@@ -36,6 +37,9 @@ struct Entry {
 };
 
 extern const Entry ENTRIES[SETTING_COUNT];
+
+// Quante posizioni ha la voce (il TIMBRO lo chiede a presets.cpp).
+uint8_t valueCount(uint8_t which);
 
 // Una voce d'azione si esegue, non si regola: gli encoder non la toccano.
 inline bool isAction(uint8_t which) { return ENTRIES[which].count == 0; }
