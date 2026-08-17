@@ -48,6 +48,28 @@ extern "C" uint16_t arcadevoxMidiDescriptor(uint8_t *dst, uint8_t *itf) {
     return TUD_MIDI_DESC_LEN;
 }
 
+// L'interfaccia si registra **prima di setup()**, in un costruttore globale.
+//
+// Non e' un vezzo: l'oggetto `Serial` del core e' anche lui globale, e nel suo
+// costruttore registra la CDC e fa partire TinyUSB. Quando setup() comincia,
+// l'elenco delle interfacce e' gia' chiuso, e chiedere di aggiungerne una
+// ottiene solo una riga di log:
+//
+//     tinyusb_enable_interface(): TinyUSB has already started!
+//                                 Interface MIDI not enabled
+//
+// Registrandosi allo stesso stadio dei costruttori globali il MIDI entra
+// nell'elenco insieme alla seriale, e il dispositivo compare al computer con
+// tutte e due dentro. In che ordine fra loro non conta: la numerazione la fa
+// TinyUSB con il contatore che gli passiamo.
+struct MidiRegistrar {
+    MidiRegistrar() {
+        tinyusb_enable_interface(USB_INTERFACE_MIDI, TUD_MIDI_DESC_LEN,
+                                 arcadevoxMidiDescriptor);
+    }
+};
+MidiRegistrar registrar;
+
 }  // namespace
 
 namespace MidiIn {
@@ -55,11 +77,8 @@ namespace MidiIn {
 void begin() {
     if (started) return;
     started = true;
-    tinyusb_enable_interface(USB_INTERFACE_MIDI, TUD_MIDI_DESC_LEN, arcadevoxMidiDescriptor);
-    // Da qui in poi la configurazione e' chiusa: USB.begin() chiama tinyusb_init
-    // e il dispositivo compare al computer con dentro la seriale e il MIDI.
-    USB.productName("ArcadeVox");
-    USB.manufacturerName("ArcadeVox");
+    // L'interfaccia c'e' gia' (vedi MidiRegistrar): qui si controlla solo che
+    // l'USB sia avviato. Se il core l'ha gia' fatto, begin() non fa niente.
     USB.begin();
 }
 
