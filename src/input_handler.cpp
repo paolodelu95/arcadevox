@@ -82,9 +82,43 @@ uint8_t encSwRaw = 0xF0;  // bit alti = non premuti
 constexpr uint32_t SCAN_INTERVAL_MS = 1;
 uint32_t lastScan = 0;
 
+// Quando il bus e' caduto non ha senso ritentare mille volte al secondo: ogni
+// transazione fallita costa il timeout dell'I2C (circa 7 ms), quindi il loop
+// rallenterebbe fino a inchiodarsi proprio nel momento in cui serve reggere —
+// il display e il motore audio devono continuare a funzionare anche con la
+// tastiera scollegata. Un tentativo al secondo basta a riprendersi da un
+// contatto ballerino, e nel frattempo il resto del synth gira liscio.
+constexpr uint32_t RETRY_INTERVAL_MS = 1000;
+uint32_t nextRetry = 0;
+bool reportedDown = false;
+
+// Sul PCB **non ci sono resistenze di pull-up sull'I2C**: SDA e SCL vanno dal
+// microcontrollore all'espansore e basta (verificato sulla netlist: quelle due
+// reti hanno due soli membri). Il bus vive quindi sui pull-up interni
+// dell'ESP32, che sono deboli — una quarantina di kiloohm — e a 400 kHz possono
+// non farcela a tirare su la linea in tempo, specie con qualche centimetro di
+// pista e uno zoccolo di mezzo.
+//
+// Invece di dare la colpa all'utente, ad ogni tentativo si alterna la velocita'
+// piena e i 100 kHz: se il problema e' quello, il bus riparte da solo e la
+// riga sulla seriale dice a che velocita' ha funzionato — che e' anche la
+// diagnosi di "servono due resistenze da 4,7 k".
+constexpr uint32_t I2C_FREQ_SLOW_HZ = 100000;
+uint32_t busFreq = I2C_FREQ_HZ;
+
+void busRestart() {
+    Wire.end();
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, busFreq);
+}
+
 void matrixScan() {
     const uint32_t now = millis();
-    if (lastScan != 0 && (now - lastScan) < SCAN_INTERVAL_MS) return;
+    if (!mcpAlive) {
+        if ((int32_t)(now - nextRetry) < 0) return;
+        nextRetry = now + RETRY_INTERVAL_MS;
+    } else if (lastScan != 0 && (now - lastScan) < SCAN_INTERVAL_MS) {
+        return;
+    }
     lastScan = now;
 
     uint32_t bits = 0;
@@ -118,14 +152,30 @@ void matrixScan() {
 
     if (ok) {
         matrixRaw = bits;
-        mcpAlive = true;
+        if (!mcpAlive) {
+            mcpAlive = true;
+            if (reportedDown) {
+                Serial.print(F("MCP23017: bus tornato su a "));
+                Serial.print(busFreq / 1000);
+                Serial.println(F(" kHz, tastiera di nuovo attiva."));
+                reportedDown = false;
+            }
+        }
     } else {
-        // Bus caduto: si tiene l'ultimo stato buono e si riconfigura, cosi' un
-        // disturbo passeggero non lascia una nota appesa per sempre.
+        // Bus caduto: nessun tasto risulta premuto — meglio muti che con una
+        // nota appesa che nessuno rilascera' mai — e si riprova a configurare
+        // l'espansore, ma solo al prossimo tentativo utile.
+        if (mcpAlive || !reportedDown) {
+            Serial.println(F("MCP23017: nessuna risposta sul bus I2C, riprovo ogni secondo "
+                             "alternando 400 e 100 kHz."));
+            reportedDown = true;
+        }
         mcpAlive = false;
         matrixRaw = 0;
         encSwRaw = ENCSW_MASK;
-        Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
+        nextRetry = millis() + RETRY_INTERVAL_MS;
+        busFreq = (busFreq == I2C_FREQ_HZ) ? I2C_FREQ_SLOW_HZ : I2C_FREQ_HZ;
+        busRestart();
         mcpConfigure();
     }
 }
@@ -329,8 +379,16 @@ void begin() {
 
     for (int j = 0; j < 4; ++j) pinMode(JOY_PINS[j], INPUT_PULLUP);
 
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
+    busRestart();
     mcpAlive = mcpConfigure();
+    if (!mcpAlive) {
+        // Un solo ritentativo subito, alla velocita' bassa: se il PCB e' quello
+        // senza pull-up e i 400 kHz non passano, la tastiera funziona gia' al
+        // primo avvio invece che dopo un secondo di errori.
+        busFreq = I2C_FREQ_SLOW_HZ;
+        busRestart();
+        mcpAlive = mcpConfigure();
+    }
 
     encoderBegin(encoders[0], PIN_ENC1_A, PIN_ENC1_B, isrEnc0);
     encoderBegin(encoders[1], PIN_ENC2_A, PIN_ENC2_B, isrEnc1);

@@ -970,13 +970,21 @@
     <tr class="alt"><td>Suono stridulo o a velocità sbagliata</td><td>BCLK e LRC scambiati</td><td>stessa voce di menu</td></tr>
     <tr><td>Un tasto non risponde</td><td>hot-swap non inserito bene, o piedino piegato</td><td>estrai lo switch e guarda i due piedini</td></tr>
     <tr class="alt"><td>Una riga intera non risponde</td><td>una pista o una saldatura dell'espansore</td><td>controlla l'MCP23017, non i tasti</td></tr>
-    <tr><td>Il display scrive che l'espansore non risponde</td><td>il bus I²C è caduto</td><td>saldature di SDA/SCL e dei pull-up</td></tr>
+    <tr><td>Il display scrive che l'espansore non risponde</td><td>il bus I²C non passa</td><td>vedi il riquadro qui sotto</td></tr>
     <tr class="alt"><td>Luci sul tasto sbagliato</td><td>la mappa della catena non è mai stata imparata</td><td>SETTINGS → LUCI → IMPARA LUCI</td></tr>
     <tr><td>Le luci ammiccano premendo molti tasti</td><td>l'alimentatore va in ginocchio</td><td>abbassa la LUMINOSITÀ, o metti un alimentatore da 2 A</td></tr>
     <tr class="alt"><td>Un encoder salta o torna indietro</td><td>rimbalzi del contatto</td><td>succede più facilmente sull'encoder 4, che non ha il pull-up esterno</td></tr>
     <tr><td>Il filtro fischia da solo</td><td>risonanza altissima</td><td>è previsto: abbassa l'encoder 2 sotto l'85%</td></tr>
     <tr class="alt"><td>Note appese dopo un cambio di modalità</td><td>—</td><td>premi due volte <span class="key">FN6</span>: azzera tutte le voci</td></tr>
   </table>
+
+  <div class="warn"><b>Se l'espansore non risponde: il PCB non ha i pull-up dell'I²C</b>
+    Le linee SDA e SCL vanno dal microcontrollore all'espansore e basta, senza le due
+    resistenze che di solito le tengono su. Il bus si regge sui pull-up interni dell'ESP32,
+    che a 400 kHz sono al limite. Il firmware se ne accorge da solo e riprova a <b>100 kHz</b>,
+    scrivendolo sulla seriale: se è lì che funziona, la cura definitiva sono due resistenze da
+    <b>4,7 kΩ</b> fra SDA e 3,3 V e fra SCL e 3,3 V — si saldano sul retro fra i piedini 12 e
+    13 dell'MCP23017 e il suo piedino 9.</div>
 
   <h3>Riportare tutto com'era</h3>
   <p>Parametri, pattern e mappa delle luci vivono nella memoria interna e sopravvivono allo

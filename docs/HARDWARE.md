@@ -135,7 +135,20 @@ resta sempre accesa.
 Quattro contatti indipendenti verso massa, letti col pull-up interno: nessuna lettura
 analogica.
 
-## Due cose da sapere sullo schematico
+## Tre cose da sapere sullo schematico
+
+0. **L'I2C non ha resistenze di pull-up.** Le reti SDA e SCL hanno due soli membri ciascuna —
+   il piedino dell'ESP32 e quello dell'MCP23017 — e sul 3,3 V non c'è nessun resistore che le
+   tiri su. Il bus vive quindi sui pull-up interni dell'ESP32, che stanno sui 45 kΩ: deboli
+   per i 400 kHz, specie con qualche centimetro di pista e uno zoccolo DIP di mezzo.
+
+   Il firmware non dà la colpa a nessuno: se a 400 kHz l'espansore non risponde riprova
+   subito a 100 kHz, e poi continua ad alternare le due velocità una volta al secondo. Sulla
+   seriale scrive a quale ha funzionato. **Se scrive 100 kHz, la cura vera sono due
+   resistenze da 4,7 kΩ fra SDA e 3,3 V e fra SCL e 3,3 V**: si possono aggiungere sul
+   retro, fra i piedini 12/13 e il 9 dell'MCP23017.
+
+
 
 1. **ENC4 non ha i pull-up.** Su ENC1–ENC3 le resistenze da 10 kΩ (R2–R7) vanno da A e B verso
    3,3 V, come si deve. Su ENC4, invece, R8 e R9 sono finite **in serie** sulle due linee, e
