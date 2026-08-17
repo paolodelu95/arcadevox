@@ -214,6 +214,16 @@ float iconValue(uint8_t wave, float t) {
             return 2.0f * t - 1.0f;
         case WAVE_TRIANGLE:
             return (t < 0.5f) ? (4.0f * t - 1.0f) : (3.0f - 4.0f * t);
+        case WAVE_PULSE:
+            return (t < 0.25f) ? 1.0f : -1.0f;  // stesso duty del motore audio
+        case WAVE_NOISE: {
+            // Rumore *riproducibile*: a parita' di t esce sempre lo stesso
+            // valore. Con un random vero l'icona cambierebbe ad ogni fotogramma
+            // e sembrerebbe rotta invece che rumorosa.
+            uint32_t h = (uint32_t)(t * 64.0f) * 1664525u + 1013904223u;
+            h ^= h >> 13;
+            return (float)((int32_t)((h >> 8) & 0xFFFF) - 32768) * (1.0f / 32768.0f);
+        }
         case WAVE_SINE:
         default:
             return sinf(2.0f * (float)M_PI * t);
@@ -250,9 +260,20 @@ void drawWaveIcon(uint8_t wave, int cy, uint16_t color) {
 
 // Otto caselle, una per voce del pool: quante ne stanno suonando si conta a
 // colpo d'occhio, senza leggere un numero.
+// Una casella per voce del motore. La misura non e' piu' fissa: con le 8 voci
+// della scheda vecchia ci stavano quadratini da 14 px, con le 16 di adesso la
+// fila sarebbe uscita dal vetro di quaranta pixel per parte — e uscendo non si
+// sarebbe vista, perche' il display taglia in silenzio. Le caselle si ricavano
+// quindi dalla larghezza disponibile, e la static_assert fa in modo che la
+// prossima volta che il pool cresce se ne accorga il compilatore invece
+// dell'occhio.
 void drawVoiceSlots(int y, uint8_t voices, bool poly) {
-    constexpr int SLOT = 14, GAP = 4;
+    constexpr int ROW_W = 160;  // largo quanto la corda del cerchio a quell'altezza
+    constexpr int GAP = 2;
+    constexpr int SLOT = (ROW_W - GAP * (MAX_VOICES - 1)) / MAX_VOICES;
     constexpr int total = MAX_VOICES * SLOT + (MAX_VOICES - 1) * GAP;
+    static_assert(SLOT >= 4, "troppe voci per una fila sola: servono due righe");
+    static_assert(total <= 180, "la fila delle voci esce dall'area circolare");
     const int x0 = CX - total / 2;
     for (int i = 0; i < MAX_VOICES; ++i) {
         const int x = x0 + i * (SLOT + GAP);
@@ -1509,9 +1530,12 @@ void drawLedLearnScreen(const SynthView &v, bool full) {
 void drawToast(const char *text) {
     const int w = hudChipWidth(text, 2);
     const int x = CX - w / 2;
-    gfx->fillRect(x - 3, 174, w + 6, 24, BLACK);
-    gfx->drawRect(x - 3, 174, w + 6, 24, dim565(HUD_MAGENTA, 1, 2));
-    hudChip(x, 177, text, HUD_MAGENTA, 2);
+    // A 170 e non piu' in basso: la fascia copre comunque la fila delle voci —
+    // non c'e' modo di evitarlo — ma lascia libera la riga di stato sotto, che
+    // e' l'unica cosa che si legge ancora mentre il messaggio e' a video.
+    gfx->fillRect(x - 3, 170, w + 6, 22, BLACK);
+    gfx->drawRect(x - 3, 170, w + 6, 22, dim565(HUD_MAGENTA, 1, 2));
+    hudChip(x, 173, text, HUD_MAGENTA, 2);
 }
 
 }  // namespace

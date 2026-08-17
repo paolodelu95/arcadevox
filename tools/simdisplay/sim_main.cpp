@@ -106,8 +106,34 @@ SynthView baseView() {
     v.bpm = 120;
     v.hold = false;
     v.arp = false;
+    v.arpMode = 0;
+    v.arpName = "SU";
     v.poly = false;
+    v.chordName = "SINGOLA";
     v.voices = 0;
+
+    // Effetti: tutti a riposo, come all'accensione. Le stringhe non possono
+    // restare nulle — il display le scrive senza chiedersi se esistono.
+    v.resonance = 0.0f;
+    v.crush = false;
+    v.crushName = "8 BIT";
+    v.delayMix = 0.0f;
+    v.delayMs = 220.0f;
+    v.lfoDepth = 0.0f;
+    v.lfoRate = 5.0f;
+    v.lfoTargetName = "SPENTO";
+    v.drive = 0.0f;
+    v.subLevel = 0.0f;
+    v.detuneCents = 0.0f;
+    v.glideMs = 0.0f;
+    v.enc4Name = "BPM";
+    v.enc4Index = 0;
+    v.scaleName = "CROMAT.";
+    v.rootName = "DO";
+    v.expanderOk = true;
+    v.ledLearn = false;
+    v.ledLearnIndex = 0;
+    v.toast = nullptr;
     for (int i = 0; i < SETTING_COUNT; ++i) v.setIndex[i] = Settings::ENTRIES[i].byDefault;
     v.setCursor = 0;
     v.setEditing = false;
@@ -141,6 +167,8 @@ void scene_osc_sine() { sceneOsc(WAVE_SINE, false, 1); }
 void scene_osc_square() { sceneOsc(WAVE_SQUARE, true, 4); }
 void scene_osc_saw() { sceneOsc(WAVE_SAW, true, 8); }
 void scene_osc_triangle() { sceneOsc(WAVE_TRIANGLE, false, 0); }
+void scene_osc_pulse() { sceneOsc(WAVE_PULSE, false, 2); }
+void scene_osc_noise() { sceneOsc(WAVE_NOISE, true, 6); }
 
 void scene_osc_dopo_uso() {
     boot();
@@ -185,17 +213,71 @@ void scene_octave_dopo_uso() {
 }
 
 // --- LEVELS -----------------------------------------------------------------
-void sceneLevels(float cutoff, float vol) {
+void sceneLevels(float cutoff, float vol, float res = 0.0f) {
     boot();
-    gotoScreen(2);
+    gotoScreen(SCREEN_LEVELS);
     SynthView v = baseView();
     v.cutoffHz = cutoff;
     v.volume = vol;
+    v.resonance = res;
     tick(v);
 }
 void scene_levels_min() { sceneLevels(80.0f, 0.0f); }
 void scene_levels_max() { sceneLevels(8000.0f, 1.0f); }
 void scene_levels_medio() { sceneLevels(1234.0f, 0.55f); }
+// La risonanza al massimo e' il caso peggiore per la curva del filtro: la gobba
+// sul taglio e' alta venti volte il resto, e deve restare dentro il riquadro.
+void scene_levels_risonanza() { sceneLevels(1234.0f, 0.55f, 1.0f); }
+void scene_levels_risonanza_meta() { sceneLevels(400.0f, 0.8f, 0.5f); }
+
+// --- FX ---------------------------------------------------------------------
+void sceneFx(bool crush, float mix, float lfo, float drive, float sub, uint8_t enc4) {
+    boot();
+    gotoScreen(SCREEN_FX);
+    SynthView v = baseView();
+    v.crush = crush;
+    v.crushName = "8 BIT";
+    v.delayMix = mix;
+    v.delayMs = 220.0f;
+    v.lfoDepth = lfo;
+    v.lfoTargetName = lfo > 0.0f ? "VIBRATO" : "SPENTO";
+    v.drive = drive;
+    v.subLevel = sub;
+    v.detuneCents = sub > 0.0f ? 22.0f : 0.0f;
+    v.glideMs = sub > 0.0f ? 180.0f : 0.0f;
+    v.enc4Name = "ECO MIX";
+    v.enc4Index = enc4;
+    tick(v);
+}
+void scene_fx_riposo() { sceneFx(false, 0.0f, 0.0f, 0.0f, 0.0f, 0); }
+void scene_fx_tutto() { sceneFx(true, 0.75f, 0.6f, 0.4f, 0.9f, 1); }
+// Il quarto encoder sull'ultima riga: la barretta selezionata e' quella in
+// fondo, dove il cerchio si e' gia' stretto parecchio.
+void scene_fx_glide_selezionato() { sceneFx(true, 0.2f, 0.0f, 0.0f, 0.5f, 8); }
+
+// --- luci -------------------------------------------------------------------
+void sceneLuci(uint8_t index) {
+    boot();
+    SynthView v = baseView();
+    v.ledLearn = true;
+    v.ledLearnIndex = index;
+    tick(v);
+}
+void scene_luci_impara_prima() { sceneLuci(0); }
+void scene_luci_impara_ultima() { sceneLuci(19); }
+
+// --- messaggio in sovrimpressione -------------------------------------------
+void sceneToast(const char *text) {
+    boot();
+    gotoScreen(SCREEN_OSC);
+    SynthView v = baseView();
+    tick(v);
+    v.toast = text;
+    tick(v);
+}
+void scene_toast_corto() { sceneToast("8 BIT"); }
+// Il piu' lungo che la logica possa produrre: se sborda dal cerchio si vede qui.
+void scene_toast_lungo() { sceneToast("PASSO NORMALE"); }
 
 void scene_levels_dopo_uso() {
     boot();
@@ -616,6 +698,18 @@ const Scene SCENES[] = {
     {"49-network-dopo-uso", scene_net_dopo_uso},
 
     {"50-splash", scene_splash},
+
+    {"51-osc-pulse", scene_osc_pulse},
+    {"52-osc-noise", scene_osc_noise},
+    {"53-levels-risonanza-max", scene_levels_risonanza},
+    {"54-levels-risonanza-meta", scene_levels_risonanza_meta},
+    {"55-fx-riposo", scene_fx_riposo},
+    {"56-fx-tutto-acceso", scene_fx_tutto},
+    {"57-fx-glide-selezionato", scene_fx_glide_selezionato},
+    {"58-luci-impara-primo", scene_luci_impara_prima},
+    {"59-luci-impara-ultimo", scene_luci_impara_ultima},
+    {"60-toast-corto", scene_toast_corto},
+    {"61-toast-lungo", scene_toast_lungo},
 };
 
 constexpr int SCENE_COUNT = (int)(sizeof(SCENES) / sizeof(SCENES[0]));

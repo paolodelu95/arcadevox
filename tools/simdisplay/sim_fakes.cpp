@@ -32,10 +32,16 @@ void simAdvanceMillis(uint32_t ms) {
 long gfxSimClippedWrites = 0;
 SimSerial Serial;
 
-// I nomi delle forme d'onda sono dichiarati in audio_engine.h e definiti in
-// audio_engine.cpp, che qui non si compila: la definizione e' identica a quella
-// vera (src/audio_engine.cpp riga 23).
-const char *const WAVEFORM_NAMES[WAVE_COUNT] = {"SINE", "SQUARE", "SAW", "TRIANGLE"};
+// Le tabelle di nomi sono dichiarate in audio_engine.h e definite in
+// audio_engine.cpp, che qui non si compila: le definizioni sono identiche a
+// quelle vere. Vanno tenute allineate a mano — se una forma d'onda nuova
+// comparisse solo di la', qui resterebbe un puntatore nullo e la schermata OSC
+// andrebbe a scrivere il nulla.
+const char *const WAVEFORM_NAMES[WAVE_COUNT] = {"SINE",  "SQUARE", "SAW",
+                                                "TRIANG", "PULSE",  "NOISE"};
+
+const char *const LFO_TARGET_NAMES[LFO_TARGET_COUNT] = {"SPENTO", "VIBRATO", "FILTRO",
+                                                        "TREMOLO"};
 
 namespace {
 
@@ -91,6 +97,16 @@ bool copyScope(int8_t *dst) {
             case WAVE_SQUARE: v = (t < 0.5f) ? 1.0f : -1.0f; break;
             case WAVE_SAW: v = 2.0f * t - 1.0f; break;
             case WAVE_TRIANGLE: v = (t < 0.5f) ? (4.0f * t - 1.0f) : (3.0f - 4.0f * t); break;
+            case WAVE_PULSE: v = (t < 0.25f) ? 1.0f : -1.0f; break;
+            case WAVE_NOISE: {
+                // Deterministico come l'icona: la traccia dev'essere la stessa a
+                // ogni render, altrimenti due esecuzioni del simulatore
+                // darebbero PNG diversi e il confronto non varrebbe piu'.
+                uint32_t h = (uint32_t)i * 1664525u + 1013904223u;
+                h ^= h >> 13;
+                v = (float)((int32_t)((h >> 8) & 0xFFFF) - 32768) * (1.0f / 32768.0f);
+                break;
+            }
             default: v = sinf(2.0f * (float)M_PI * t); break;
         }
         float s = v * gScopeAmp;
@@ -100,6 +116,13 @@ bool copyScope(int8_t *dst) {
     }
     return true;
 }
+
+// I nomi delle combinazioni dei fili audio invece servono davvero: settings.cpp
+// e' il sorgente vero e li mette dentro le voci del menu.
+const char *const AUDIO_ORDER_NAMES[AUDIO_ORDER_COUNT] = {
+    "LRC BCK DIN", "BCK LRC DIN", "DIN BCK LRC",
+    "DIN LRC BCK", "BCK DIN LRC", "LRC DIN BCK",
+};
 
 // Il resto dell'interfaccia esiste solo perche' il linker non protesti se un
 // giorno si stubba anche main.cpp: nessuna di queste viene chiamata dal display.
@@ -111,11 +134,27 @@ bool voiceRetune(uint8_t, float) { return true; }
 void allNotesOff() {}
 void setWaveform(uint8_t) {}
 void setCutoff(float) {}
+void setResonance(float) {}
 void setVolume(float) {}
+void setDrive(float) {}
+void setSubLevel(float) {}
+void setDetune(float) {}
+void setGlide(float) {}
 void setAttack(float) {}
 void setDecay(float) {}
 void setSustain(float) {}
 void setRelease(float) {}
+void setCrush(bool) {}
+void setCrushBits(uint8_t) {}
+void setCrushDivider(uint8_t) {}
+void setDelayTime(float) {}
+void setDelayFeedback(float) {}
+void setDelayMix(float) {}
+void setLfoRate(float) {}
+void setLfoDepth(float) {}
+void setLfoTarget(uint8_t) {}
+void setPinOrder(uint8_t) {}
+uint8_t pinOrder() { return 0; }
 void click(bool) {}
 bool isSounding() { return false; }
 uint8_t activeVoices() { return 0; }
