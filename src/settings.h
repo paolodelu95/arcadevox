@@ -19,11 +19,12 @@
 // --- luci sotto i tasti ---
 #define SETTING_LED 7
 #define SETTING_LEDLEARN 8  // azione: impara l'ordine della catena
-// --- uscita audio ---
+// --- uscita audio e MIDI ---
 #define SETTING_AUDIO 9
+#define SETTING_MIDIOUT 10
 // --- rete ---
-#define SETTING_NET 10  // azione: accende la radio
-#define SETTING_COUNT 11
+#define SETTING_NET 11  // azione: accende la radio
+#define SETTING_COUNT 12
 
 namespace Settings {
 

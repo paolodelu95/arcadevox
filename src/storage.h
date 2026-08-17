@@ -73,7 +73,26 @@ struct SynthState {
     uint8_t setLed;
     uint8_t setAudio;
     uint8_t setTimbro;  // l'ultimo timbro di fabbrica caricato
+    uint8_t setMidiOut;
+
+    // Marcatore di revisione della struttura, e non e' ridondante rispetto al
+    // controllo sulla lunghezza.
+    //
+    // Il trucco della migrazione — "un blob piu' corto e' una versione
+    // precedente" — ha un buco: i campi in coda sono uint8_t e la struttura ne
+    // contiene di float, quindi il compilatore la riempie fino al multiplo di
+    // quattro. Aggiungere un byte puo' quindi lasciare `sizeof` **identico**, il
+    // controllo passa, e il campo nuovo si legge dal riempimento: zero. Un
+    // valore che per SETTING_MIDIOUT vuol dire "spento", e infatti il MIDI OUT
+    // nasceva gia' disinserito senza che nessuno l'avesse chiesto.
+    //
+    // Questo campo lo smaschera: un firmware nuovo ci scrive sempre
+    // STORAGE_STATE_REV, quindi leggere zero significa per forza "blob scritto
+    // prima che questo campo esistesse", e i campi nuovi vanno ignorati.
+    uint8_t stateRev;
 };
+
+#define STORAGE_STATE_REV 2
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.
 #define STORAGE_SCALE_REV 1

@@ -34,6 +34,7 @@ void writeAll(const Storage::SynthState &s) {
     if (!ready) return;
     Storage::SynthState copy = s;
     copy.magic = STATE_MAGIC;
+    copy.stateRev = STORAGE_STATE_REV;
     prefs.putBytes(KEY_STATE, &copy, sizeof(copy));
     prefs.putBytes(KEY_PATTERN, Sequencer::patternData(), Sequencer::patternSize());
     dirty = false;

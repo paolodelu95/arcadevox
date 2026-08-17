@@ -390,6 +390,7 @@ static Storage::SynthState snapshotState() {
     s.setLed = setIndex[SETTING_LED];
     s.setAudio = setIndex[SETTING_AUDIO];
     s.setTimbro = setIndex[SETTING_TIMBRO];
+    s.setMidiOut = setIndex[SETTING_MIDIOUT];
     return s;
 }
 
@@ -540,6 +541,47 @@ static uint32_t arpStepMs() {
     return (d < 30) ? 30 : (uint32_t)d;
 }
 
+// ------------------------------------------------------------------ MIDI OUT
+//
+// Quello che esce dal cavo si ricava dallo stesso elenco che pilota il motore:
+// non c'e' un secondo posto dove decidere cosa sta suonando, quindi le due cose
+// non possono andare fuori sincrono. Tasti, arpeggiator, sequencer e note
+// aggiunte dagli accordi ci finiscono dentro senza codice dedicato.
+static int8_t outNote[MAX_VOICES];
+static uint8_t outCcCutoff = 0xFF, outCcRes = 0xFF, outCcVol = 0xFF;
+static bool outTransport = false;
+static uint32_t outClockAt = 0;
+static uint32_t outClockCount = 0;
+
+// I tasti non hanno sensori di forza: la dinamica in uscita e' fissa. Meglio un
+// valore pieno ma non massimo — 100 lascia spazio a chi vuole ritoccarla nel DAW
+// senza trovarsi gia' al tetto.
+static const uint8_t OUT_VELOCITY = 100;
+
+enum { MIDIOUT_OFF = 0, MIDIOUT_NOTES, MIDIOUT_NOTES_CLOCK };
+
+static inline bool midiOutOn() { return setIndex[SETTING_MIDIOUT] != MIDIOUT_OFF; }
+
+// Da frequenza a numero di nota MIDI. Tutte le voci nascono dalla scala
+// temperata, quindi il giro non perde niente — ed e' l'unico modo di prendere
+// con una formula sola tasti, sequencer e note aggiunte dagli accordi.
+static inline int8_t freqToMidiNote(float hz) {
+    if (hz < 8.0f) return -1;
+    const int n = (int)lroundf(69.0f + 12.0f * log2f(hz / 440.0f));
+    return (n < 0 || n > 127) ? (int8_t)-1 : (int8_t)n;
+}
+
+// Spegne tutto quello che stavamo mandando fuori: cambio di modalita', uscita,
+// o MIDI OUT appena disinserito.
+static void midiOutAllOff() {
+    for (int i = 0; i < MAX_VOICES; ++i) {
+        if (outNote[i] >= 0) {
+            MidiOut::noteOff((uint8_t)outNote[i]);
+            outNote[i] = -1;
+        }
+    }
+}
+
 // Libera la voce che stava suonando una nota MIDI.
 static void midiRelease(uint8_t note) {
     const int8_t v = midiVoiceOfNote[note];
@@ -626,6 +668,8 @@ static void midiPump() {
                 break;
 
             case MIDI_PROGRAM:
+                Serial.print(F("MIDI: cambio programma "));
+                Serial.println(e.data1);
                 // Il cambio programma sceglie il timbro: e' il modo in cui un
                 // sequencer esterno si aspetta di poterlo fare.
                 setIndex[SETTING_TIMBRO] = (uint8_t)(e.data1 % PRESET_COUNT);
@@ -655,6 +699,29 @@ static void midiPump() {
     }
     midiActive = live;
     MidiIn::noteCountSet(live);
+
+    // Diagnostica sulla seriale: due righe in croce, ma sono quelle che
+    // rispondono alla domanda "il cavo funziona?" senza dover collegare un
+    // altoparlante. Il conteggio si stampa solo quando cambia, altrimenti una
+    // scala suonata da un DAW riempirebbe la console.
+    static bool wasConnected = false;
+    const bool isConnected = MidiIn::connected();
+    if (isConnected != wasConnected) {
+        wasConnected = isConnected;
+        Serial.println(isConnected ? F("MIDI: host collegato.") : F("MIDI: host scollegato."));
+    }
+    // Il conteggio si stampa al massimo una volta al secondo: suonando una scala
+    // da un DAW cambierebbe dieci volte al secondo, e la console diventerebbe
+    // illeggibile proprio mentre serve.
+    static uint8_t reported = 0xFF;
+    static uint32_t reportedAt = 0;
+    const uint32_t nowMs = millis();
+    if (live != reported && (uint32_t)(nowMs - reportedAt) >= 1000) {
+        reported = live;
+        reportedAt = nowMs;
+        Serial.print(F("MIDI: note attive "));
+        Serial.println(live);
+    }
 }
 
 // Tenendo premuto il tasto BOOT della DevKit si entra in modalita' rete.
@@ -685,6 +752,7 @@ void setup() {
     // interfacce e' chiuso e il synth comparirebbe come sola porta seriale.
     MidiIn::begin();
     midiReset();
+    for (int i = 0; i < MAX_VOICES; ++i) outNote[i] = -1;
     pinMode(0, INPUT_PULLUP);  // tasto BOOT: via di fuga verso la modalita' rete
     Input::begin();
     Keylight::begin();
@@ -747,6 +815,16 @@ void setup() {
         setIndex[SETTING_LED] = Settings::clampIndex(SETTING_LED, saved.setLed);
         setIndex[SETTING_AUDIO] = Settings::clampIndex(SETTING_AUDIO, saved.setAudio);
         setIndex[SETTING_TIMBRO] = Settings::clampIndex(SETTING_TIMBRO, saved.setTimbro);
+        setIndex[SETTING_MIDIOUT] = Settings::clampIndex(SETTING_MIDIOUT, saved.setMidiOut);
+
+        // Blob scritto prima che il marcatore esistesse: i campi in coda sono
+        // riempimento, non dati. Si torna ai valori di fabbrica solo per quelli.
+        if (saved.stateRev < STORAGE_STATE_REV) {
+            setIndex[SETTING_TIMBRO] = Settings::ENTRIES[SETTING_TIMBRO].byDefault;
+            setIndex[SETTING_MIDIOUT] = Settings::ENTRIES[SETTING_MIDIOUT].byDefault;
+            Storage::markDirty();
+            Serial.println(F("Impostazioni nuove riportate ai valori di fabbrica."));
+        }
 
         Sequencer::setBpm(saved.bpm);
         Serial.println(F("Stato ripristinato da NVS."));
@@ -1083,7 +1161,10 @@ void loop() {
             // ad orecchio, le luci, che vanno viste, e il timbro, che si sceglie
             // proprio suonando mentre si gira la manopola.
             if (which == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[which]);
-            if (which == SETTING_TIMBRO) loadPreset(setIndex[which]);
+            if (which == SETTING_TIMBRO) {
+                loadPreset(setIndex[which]);
+                if (midiOutOn()) MidiOut::program(setIndex[which]);
+            }
             Storage::markDirty();
         }
     } else if (adsrEditMode) {
@@ -1289,6 +1370,95 @@ void loop() {
         } else if (fabsf(wantFreq[i] - voiceFreq[i]) > 0.01f) {
             // cambio ottava mentre la nota suona: reintono senza ritriggerare
             if (AudioEngine::voiceRetune((uint8_t)i, wantFreq[i])) voiceFreq[i] = wantFreq[i];
+        }
+    }
+
+    // ------------------------------------------------------------ MIDI OUT
+    {
+        static int8_t outState = -1;
+        const int8_t nowState = (!midiOutOn()) ? 0 : (MidiOut::connected() ? 2 : 1);
+        if (nowState != outState) {
+            outState = nowState;
+            Serial.println(nowState == 0   ? F("MIDI OUT: disinserito nelle impostazioni.")
+                           : nowState == 1 ? F("MIDI OUT: nessun host in ascolto.")
+                                           : F("MIDI OUT: pronto."));
+            uint8_t epIn = 0, epOut = 0;
+            MidiIn::endpoints(epIn, epOut);
+            Serial.print(F("MIDI: endpoint IN "));
+            Serial.print(epIn);
+            Serial.print(F(", OUT "));
+            Serial.println(epOut);
+        }
+    }
+    if (!midiOutOn() || !MidiOut::connected()) {
+        midiOutAllOff();
+    } else {
+        for (int i = 0; i < MAX_VOICES; ++i) {
+            // Le voci che stanno suonando *perche' arrivano dal MIDI* non
+            // tornano indietro: con un DAW che rimanda in eco quello che riceve
+            // si innescherebbe un anello.
+            const bool fromMidi = (i < NOTE_COUNT) && (midiNoteOfVoice[i] >= 0);
+            const int8_t want =
+                (wantVoice[i] && !fromMidi) ? freqToMidiNote(wantFreq[i]) : (int8_t)-1;
+
+            if (want == outNote[i]) {
+                // Stessa nota che riparte (ribattuto, passo dell'arpeggiator):
+                // va spenta e riaccesa, o dall'altra parte non si sente nulla.
+                if (want >= 0 && wantRetrig[i]) {
+                    MidiOut::noteOff((uint8_t)want);
+                    MidiOut::noteOn((uint8_t)want, OUT_VELOCITY);
+                }
+                continue;
+            }
+            if (outNote[i] >= 0) MidiOut::noteOff((uint8_t)outNote[i]);
+            if (want >= 0) MidiOut::noteOn((uint8_t)want, OUT_VELOCITY);
+            outNote[i] = want;
+        }
+
+        // Le manopole diventano CC, ma solo quando il valore a 7 bit cambia
+        // davvero: un encoder girato piano genera decine di variazioni che a
+        // valle sono lo stesso numero.
+        const uint8_t cc74 = (uint8_t)(clamp01(cutoffPos) * 127.0f + 0.5f);
+        if (cc74 != outCcCutoff) {
+            MidiOut::cc(74, cc74);
+            outCcCutoff = cc74;
+        }
+        const uint8_t cc71 = (uint8_t)(resonance * 127.0f + 0.5f);
+        if (cc71 != outCcRes) {
+            MidiOut::cc(71, cc71);
+            outCcRes = cc71;
+        }
+        const uint8_t cc7 = (uint8_t)(volume * 127.0f + 0.5f);
+        if (cc7 != outCcVol) {
+            MidiOut::cc(7, cc7);
+            outCcVol = cc7;
+        }
+
+        // Trasporto e clock. Il clock lo mandiamo dal loop del core 1, che gira
+        // ogni millisecondo scarso: il tremolio e' di quell'ordine, abbastanza
+        // per accompagnare un DAW ma non per pretendere che ci accordi sopra un
+        // disco.
+        const bool running = (Sequencer::mode() == Sequencer::SEQ_PLAYING) || recording;
+        if (running != outTransport) {
+            outTransport = running;
+            if (running) {
+                MidiOut::start();
+                outClockAt = now;
+                outClockCount = 0;
+            } else {
+                MidiOut::stop();
+            }
+        }
+        if (running && setIndex[SETTING_MIDIOUT] == MIDIOUT_NOTES_CLOCK) {
+            // 24 impulsi per movimento, come da standard.
+            const uint32_t period = (uint32_t)(60000.0f / (float)Sequencer::bpm() / 24.0f);
+            const uint32_t due = (period < 1) ? 1 : period;
+            while ((int32_t)(now - outClockAt) >= (int32_t)due && outClockCount < 64) {
+                MidiOut::clock();
+                outClockAt += due;
+                ++outClockCount;
+            }
+            outClockCount = 0;
         }
     }
 

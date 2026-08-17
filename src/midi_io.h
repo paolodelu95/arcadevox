@@ -51,4 +51,40 @@ MidiEvent poll();
 uint8_t activeNotes();
 void noteCountSet(uint8_t n);
 
+// Endpoint assegnati all'interfaccia. Zero significa che l'allocatore li aveva
+// finiti, e allora il verso corrispondente non funziona: e' la prima cosa da
+// guardare se il MIDI enumera ma non passa dati.
+void endpoints(uint8_t &in, uint8_t &out);
+
 }  // namespace MidiIn
+
+// ============================================================================
+// MIDI OUT
+// ============================================================================
+// Il verso opposto: quello che suoni finisce sul computer. Tasti, arpeggiator,
+// sequencer e note aggiunte dagli accordi partono tutti dallo stesso punto —
+// l'elenco di cosa deve suonare adesso, quello che pilota anche il motore — per
+// cui non c'e' modo che le due cose vadano fuori sincrono.
+//
+// Le note che arrivano **dal** MIDI non vengono rimandate indietro: con un DAW
+// che rimanda in eco quello che riceve si innescherebbe un anello, e ogni nota
+// si moltiplicherebbe da sola.
+namespace MidiOut {
+
+void noteOn(uint8_t note, uint8_t velocity);
+void noteOff(uint8_t note);
+void cc(uint8_t number, uint8_t value);
+void program(uint8_t number);
+
+// --- trasporto ---
+// Start/stop e il clock a 24 impulsi per movimento: e' quello che serve a un
+// sequencer esterno per andare a tempo con questo.
+void start();
+void stop();
+void clock();
+
+// Il computer sta ascoltando? Se non c'e' nessuno collegato si evita perfino di
+// comporre i messaggi.
+bool connected();
+
+}  // namespace MidiOut

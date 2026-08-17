@@ -12,7 +12,18 @@ bool connected() { return false; }
 MidiEvent poll() { return MidiEvent{MIDI_NONE, 0, 0, 0, 0}; }
 uint8_t activeNotes() { return 0; }
 void noteCountSet(uint8_t) {}
+void endpoints(uint8_t &in, uint8_t &out) { in = 0; out = 0; }
 }  // namespace MidiIn
+namespace MidiOut {
+void noteOn(uint8_t, uint8_t) {}
+void noteOff(uint8_t) {}
+void cc(uint8_t, uint8_t) {}
+void program(uint8_t) {}
+void start() {}
+void stop() {}
+void clock() {}
+bool connected() { return false; }
+}  // namespace MidiOut
 
 #else
 
@@ -28,14 +39,19 @@ namespace {
 
 bool started = false;
 uint8_t liveNotes = 0;
+// Quali endpoint ci ha dato l'allocatore. Zero vuol dire "finiti": sull'S3 le
+// FIFO di trasmissione sono poche e la seriale ne prende gia' due.
+uint8_t gEpIn = 0xFF, gEpOut = 0xFF;
 
 // Descrittore dell'interfaccia. La chiama TinyUSB mentre monta la
 // configurazione, una volta sola, prima che il dispositivo compaia al computer.
 extern "C" uint16_t arcadevoxMidiDescriptor(uint8_t *dst, uint8_t *itf) {
     const uint8_t str = tinyusb_add_string_descriptor("ArcadeVox MIDI");
     const uint8_t epOut = tinyusb_get_free_out_endpoint();
+    gEpOut = epOut;
     TU_VERIFY(epOut != 0);
     const uint8_t epIn = tinyusb_get_free_in_endpoint();
+    gEpIn = epIn;
     TU_VERIFY(epIn != 0);
 
     const uint8_t descriptor[TUD_MIDI_DESC_LEN] = {
@@ -82,7 +98,7 @@ void begin() {
     USB.begin();
 }
 
-bool connected() { return started && tud_midi_mounted(); }
+bool connected() { return started && tud_ready(); }
 
 MidiEvent poll() {
     MidiEvent e = {MIDI_NONE, 0, 0, 0, 0};
@@ -132,7 +148,60 @@ MidiEvent poll() {
 
 uint8_t activeNotes() { return liveNotes; }
 void noteCountSet(uint8_t n) { liveNotes = n; }
+void endpoints(uint8_t &in, uint8_t &out) { in = gEpIn; out = gEpOut; }
 
 }  // namespace MidiIn
+
+namespace MidiOut {
+
+namespace {
+// Canale 1, che e' quello che un DAW guarda per primo.
+constexpr uint8_t CH = 0;
+
+inline void send(const uint8_t *data, uint32_t len) {
+    // Il gancio e' tud_ready(), non tud_midi_mounted().
+    //
+    // Sulla scheda si vede una cosa che il nome non lascerebbe immaginare:
+    // arrivano pacchetti MIDI dal computer — quindi l'interfaccia e' su e
+    // funzionante — mentre tud_midi_mounted() continua a rispondere di no. Con
+    // quel controllo davanti, il MIDI OUT non mandava mai niente e sembrava
+    // rotto. tud_ready() dice cio' che serve davvero sapere: il dispositivo e'
+    // configurato e il computer sta dall'altra parte.
+    if (!started || !tud_ready()) return;
+    tud_midi_stream_write(0, data, len);
+}
+}  // namespace
+
+void noteOn(uint8_t note, uint8_t velocity) {
+    const uint8_t m[3] = {(uint8_t)(0x90 | CH), (uint8_t)(note & 0x7F),
+                          (uint8_t)(velocity & 0x7F)};
+    send(m, 3);
+}
+
+void noteOff(uint8_t note) {
+    const uint8_t m[3] = {(uint8_t)(0x80 | CH), (uint8_t)(note & 0x7F), 0};
+    send(m, 3);
+}
+
+void cc(uint8_t number, uint8_t value) {
+    const uint8_t m[3] = {(uint8_t)(0xB0 | CH), (uint8_t)(number & 0x7F),
+                          (uint8_t)(value & 0x7F)};
+    send(m, 3);
+}
+
+void program(uint8_t number) {
+    const uint8_t m[2] = {(uint8_t)(0xC0 | CH), (uint8_t)(number & 0x7F)};
+    send(m, 2);
+}
+
+// I messaggi di sistema in tempo reale non hanno canale e possono infilarsi
+// ovunque, anche in mezzo a un altro messaggio: e' cosi' che sono fatti.
+void start() { const uint8_t m = 0xFA; send(&m, 1); }
+void stop() { const uint8_t m = 0xFC; send(&m, 1); }
+void clock() { const uint8_t m = 0xF8; send(&m, 1); }
+
+bool connected() { return started && tud_ready(); }
+
+}  // namespace MidiOut
 
 #endif  // ARDUINO_USB_MODE

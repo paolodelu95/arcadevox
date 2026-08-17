@@ -64,6 +64,11 @@ const char *const SCALE_LABELS[SCALE_COUNT] = {"CROMAT.", "MAGG.",  "MIN.",  "PE
 const char *const ROOT_LABELS[12] = {"DO",  "DO#", "RE",  "RE#", "MI",  "FA",
                                      "FA#", "SOL", "SOL#", "LA", "LA#", "SI"};
 
+// Il clock si manda solo a chi lo vuole: un DAW che riceve impulsi di
+// sincronismo senza aspettarseli comincia a seguire il tempo del synth, e chi
+// non lo sapeva si ritrova il progetto che accelera da solo.
+const char *const MIDIOUT_LABELS[3] = {"SPENTO", "NOTE", "NOTE+CLOCK"};
+
 const char *const LED_LABELS[9] = {"SPENTE", "1", "2", "3", "4", "5", "6", "7", "MAX"};
 
 }  // namespace
@@ -86,6 +91,7 @@ const Entry ENTRIES[SETTING_COUNT] = {
     {"LUCI", "LUMINOSITA'", 9, 5, LED_LABELS},
     {nullptr, "IMPARA LUCI", 0, 0, nullptr},
     {"AUDIO", "USCITA", AUDIO_ORDER_COUNT, 0, AudioEngine::AUDIO_ORDER_NAMES},
+    {nullptr, "MIDI OUT", 3, 1, MIDIOUT_LABELS},
     {"RETE", "MODALITA' WIFI", 0, 0, nullptr},
 };
 

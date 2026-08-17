@@ -270,6 +270,30 @@ suonato forte. I tasti del pannello invece sono interruttori e mandano sempre fo
 | Pitch bend | ±2 semitoni |
 | CC 120 / 123 | spegne tutto |
 
+I due versi si provano dalla console: il firmware scrive quando un host si collega, quali
+endpoint USB ha ottenuto (zero significa che l'allocatore li aveva finiti) e quante note
+stanno suonando per via del MIDI.
+
+### MIDI OUT
+
+Il verso opposto: quello che suoni finisce sul computer. Tasti, arpeggiator, sequencer e note
+aggiunte dagli accordi partono **dallo stesso elenco che pilota il motore audio**, quindi non
+c'è modo che le due cose vadano fuori sincrono. Escono anche i CC delle manopole (cutoff 74,
+risonanza 71, volume 7), il cambio programma quando scegli un timbro, e — se lo abiliti — lo
+start/stop e il clock a 24 impulsi per movimento, così un DAW può andare a tempo con il
+sequencer.
+
+Si regola da **SETTINGS → AUDIO → MIDI OUT**: `SPENTO`, `NOTE`, `NOTE+CLOCK`. Il clock è
+separato apposta — un DAW che riceve impulsi di sincronismo senza aspettarseli comincia a
+seguire il tempo del synth, e chi non lo sapeva si ritrova il progetto che accelera da solo.
+
+**Le note ricevute non tornano indietro.** Con un DAW che rimanda in eco quello che riceve si
+innescherebbe un anello e ogni nota si moltiplicherebbe da sola: le voci che stanno suonando
+perché arrivano dal cavo sono escluse dall'uscita.
+
+Il clock nasce dal loop del core 1, che gira ogni millisecondo scarso: il tremolio è di
+quell'ordine. Abbastanza per accompagnare, non per accordarci sopra un disco.
+
 **Il tasto fisico ha sempre la precedenza.** Le voci sono sedici e la tastiera ne occupa una
 per tasto: se una voce serve a un dito, la nota MIDI che ci stava sopra tace finché il dito
 non si alza. L'alternativa — zittire le dita — renderebbe lo strumento inservibile proprio
