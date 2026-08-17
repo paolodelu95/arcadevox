@@ -53,6 +53,8 @@ volatile float pDrive = 0.0f;
 volatile float pSubLevel = 0.0f;
 volatile float pDetuneCents = 0.0f;
 volatile float pGlideMs = 0.0f;
+volatile float pFiltEnvAmount = 0.0f;
+volatile float pFiltEnvMs = 300.0f;
 
 volatile float pAttackMs = 10.0f;
 volatile float pDecayMs = 120.0f;
@@ -90,6 +92,7 @@ struct NoteEvent {
     uint8_t type;
     uint8_t id;
     float freq;
+    float velocity;
 };
 
 QueueHandle_t eventQueue = nullptr;
@@ -103,8 +106,11 @@ struct Voice {
     uint32_t subPhase;
     uint32_t detunePhase;
     float envLevel;
+    float envPeak;   // dove arriva l'attacco: e' la dinamica della nota
     float releaseInc;
-    float svfLow;   // stato del filtro risonante
+    float filtEnv;   // 1 all'attacco, scende da solo: apre e richiude il filtro
+    float svfF;      // coefficiente del filtro, ricalcolato una volta per blocco
+    float svfLow;    // stato del filtro risonante
     float svfBand;
     uint32_t noiseState;
     EnvStage stage;
@@ -201,22 +207,27 @@ struct EnvRates {
 inline void envTick(Voice &v, const EnvRates &r) {
     switch (v.stage) {
         case ENV_ATTACK:
-            v.envLevel += r.attack;
-            if (v.envLevel >= 1.0f) {
-                v.envLevel = 1.0f;
+            // Il tempo di salita non dipende dalla dinamica: una nota piano ci
+            // mette quanto una forte ad arrivare al *suo* massimo, che e' come
+            // si comportano gli inviluppi veri.
+            v.envLevel += r.attack * v.envPeak;
+            if (v.envLevel >= v.envPeak) {
+                v.envLevel = v.envPeak;
                 v.stage = ENV_DECAY;
             }
             break;
-        case ENV_DECAY:
-            v.envLevel -= r.decay;
-            if (v.envLevel <= r.sustain) {
-                v.envLevel = r.sustain;
+        case ENV_DECAY: {
+            const float sus = r.sustain * v.envPeak;
+            v.envLevel -= r.decay * v.envPeak;
+            if (v.envLevel <= sus) {
+                v.envLevel = sus;
                 v.stage = ENV_SUSTAIN;
             }
             break;
+        }
         case ENV_SUSTAIN:
             // segue in tempo reale eventuali modifiche del sustain in edit mode
-            v.envLevel += (r.sustain - v.envLevel) * 0.0005f;
+            v.envLevel += (r.sustain * v.envPeak - v.envLevel) * 0.0005f;
             break;
         case ENV_RELEASE:
             v.envLevel -= v.releaseInc;
@@ -268,6 +279,11 @@ void drainEvents() {
         Voice &v = voices[ev.id];
         switch (ev.type) {
             case EV_ON:
+                v.envPeak = (ev.velocity > 0.02f) ? ev.velocity : 0.02f;
+                // Il filtro riparte spalancato ad ogni attacco, anche se la
+                // voce stava gia' suonando: e' cio' che rende il ribattuto di
+                // un pianoforte diverso da una nota tenuta.
+                v.filtEnv = 1.0f;
                 v.phaseIncTarget = freqToPhaseInc(ev.freq);
                 // Il portamento parte da dove stava suonando: se la voce era
                 // spenta non c'e' niente da cui scivolare e si attacca netta.
@@ -343,7 +359,14 @@ void renderBlock(int16_t *out, size_t frames) {
     if (cutTarget > cutMax) cutTarget = cutMax;
     cutSmooth += (cutTarget - cutSmooth) * 0.25f;
 
-    const float svfF = 2.0f * sinf((float)M_PI * cutSmooth / (float)SAMPLE_RATE);
+    const float svfFbase = 2.0f * sinf((float)M_PI * cutSmooth / (float)SAMPLE_RATE);
+    // Inviluppo di filtro: un colpo per blocco, non per campione. A 345
+    // aggiornamenti al secondo la richiusura resta liscia all'orecchio e costa
+    // una sinf per voce invece di una per campione — che a sedici voci sarebbe
+    // il triplo di tutto il resto del motore messo insieme.
+    const float filtAmount = pFiltEnvAmount;
+    const float filtDecay =
+        expf(-(float)RENDER_BLOCK / samplesFor(pFiltEnvMs));
     const float res = pResonance;
     // q e' lo smorzamento: 2 = nessuna risonanza, verso 0 il filtro si mette a
     // fischiare da solo. Non si arriva mai a zero, o resterebbe acceso anche a
@@ -401,6 +424,21 @@ void renderBlock(int16_t *out, size_t frames) {
             const float next = cur + (tgt - cur) * glideCoef;
             v.phaseInc = (uint32_t)next;
             if (fabsf(tgt - next) < 16.0f) v.phaseInc = v.phaseIncTarget;
+        }
+
+        if (filtAmount <= 0.0f) {
+            v.filtEnv = 0.0f;
+            v.svfF = svfFbase;
+        } else {
+            v.filtEnv *= filtDecay;
+            if (v.filtEnv < 0.002f) v.filtEnv = 0.0f;
+            // Quattro ottave a fondo corsa, scalate anche dalla dinamica: una
+            // nota piano apre meno di una forte, che e' quello che fa un
+            // martelletto vero su una corda.
+            float fc = cutSmooth * exp2f(filtAmount * 4.0f * v.filtEnv * v.envPeak);
+            if (fc > cutMax) fc = cutMax;
+            if (fc < 40.0f) fc = 40.0f;
+            v.svfF = 2.0f * sinf((float)M_PI * fc / (float)SAMPLE_RATE);
         }
     }
 
@@ -460,8 +498,8 @@ void renderBlock(int16_t *out, size_t frames) {
             // Filtro a variabili di stato (Chamberlin): passa-basso risonante,
             // due sole ricorsioni per campione.
             const float high = osc * svfIn - v.svfLow - svfQ * v.svfBand;
-            v.svfBand += svfF * high;
-            v.svfLow += svfF * v.svfBand;
+            v.svfBand += v.svfF * high;
+            v.svfLow += v.svfF * v.svfBand;
             // Il filtro con Q alto puo' divergere su transienti brutali: il
             // limite tiene la voce dentro invece di lasciarla esplodere.
             if (v.svfLow > 4.0f) v.svfLow = 4.0f;
@@ -617,9 +655,9 @@ void i2sInit() {
 
 // Accodare un evento non deve mai bloccare il core 1: timeout zero, e in caso di
 // coda piena si riferisce il fallimento al chiamante invece di fermare il loop.
-bool post(uint8_t type, uint8_t id, float freq) {
+bool post(uint8_t type, uint8_t id, float freq, float velocity = 1.0f) {
     if (!eventQueue) return false;
-    NoteEvent ev = {type, id, freq};
+    NoteEvent ev = {type, id, freq, velocity};
     return xQueueSend(eventQueue, &ev, 0) == pdTRUE;
 }
 
@@ -639,6 +677,7 @@ void begin() {
     for (int i = 0; i < MAX_VOICES; ++i) {
         voices[i] = Voice{};
         voices[i].stage = ENV_IDLE;
+        voices[i].envPeak = 1.0f;
         voices[i].noiseState = 0x12345678u + (uint32_t)i * 2654435761u;
     }
     memset(delayBuf, 0, sizeof(delayBuf));
@@ -667,7 +706,9 @@ void shutdown() {
     driverInstalled = false;
 }
 
-bool voiceOn(uint8_t id, float freq) { return post(EV_ON, id, freq); }
+bool voiceOn(uint8_t id, float freq, float velocity) {
+    return post(EV_ON, id, freq, velocity);
+}
 bool voiceOff(uint8_t id) { return post(EV_OFF, id, 0.0f); }
 bool voiceRetune(uint8_t id, float freq) { return post(EV_RETUNE, id, freq); }
 void allNotesOff() { post(EV_ALL_OFF, 0, 0.0f); }
@@ -721,6 +762,15 @@ void setGlide(float ms) {
     if (ms < 0.0f) ms = 0.0f;
     if (ms > 2000.0f) ms = 2000.0f;
     pGlideMs = ms;
+}
+
+void setFilterEnv(float amount, float decayMs) {
+    if (amount < 0.0f) amount = 0.0f;
+    if (amount > 1.0f) amount = 1.0f;
+    if (decayMs < 20.0f) decayMs = 20.0f;
+    if (decayMs > 4000.0f) decayMs = 4000.0f;
+    pFiltEnvAmount = amount;
+    pFiltEnvMs = decayMs;
 }
 
 void setAttack(float ms) { pAttackMs = ms; }

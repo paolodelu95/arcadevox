@@ -84,7 +84,12 @@ void shutdown();
 // Restituiscono false se la coda e' piena: il chiamante deve tenerne conto e
 // non aggiornare la propria idea di cosa sta suonando, altrimenti un voiceOff
 // perso lascerebbe una nota appesa per sempre.
-bool voiceOn(uint8_t id, float freq);
+// `velocity` 0..1 e' la forza della nota: scala il picco dell'inviluppo e, con
+// l'inviluppo di filtro inserito, anche quanto si apre il filtro. Dalla
+// tastiera arriva sempre 1 — i tasti sono interruttori, non sensori — ma dal
+// MIDI arriva quella vera, ed e' li' che un pianoforte smette di sembrare un
+// organo.
+bool voiceOn(uint8_t id, float freq, float velocity = 1.0f);
 bool voiceOff(uint8_t id);
 bool voiceRetune(uint8_t id, float freq);
 void allNotesOff();
@@ -98,6 +103,13 @@ void setDrive(float amount);    // 0 = pulito, 1 = saturo
 void setSubLevel(float level);  // seconda voce un'ottava sotto, 0..1
 void setDetune(float cents);    // scordatura della seconda voce, 0..50 cent
 void setGlide(float ms);        // portamento fra due note, 0 = spento
+
+// --- inviluppo di filtro ---
+// Il filtro si apre di colpo all'attacco della nota e si richiude da solo. E'
+// questo — non la forma d'onda — che distingue una corda pizzicata da una nota
+// tenuta: senza, un preset "pianoforte" resta un organo con l'attacco veloce.
+// `amount` 0 = filtro fermo sul cutoff, 1 = si apre di quattro ottave sopra.
+void setFilterEnv(float amount, float decayMs);
 
 // --- ADSR (comune a tutte le voci) ---
 void setAttack(float ms);       // 2..500 ms
