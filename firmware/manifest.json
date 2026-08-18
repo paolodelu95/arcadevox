@@ -1,1 +1,1 @@
-{"version":"2.0.1","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"Le manopole girano nel verso giusto: in senso orario il valore sale. Include la 2.0 (MIDI IN/OUT, quindici timbri, dinamica, risonanza)."}
+{"version":"2.1.0","url":"https://raw.githubusercontent.com/paolodelu95/arcadevox/main/firmware/firmware.bin","notes":"Interazione rifatta: il joystick naviga sempre, le manopole sono quello che vedi. Timbri in una schermata loro, ADSR non e' piu' un modo nascosto, e cio' che cambi te lo dice un riquadro al volo."}
