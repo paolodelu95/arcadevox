@@ -20,6 +20,7 @@
 #include "logo.h"
 #include "net_portal.h"
 #include "pinout.h"
+#include "presets.h"  // nomi e descrizioni dei timbri, per la schermata TIMBRI
 #include "sequencer.h"
 #include "settings.h"
 #include "version.h"
@@ -33,7 +34,6 @@ Arduino_DataBus *bus = nullptr;
 Arduino_GFX *gfx = nullptr;
 
 uint8_t screen = 0;
-bool inAdsrScreen = false;
 bool inSeqOverride = false;  // STEP EDIT o preconteggio: la SEQ scavalca il ciclo
 bool inLedLearn = false;     // apprendimento dell'ordine dei LED sotto i tasti
 bool forceFull = true;
@@ -308,48 +308,52 @@ void drawWaveScreen(const SynthView &v, bool full) {
     }
 }
 
-void drawOctaveScreen(const SynthView &v, bool full) {
+// I quindici timbri, che prima stavano sepolti in fondo alle impostazioni. Sono
+// il punto da cui si comincia a suonare, non una preferenza da configurare una
+// volta sola: meritano una schermata loro, raggiungibile come tutte le altre.
+//
+// Elenco a finestra scorrevole di cinque righe, la selezionata al centro quando
+// puo' starci. La riga sotto porta il `hint` del preset: "attacco secco, coda
+// che muore" dice cosa aspettarsi molto meglio del solo nome.
+void drawTimbriScreen(const SynthView &v, bool full) {
     if (full) {
-        chrome("OCTAVE", HUD_MAGENTA);
-        textCentered("JOY SU GIU CAMBIA OTTAVA", CONTENT_TOP, 1, HUD_LABEL);
+        chrome("TIMBRI", HUD_MAGENTA);
+        textCentered("ENC1 SCEGLIE - SUONA PER PROVARE", CONTENT_TOP, 1, HUD_LABEL);
     }
-    if (!full && v.octave == prev.octave) return;
+    if (!full && v.timbroCursor == prev.timbroCursor && v.timbro == prev.timbro) return;
 
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%+d", (int)v.octave);
-    gfx->fillRect(20, 70, 200, 66, BLACK);
-    textCentered(buf, 70, 8, (v.octave == 0) ? HUD_ICE : HUD_MAGENTA);
+    constexpr int ROWS = 5, ROW_H = 20, LIST_TOP = 66;
 
-    // Selettore a cinque caselle: si vede subito dove sei nella corsa e quanto
-    // margine resta, cosa che il solo numero non dice.
-    constexpr int CHIP_W = 26, CHIP_H = 20, CHIP_GAP = 8;
-    constexpr int total = 5 * CHIP_W + 4 * CHIP_GAP;
-    const int x0 = CX - total / 2;
-    for (int i = 0; i < 5; ++i) {
-        const int x = x0 + i * (CHIP_W + CHIP_GAP);
-        const bool here = (i - 2) == v.octave;
-        char lbl[4];
-        snprintf(lbl, sizeof(lbl), "%+d", i - 2);
-        if (here) {
-            gfx->fillRect(x, 148, CHIP_W, CHIP_H, HUD_MAGENTA);
-            textAt(lbl, x + 7, 154, 1, BLACK);
-        } else {
-            // Ripulire prima: la casella accesa un attimo fa era piena, e il solo
-            // contorno non basta a portarne via il fondo.
-            gfx->fillRect(x, 148, CHIP_W, CHIP_H, BLACK);
-            gfx->drawRect(x, 148, CHIP_W, CHIP_H, HUD_TRACK);
-            textAt(lbl, x + 7, 154, 1, HUD_LABEL);
+    // Finestra centrata sul cursore, ferma agli estremi: scorrere oltre la fine
+    // per tenere il cursore al centro lascerebbe righe vuote in fondo.
+    int first = (int)v.timbroCursor - ROWS / 2;
+    const int last = (int)PRESET_COUNT - ROWS;
+    if (first > last) first = last;
+    if (first < 0) first = 0;
+
+    for (int r = 0; r < ROWS; ++r) {
+        const int idx = first + r;
+        const int y = LIST_TOP + r * ROW_H;
+        gfx->fillRect(14, y, 212, ROW_H, BLACK);
+        if (idx >= (int)PRESET_COUNT) continue;
+
+        const bool onCursor = (idx == (int)v.timbroCursor);
+        const bool loaded = (idx == (int)v.timbro);
+
+        if (onCursor) {
+            gfx->fillRect(14, y, 212, ROW_H - 2, dim565(HUD_MAGENTA, 1, 4));
+            gfx->drawRect(14, y, 212, ROW_H - 2, HUD_MAGENTA);
         }
+        // Il pallino dice quale sta *suonando adesso*, che con l'encoder che
+        // scorre liberamente non e' per forza quello sotto il cursore.
+        if (loaded) gfx->fillCircle(24, y + 8, 3, HUD_ICE);
+        textAt(PRESETS[idx].name, 34, y + 4, 1, onCursor ? HUD_ICE : HUD_LABEL);
     }
 
-    // Il moltiplicatore in chiaro: e' quello che senti, l'esponente e' un modo
-    // indiretto di dirlo.
-    static const char *const MUL[5] = {"x 0.25", "x 0.50", "x 1.00", "x 2.00", "x 4.00"};
-    int idx = v.octave + 2;
-    if (idx < 0) idx = 0;
-    if (idx > 4) idx = 4;
-    clearBand(180, 16);
-    textCentered(MUL[idx], 180, 2, HUD_LABEL);
+    clearBand(176, 22);
+    if (v.timbroCursor < PRESET_COUNT) {
+        textCentered(PRESETS[v.timbroCursor].hint, 178, 1, HUD_LABEL);
+    }
 }
 
 // Risposta del passa-basso one-pole disegnata in piccolo: |H| = 1/sqrt(1+(f/fc)^2)
@@ -849,7 +853,7 @@ int settingsWindowStart(int cursor) {
     int first = settingsFirst;
     if (cursor < first) first = cursor;
     if (cursor > first + SET_VISIBLE - 1) first = cursor - SET_VISIBLE + 1;
-    if (first > SETTING_COUNT - SET_VISIBLE) first = SETTING_COUNT - SET_VISIBLE;
+    if (first > SETTING_MENU_COUNT - SET_VISIBLE) first = SETTING_MENU_COUNT - SET_VISIBLE;
     if (first < 0) first = 0;
     return first;
 }
@@ -883,7 +887,9 @@ void drawSettingsScreen(const SynthView &v, bool full) {
         // Due frecce ai lati dicono che sopra o sotto c'e' dell'altro: senza,
         // una finestra su dieci voci sembra il menu intero.
         if (settingsFirst > 0) gfx->fillTriangle(212, 60, 206, 68, 218, 68, HUD_LABEL);
-        if (last < SETTING_COUNT - 1) gfx->fillTriangle(212, 186, 206, 178, 218, 178, HUD_LABEL);
+        if (last < SETTING_MENU_COUNT - 1) {
+            gfx->fillTriangle(212, 186, 206, 178, 218, 178, HUD_LABEL);
+        }
         settingsFirstDrawn = settingsFirst;
         full = true;
     }
@@ -1527,15 +1533,39 @@ void drawLedLearnScreen(const SynthView &v, bool full) {
 // Una fascia in basso con dentro il nome di quello che e' appena cambiato.
 // Sta sopra qualunque schermata: quando premi un tasto vuoi sapere cosa hai
 // fatto, non cercare la pagina che te lo dice.
-void drawToast(const char *text) {
-    const int w = hudChipWidth(text, 2);
-    const int x = CX - w / 2;
-    // A 170 e non piu' in basso: la fascia copre comunque la fila delle voci —
-    // non c'e' modo di evitarlo — ma lascia libera la riga di stato sotto, che
-    // e' l'unica cosa che si legge ancora mentre il messaggio e' a video.
-    gfx->fillRect(x - 3, 170, w + 6, 22, BLACK);
-    gfx->drawRect(x - 3, 170, w + 6, 22, dim565(HUD_MAGENTA, 1, 2));
-    hudChip(x, 173, text, HUD_MAGENTA, 2);
+// L'overlay: cosa e' appena cambiato, sopra qualunque schermata, per un paio di
+// secondi. E' il pezzo che tiene in piedi tutto il resto del redesign — se ogni
+// gesto si conferma da solo, nessuna manopola ha piu' bisogno che tu vada a
+// cercare la schermata giusta per sapere cosa hai fatto.
+//
+// Sta al centro e non in un angolo apposta: e' un'informazione che dura un
+// istante e vuole essere letta senza cercarla, non una decorazione da bordo.
+void drawFlash(const char *label, const char *value, float frac) {
+    constexpr int PANEL_Y = 74, PANEL_H = 92;
+    gfx->fillRect(8, PANEL_Y, 224, PANEL_H, BLACK);
+    gfx->drawRect(8, PANEL_Y, 224, PANEL_H, HUD_MAGENTA);
+    gfx->drawRect(9, PANEL_Y + 1, 222, PANEL_H - 2, dim565(HUD_MAGENTA, 1, 3));
+
+    if (label) textCentered(label, PANEL_Y + 10, 1, HUD_LABEL);
+
+    if (value) {
+        // Il corpo si sceglie sulla lunghezza: "PIANOFORTE" a corpo 4 uscirebbe
+        // dal tondo, "+2" a corpo 2 sarebbe minuscolo in mezzo a tutto quel nero.
+        const size_t n = strlen(value);
+        const uint8_t size = (n <= 4) ? 5 : (n <= 8) ? 3 : 2;
+        const int h = 8 * size;
+        textCentered(value, PANEL_Y + 34 + (28 - h) / 2, size, HUD_ICE);
+    }
+
+    // La barra c'e' solo per i parametri continui: su "SAW" o "HOLD ON" non
+    // vuol dire niente, e disegnarla vuota sembrerebbe un valore a zero.
+    if (frac >= 0.0f) {
+        if (frac > 1.0f) frac = 1.0f;
+        constexpr int BAR_X = 30, BAR_W = 180, BAR_H = 8;
+        const int y = PANEL_Y + PANEL_H - 20;
+        gfx->fillRect(BAR_X, y, BAR_W, BAR_H, HUD_TRACK);
+        gfx->fillRect(BAR_X, y, (int)(BAR_W * frac + 0.5f), BAR_H, HUD_MAGENTA);
+    }
 }
 
 }  // namespace
@@ -1559,6 +1589,17 @@ void nextScreen() {
     forceFull = true;
 }
 
+void prevScreen() {
+    screen = (uint8_t)((screen + SCREEN_COUNT - 1) % SCREEN_COUNT);
+    forceFull = true;
+}
+
+void goHome() {
+    if (screen == SCREEN_HOME) return;
+    screen = SCREEN_HOME;
+    forceFull = true;
+}
+
 uint8_t currentScreen() { return screen; }
 
 void update(const SynthView &v) {
@@ -1578,13 +1619,9 @@ void update(const SynthView &v) {
         return;
     }
 
-    // Le due modalita' di edit scavalcano il ciclo delle schermate: mentre sono
-    // attive si guarda per forza quella che serve, e all'uscita si torna
-    // esattamente dov'eravamo.
-    if (v.adsrEdit != inAdsrScreen) {
-        inAdsrScreen = v.adsrEdit;
-        forceFull = true;
-    }
+    // L'ADSR non scavalca piu' niente: e' una schermata dell'anello come le
+    // altre, e ci si arriva col joystick invece che tenendo premuto un tasto.
+    //
     // Durante preconteggio, registrazione e step edit si guarda per forza la
     // griglia: sono i momenti in cui serve vedere cosa sta finendo nel pattern.
     const bool seqOverride =
@@ -1597,15 +1634,14 @@ void update(const SynthView &v) {
     bool full = forceFull || !prevValid;
     forceFull = false;
 
-    if (inAdsrScreen) {
-        drawAdsrScreen(v, full);
-    } else if (inSeqOverride) {
+    if (inSeqOverride) {
         drawSeqScreen(v, full);
     } else {
         switch (screen) {
-            case SCREEN_OSC: drawWaveScreen(v, full); break;
-            case SCREEN_OCTAVE: drawOctaveScreen(v, full); break;
+            case SCREEN_HOME: drawWaveScreen(v, full); break;
+            case SCREEN_TIMBRI: drawTimbriScreen(v, full); break;
             case SCREEN_LEVELS: drawLevelsScreen(v, full); break;
+            case SCREEN_ADSR: drawAdsrScreen(v, full); break;
             case SCREEN_FX: drawFxScreen(v, full); break;
             case SCREEN_SEQ: drawSeqScreen(v, full); break;
             case SCREEN_VU: drawVuScreen(v, full); break;
@@ -1614,12 +1650,12 @@ void update(const SynthView &v) {
         }
     }
 
-    // Il messaggio in sovrimpressione sta sopra a tutto e non chiede il permesso
-    // a nessuna schermata: quando sparisce, quella sotto si ridisegna intera,
-    // che e' l'unico modo per non lasciare un buco nero dove stava la scritta.
-    if (v.toast) {
-        drawToast(v.toast);
-    } else if (prev.toast) {
+    // L'overlay sta sopra a tutto e non chiede il permesso a nessuna schermata:
+    // quando sparisce, quella sotto si ridisegna intera, che e' l'unico modo per
+    // non lasciare un buco nero dove stava il riquadro.
+    if (v.flashLabel || v.flashValue) {
+        drawFlash(v.flashLabel, v.flashValue, v.flashFrac);
+    } else if (prev.flashLabel || prev.flashValue) {
         forceFull = true;
     }
 

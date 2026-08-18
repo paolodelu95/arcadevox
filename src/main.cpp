@@ -234,7 +234,6 @@ static float glidePos = 0.0f;
 // Passo fine, uno per encoder (il click dell'albero lo commuta).
 static bool encFine[4] = {false, false, false, false};
 
-static bool adsrEditMode = false;
 static bool holdActive = false;
 static bool arpActive = false;
 static bool polyMode = false;
@@ -259,16 +258,38 @@ static uint32_t lastLightAt = 0;
 static uint32_t clearedAt = 0;
 static uint8_t settingsCursor = 0;
 static bool settingsEditing = false;
+// Riga selezionata nell'elenco dei timbri. Segue il preset caricato, perche' su
+// questa schermata scorrere *e'* caricare.
+static uint8_t timbroCursor = 0;
 
-// Messaggio breve in sovrimpressione ("8 BIT ON", "ARP SU/GIU'"...): dice cosa
-// e' appena cambiato senza costringere a cercare la schermata giusta.
-static const char *toastText = nullptr;
-static uint32_t toastAt = 0;
+// L'overlay: cosa e' appena cambiato, sopra la schermata che stai guardando, per
+// un paio di secondi. E' il perno del sistema — se ogni gesto si conferma da
+// solo, nessun comando ha piu' bisogno che tu vada a cercare la schermata che lo
+// mostra, ed e' proprio quel cercare che rendeva lo strumento difficile.
+static const char *flashLabel = nullptr;
+static const char *flashValue = nullptr;
+static float flashFrac = -1.0f;
+static uint32_t flashAt = 0;
+// Buffer suo: i valori numerici si compongono al volo, e un puntatore a una
+// variabile locale sarebbe penzolante il giro di loop dopo.
+static char flashBuf[16];
 
-static void toast(const char *text) {
-    toastText = text;
-    toastAt = millis();
+static void flash(const char *label, const char *value, float frac) {
+    flashLabel = label;
+    flashValue = value;
+    flashFrac = frac;
+    flashAt = millis();
 }
+
+// Overlay di un parametro continuo: etichetta, valore formattato e barra.
+static void flashNum(const char *label, const char *fmt, float value, float frac) {
+    snprintf(flashBuf, sizeof(flashBuf), fmt, value);
+    flash(label, flashBuf, frac);
+}
+
+// I messaggi secchi di prima ("8 BIT ON", "ARP OFF") restano quello che erano:
+// una riga sola, senza barra, che non ha un valore da mostrare.
+static void toast(const char *text) { flash(nullptr, text, -1.0f); }
 
 // --------------------------------------------------------------- utilities
 static void applyOctave(int8_t oct) {
@@ -289,6 +310,25 @@ static inline float expMapInv(float value, float minVal, float ratio) {
 }
 
 static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
+
+// Overlay solo quando serve: se il parametro e' gia' disegnato sulla schermata
+// che stai guardando, coprirlo con un riquadro che dice la stessa cosa e' rumore.
+// L'overlay esiste per i gesti *ciechi* — giri una manopola mentre guardi
+// altro — e in quel caso e' l'unica conferma che hai.
+static void flashIfHidden(uint8_t current, uint8_t home, const char *label, const char *fmt,
+                          float value, float frac) {
+    if (current == home) return;
+    flashNum(label, fmt, value, frac);
+}
+
+static void tweakCutoff(int delta, bool fine) {
+    cutoffPos = clamp01(cutoffPos + delta * stepFor(SETTING_CUTOFF, fine));
+    cutoffHz = expMap(cutoffPos, CUTOFF_MIN_HZ, CUTOFF_RATIO);
+    AudioEngine::setCutoff(cutoffHz);
+    flashIfHidden(Display::currentScreen(), SCREEN_LEVELS, "CUTOFF", "%.0f Hz", cutoffHz,
+                  cutoffPos);
+    Storage::markDirty();
+}
 
 // Frequenza del tasto `note` (0..12) nell'ottava `oct`, passando per la scala e
 // la tonica scelte nel menu.
@@ -816,6 +856,9 @@ void setup() {
         setIndex[SETTING_AUDIO] = Settings::clampIndex(SETTING_AUDIO, saved.setAudio);
         setIndex[SETTING_TIMBRO] = Settings::clampIndex(SETTING_TIMBRO, saved.setTimbro);
         setIndex[SETTING_MIDIOUT] = Settings::clampIndex(SETTING_MIDIOUT, saved.setMidiOut);
+        // La schermata TIMBRI si apre gia' ferma sul timbro che stai sentendo,
+        // non in cima all'elenco.
+        timbroCursor = setIndex[SETTING_TIMBRO];
 
         // Blob scritto prima che il marcatore esistesse: i campi in coda sono
         // riempimento, non dati. Si torna ai valori di fabbrica solo per quelli.
@@ -934,21 +977,21 @@ void loop() {
     }
 
     // ---------------------------------------------------- tasti funzione
-    // FN7: schermate fuori dal menu, voci dentro; tenuto premuto entra ed esce
-    // dal menu impostazioni.
+    // FN7 avanza fra le schermate, esattamente come il joystick a destra: due
+    // strade per la stessa cosa non sono un'incoerenza, sono una comodita'.
+    // L'unica eccezione e' sulle voci d'azione delle impostazioni, che sono
+    // l'unico posto dove c'e' qualcosa da *premere* invece che da regolare.
     if (Input::fnLongPress(FN_SCREEN)) {
-        if (settingsEditing) {
-            settingsEditing = false;
-        } else if (Display::currentScreen() == SCREEN_SETTINGS) {
-            settingsEditing = true;
-            settingsCursor = 0;
-        }
+        // Con nove schermate serve una via di casa che non chieda di contarle.
+        Display::goHome();
+        toast("HOME");
     }
     if (Input::fnShortPress(FN_SCREEN)) {
-        if (!settingsEditing) {
+        const bool onAction =
+            Display::currentScreen() == SCREEN_SETTINGS && Settings::isAction(settingsCursor);
+        if (!onAction) {
             Display::nextScreen();
-        } else if (Settings::isAction(settingsCursor)) {
-            // Sulle voci d'azione la pressione breve non scorre: esegue.
+        } else {
             if (settingsCursor == SETTING_NET) {
                 Storage::flush(snapshotState());  // niente va perso spegnendo l'audio
                 Keylight::allOff();
@@ -956,22 +999,15 @@ void loop() {
                 return;
             }
             if (settingsCursor == SETTING_LEDLEARN) {
-                settingsEditing = false;
                 AudioEngine::allNotesOff();
                 for (int i = 0; i < MAX_VOICES; ++i) voiceSounding[i] = false;
                 Keylight::startLearn();
                 return;
             }
-        } else {
-            settingsCursor = (uint8_t)((settingsCursor + 1) % SETTING_COUNT);
         }
     }
 
-    if (Input::fnLongPress(FN_REC)) {
-        // STEP EDIT e ADSR EDIT contendono gli stessi comandi: uno esclude l'altro.
-        adsrEditMode = false;
-        Sequencer::toggleEditing();
-    }
+    if (Input::fnLongPress(FN_REC)) Sequencer::toggleEditing();
     if (Input::fnShortPress(FN_REC)) Sequencer::toggleRecord();
     if (Input::fnShortPress(FN_PLAY)) Sequencer::togglePlay();
 
@@ -982,10 +1018,19 @@ void loop() {
         toast("PATTERN VUOTO");
     }
 
+    // FN5 tenuto premuto era l'ingresso all'ADSR EDIT, che adesso e' una
+    // schermata. Al suo posto il panico: zittisce tutto, ed e' la cosa che
+    // serve piu' spesso e che prima non aveva un tasto suo — si otteneva
+    // premendo due volte FN6, cioe' per effetto collaterale.
     if (Input::fnLongPress(FN_HOLD)) {
-        adsrEditMode = !adsrEditMode;
-        if (adsrEditMode) Sequencer::setEditing(false);
-        toast(adsrEditMode ? "ADSR EDIT" : "ADSR OK");
+        AudioEngine::allNotesOff();
+        for (int i = 0; i < MAX_VOICES; ++i) voiceSounding[i] = false;
+        for (int n = 0; n < NOTE_COUNT; ++n) latchedChord[n] = false;
+        latchedNote = -1;
+        lastTarget = -1;
+        holdActive = false;
+        midiOutAllOff();
+        toast("SILENZIO");
     }
 
     // --- 8 BIT: il tasto che il synth aspettava ---
@@ -1070,155 +1115,184 @@ void loop() {
     }
 
     // --------------------------------------------------------- joystick
-    if (!adsrEditMode) {
-        if (Input::joyUp()) {
-            applyOctave(octave + 1);
-            Storage::markDirty();
-        }
-        if (Input::joyDown()) {
-            applyOctave(octave - 1);
-            Storage::markDirty();
-        }
-        if (stepEdit) {
-            if (Input::joyLeft()) Sequencer::moveCursor(-1);
-            if (Input::joyRight()) Sequencer::moveCursor(1);
-        } else {
-            if (Input::joyLeft()) {
-                waveform = (uint8_t)((waveform + WAVE_COUNT - 1) % WAVE_COUNT);
-                AudioEngine::setWaveform(waveform);
-                Storage::markDirty();
-            }
-            if (Input::joyRight()) {
-                waveform = (uint8_t)((waveform + 1) % WAVE_COUNT);
-                AudioEngine::setWaveform(waveform);
-                Storage::markDirty();
-            }
-        }
-    } else {
-        // In ADSR EDIT i quattro parametri stanno sui quattro encoder: al
-        // joystick resta il bersaglio dell'LFO, che e' l'altra cosa che si
-        // regola guardando la stessa schermata.
-        if (Input::joyRight()) {
-            lfoTarget = (uint8_t)((lfoTarget + 1) % LFO_TARGET_COUNT);
-            AudioEngine::setLfoTarget(lfoTarget);
-            toast(LFO_TARGET_NAMES[lfoTarget]);
-            Storage::markDirty();
-        }
-        if (Input::joyLeft()) {
-            lfoTarget = (uint8_t)((lfoTarget + LFO_TARGET_COUNT - 1) % LFO_TARGET_COUNT);
-            AudioEngine::setLfoTarget(lfoTarget);
-            toast(LFO_TARGET_NAMES[lfoTarget]);
-            Storage::markDirty();
-        }
-        if (Input::joyUp()) {
-            applyOctave(octave + 1);
-            Storage::markDirty();
-        }
-        if (Input::joyDown()) {
-            applyOctave(octave - 1);
-            Storage::markDirty();
-        }
+    // Il joystick naviga, e basta. Una regola sola, valida su ogni schermata e
+    // in ogni modalita': orizzontale cambia schermata, verticale cambia ottava.
+    //
+    // Prima sinistra/destra voleva dire tre cose diverse a seconda di dove ti
+    // trovavi — forma d'onda, cursore dello step, bersaglio dell'LFO — e quelle
+    // tre cose sono le stesse che adesso stanno sugli encoder della schermata
+    // che le disegna, dove si vede cosa stai muovendo.
+    if (Input::joyRight()) Display::nextScreen();
+    if (Input::joyLeft()) Display::prevScreen();
+
+    if (Input::joyUp() || Input::joyDown()) {
+        applyOctave(octave + (Input::joyUp() ? 1 : -1));
+        // L'ottava e' il caso da manuale di cosa serviva l'overlay: la cambi
+        // mentre suoni, guardando qualunque schermata, e prima dovevi andare
+        // fino alla schermata OTTAVA per sapere dove eri finito.
+        static const char *const OCT_MUL[5] = {"x0.25", "x0.50", "x1.00", "x2.00", "x4.00"};
+        int m = octave + 2;
+        if (m < 0) m = 0;
+        if (m > 4) m = 4;
+        snprintf(flashBuf, sizeof(flashBuf), "%+d  %s", (int)octave, OCT_MUL[m]);
+        flash("OTTAVA", flashBuf, -1.0f);
+        Storage::markDirty();
     }
 
     // -------------------------------------------------------- encoder
-    // I primi tre commutano il passo fine col click; il quarto, che ha un
-    // parametro diverso ogni volta, col click cambia proprio parametro.
-    for (int e = 0; e < 3; ++e) {
+    // Il click commuta il passo fine su tutte e quattro le manopole. Prima la
+    // quarta faceva un'altra cosa — cambiava il parametro che comandava — ed era
+    // un'eccezione da ricordare a memoria: adesso quel compito ce l'ha
+    // l'encoder 1 della schermata FX, dove l'elenco degli effetti e' disegnato e
+    // si vede cosa si sta scegliendo.
+    for (int e = 0; e < 4; ++e) {
         if (Input::encClick(e)) {
             encFine[e] = !encFine[e];
             toast(encFine[e] ? "PASSO FINE" : "PASSO NORMALE");
         }
     }
-    if (Input::encClick(3)) {
-        enc4Target = (uint8_t)((enc4Target + 1) % E4_COUNT);
-        toast(E4_NAMES[enc4Target]);
-        Storage::markDirty();
-    }
 
     const int enc[4] = {Input::encDelta(0), Input::encDelta(1), Input::encDelta(2),
                         Input::encDelta(3)};
 
-    if (settingsEditing) {
-        // Nel menu gli encoder regolano se stessi: il primo scorre le voci, il
-        // secondo cambia il valore. Cutoff e volume restano fermi finche' non
-        // esci, ed e' quello che serve mentre stai tarando la loro sensibilita'.
-        if (enc[0] != 0) {
-            int c = (int)settingsCursor + enc[0];
-            if (c < 0) c = 0;
-            if (c > SETTING_COUNT - 1) c = SETTING_COUNT - 1;
-            settingsCursor = (uint8_t)c;
-        }
-        const uint8_t which = settingsCursor;
-        if (enc[1] != 0 && !Settings::isAction(which)) {
-            // Il numero di posizioni lo chiede a valueCount(): il TIMBRO non lo
-            // sa dalla tabella, glielo dice presets.cpp.
-            const int last = (int)Settings::valueCount(which) - 1;
-            int idx = (int)setIndex[which] + enc[1];
-            if (idx < 0) idx = 0;
-            if (idx > last) idx = last;
-            setIndex[which] = (uint8_t)idx;
-            // Tre voci hanno effetto immediato: l'uscita audio, che va provata
-            // ad orecchio, le luci, che vanno viste, e il timbro, che si sceglie
-            // proprio suonando mentre si gira la manopola.
-            if (which == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[which]);
-            if (which == SETTING_TIMBRO) {
-                loadPreset(setIndex[which]);
-                if (midiOutOn()) MidiOut::program(setIndex[which]);
+    // Le manopole sono sempre le cose che la schermata disegna. Quando il
+    // sequencer scavalca il display — step edit, registrazione, preconteggio —
+    // quello che vedi e' la griglia, quindi gli encoder seguono lei e non la
+    // schermata da cui eri partito: e' la stessa regola applicata a cio' che hai
+    // davvero sotto gli occhi.
+    const uint8_t uiScreen = stepEdit ? SCREEN_SEQ : Display::currentScreen();
+
+    // --- encoder 1 e 2: i due parametri di cui parla la schermata ---
+    switch (uiScreen) {
+        case SCREEN_HOME:
+            if (enc[0] != 0) {
+                waveform = (uint8_t)((waveform + WAVE_COUNT + (enc[0] > 0 ? 1 : -1)) % WAVE_COUNT);
+                AudioEngine::setWaveform(waveform);
+                flash("ONDA", WAVEFORM_NAMES[waveform], -1.0f);
+                Storage::markDirty();
             }
-            Storage::markDirty();
-        }
-    } else if (adsrEditMode) {
-        // Quattro encoder, quattro parametri: finalmente uno per manopola.
-        if (enc[0] != 0) {
-            attackPos = clamp01(attackPos + enc[0] * stepFor(SETTING_ADSR, encFine[0]));
-            attackMs = expMap(attackPos, ATTACK_MIN_MS, ATTACK_RATIO);
-            AudioEngine::setAttack(attackMs);
-            Storage::markDirty();
-        }
-        if (enc[1] != 0) {
-            decayPos = clamp01(decayPos + enc[1] * stepFor(SETTING_ADSR, encFine[1]));
-            decayMs = expMap(decayPos, DECAY_MIN_MS, DECAY_RATIO);
-            AudioEngine::setDecay(decayMs);
-            Storage::markDirty();
-        }
-        if (enc[2] != 0) {
-            sustainLevel = clamp01(sustainLevel + enc[2] * stepFor(SETTING_ADSR, encFine[2]));
-            AudioEngine::setSustain(sustainLevel);
-            Storage::markDirty();
-        }
-        if (enc[3] != 0) {
+            if (enc[1] != 0) tweakCutoff(enc[1], encFine[1]);
+            break;
+
+        case SCREEN_TIMBRI:
+            // Scorrere carica: il timbro si sceglie suonando mentre giri, ed e'
+            // il motivo per cui merita una schermata invece di una voce di menu.
+            if (enc[0] != 0) {
+                int t = (int)timbroCursor + enc[0];
+                if (t < 0) t = 0;
+                if (t > (int)PRESET_COUNT - 1) t = PRESET_COUNT - 1;
+                if (t != (int)timbroCursor) {
+                    timbroCursor = (uint8_t)t;
+                    setIndex[SETTING_TIMBRO] = timbroCursor;
+                    loadPreset(timbroCursor);
+                    if (midiOutOn()) MidiOut::program(timbroCursor);
+                    flash("TIMBRO", PRESETS[timbroCursor].name, -1.0f);
+                    Storage::markDirty();
+                }
+            }
+            break;
+
+        case SCREEN_ADSR:
+            if (enc[0] != 0) {
+                attackPos = clamp01(attackPos + enc[0] * stepFor(SETTING_ADSR, encFine[0]));
+                attackMs = expMap(attackPos, ATTACK_MIN_MS, ATTACK_RATIO);
+                AudioEngine::setAttack(attackMs);
+                Storage::markDirty();
+            }
+            if (enc[1] != 0) {
+                decayPos = clamp01(decayPos + enc[1] * stepFor(SETTING_ADSR, encFine[1]));
+                decayMs = expMap(decayPos, DECAY_MIN_MS, DECAY_RATIO);
+                AudioEngine::setDecay(decayMs);
+                Storage::markDirty();
+            }
+            break;
+
+        case SCREEN_FX:
+            // FX e' un elenco come le impostazioni: la prima manopola sceglie la
+            // riga, la seconda ne cambia il valore. Sceglierla col click di un
+            // encoder che stava altrove era il comando meno trovabile di tutti.
+            if (enc[0] != 0) {
+                int t = (int)enc4Target + (enc[0] > 0 ? 1 : -1);
+                if (t < 0) t = 0;
+                if (t > E4_COUNT - 1) t = E4_COUNT - 1;
+                enc4Target = (uint8_t)t;
+                toast(E4_NAMES[enc4Target]);
+                Storage::markDirty();
+            }
+            if (enc[1] != 0) {
+                turnEnc4(enc[1], encFine[1]);
+                Storage::markDirty();
+            }
+            break;
+
+        case SCREEN_SEQ:
+            if (enc[0] != 0) Sequencer::moveCursor(enc[0]);
+            if (enc[1] != 0) {
+                Sequencer::nudgeBpm(enc[1]);
+                flashNum("BPM", "%.0f", (float)Sequencer::bpm(), -1.0f);
+                Storage::markDirty();
+            }
+            break;
+
+        case SCREEN_SETTINGS:
+            // Il menu non si "apre" piu' con una pressione lunga: sei gia'
+            // dentro per il fatto di guardarlo, come su ogni altra schermata.
+            if (enc[0] != 0) {
+                int c = (int)settingsCursor + enc[0];
+                if (c < 0) c = 0;
+                if (c > SETTING_MENU_COUNT - 1) c = SETTING_MENU_COUNT - 1;
+                settingsCursor = (uint8_t)c;
+            }
+            if (enc[1] != 0 && !Settings::isAction(settingsCursor)) {
+                const uint8_t which = settingsCursor;
+                const int last = (int)Settings::valueCount(which) - 1;
+                int idx = (int)setIndex[which] + enc[1];
+                if (idx < 0) idx = 0;
+                if (idx > last) idx = last;
+                setIndex[which] = (uint8_t)idx;
+                // L'uscita audio va provata ad orecchio e le luci vanno viste:
+                // hanno effetto mentre giri, non all'uscita dal menu.
+                if (which == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[which]);
+                Storage::markDirty();
+            }
+            break;
+
+        default:  // LEVELS, VU, SCOPE: le manopole del suonare
+            if (enc[0] != 0) tweakCutoff(enc[0], encFine[0]);
+            if (enc[1] != 0) {
+                resonance = clamp01(resonance + enc[1] * stepFor(SETTING_CUTOFF, encFine[1]));
+                AudioEngine::setResonance(resonance);
+                flashIfHidden(uiScreen, SCREEN_LEVELS, "RISONANZA", "%.0f%%",
+                              resonance * 100.0f, resonance);
+                Storage::markDirty();
+            }
+            break;
+    }
+
+    // --- encoder 3: il volume, sempre e ovunque ---
+    // Un punto fermo in mezzo a manopole che cambiano significato: qualunque
+    // cosa tu stia guardando, la terza alza e abbassa.
+    if (enc[2] != 0) {
+        volume = clamp01(volume + enc[2] * stepFor(SETTING_VOL, encFine[2]));
+        AudioEngine::setVolume(volume);
+        flashIfHidden(uiScreen, SCREEN_LEVELS, "VOLUME", "%.0f%%", volume * 100.0f, volume);
+        Storage::markDirty();
+    }
+
+    // --- encoder 4: release sull'ADSR, BPM sulla griglia, effetto altrove ---
+    if (enc[3] != 0) {
+        if (uiScreen == SCREEN_ADSR) {
             releasePos = clamp01(releasePos + enc[3] * stepFor(SETTING_ADSR, encFine[3]));
             releaseMs = expMap(releasePos, RELEASE_MIN_MS, RELEASE_RATIO);
             AudioEngine::setRelease(releaseMs);
-            Storage::markDirty();
-        }
-    } else {
-        if (enc[0] != 0) {
-            if (stepEdit) {
-                // Scorrere 16 step col joystick e' lento: qui il primo encoder
-                // fa da rotella.
-                Sequencer::moveCursor(enc[0]);
-            } else {
-                cutoffPos = clamp01(cutoffPos + enc[0] * stepFor(SETTING_CUTOFF, encFine[0]));
-                cutoffHz = expMap(cutoffPos, CUTOFF_MIN_HZ, CUTOFF_RATIO);
-                AudioEngine::setCutoff(cutoffHz);
-                Storage::markDirty();
-            }
-        }
-        if (enc[1] != 0) {
-            resonance = clamp01(resonance + enc[1] * stepFor(SETTING_CUTOFF, encFine[1]));
-            AudioEngine::setResonance(resonance);
-            Storage::markDirty();
-        }
-        if (enc[2] != 0) {
-            volume = clamp01(volume + enc[2] * stepFor(SETTING_VOL, encFine[2]));
-            AudioEngine::setVolume(volume);
-            Storage::markDirty();
-        }
-        if (enc[3] != 0) {
+        } else if (uiScreen == SCREEN_SEQ) {
+            Sequencer::nudgeBpm(enc[3]);
+            flashNum("BPM", "%.0f", (float)Sequencer::bpm(), -1.0f);
+        } else if (uiScreen != SCREEN_SETTINGS) {
             turnEnc4(enc[3], encFine[3]);
-            Storage::markDirty();
+            flash(E4_NAMES[enc4Target], nullptr, -1.0f);
         }
+        Storage::markDirty();
     }
 
     // ----------------------------------------- nota live (priorita' + arp)
@@ -1487,8 +1561,10 @@ void loop() {
         if (Sequencer::mode() == Sequencer::SEQ_PLAYING) lv.fnActive |= 1u << FN_PLAY;
         if (Sequencer::mode() == Sequencer::SEQ_COUNTIN) lv.fnPending |= 1u << FN_PLAY;
         if (holdActive) lv.fnActive |= 1u << FN_HOLD;
-        if (adsrEditMode) lv.fnPending |= 1u << FN_HOLD;
         if (polyMode) lv.fnActive |= 1u << FN_POLY;
+        // Il tasto delle schermate si accende quando ne stai guardando una che
+        // ha voci su cui agire: e' l'unico momento in cui una pressione breve fa
+        // qualcosa di diverso dallo scorrere.
         if (settingsEditing) lv.fnPending |= 1u << FN_SCREEN;
         lv.crush = crushOn;
         lv.brightness = setIndex[SETTING_LED];
@@ -1511,7 +1587,7 @@ void loop() {
         view.cutoffHz = cutoffHz;
         view.resonance = resonance;
         view.volume = volume;
-        view.adsrEdit = adsrEditMode;
+        view.adsrEdit = (Display::currentScreen() == SCREEN_ADSR);
         view.attackMs = attackMs;
         view.decayMs = decayMs;
         view.sustain = sustainLevel;
@@ -1551,14 +1627,27 @@ void loop() {
 
         for (int i = 0; i < SETTING_COUNT; ++i) view.setIndex[i] = setIndex[i];
         view.setCursor = settingsCursor;
+        // Non si "entra" piu' nel menu: guardarlo e' esserci dentro, quindi il
+        // cursore e' visibile per il solo fatto di stare su quella schermata.
+        settingsEditing = (Display::currentScreen() == SCREEN_SETTINGS);
         view.setEditing = settingsEditing;
+        view.timbro = setIndex[SETTING_TIMBRO];
+        view.timbroCursor = timbroCursor;
         view.clearedAgo = (clearedAt == 0) ? 0 : (now - clearedAt);
         view.ledLearn = false;
         view.ledLearnIndex = 0;
 
-        // Il messaggio in sovrimpressione dura un secondo e mezzo: abbastanza
-        // per leggerlo, non tanto da coprire la schermata mentre suoni.
-        view.toast = (toastText && (now - toastAt) < 1500) ? toastText : nullptr;
+        // Due secondi: abbastanza per leggerlo con le mani occupate, non tanto
+        // da restare sullo schermo mentre stai gia' facendo altro.
+        if (now - flashAt < 2000 && (flashLabel || flashValue)) {
+            view.flashLabel = flashLabel;
+            view.flashValue = flashValue;
+            view.flashFrac = flashFrac;
+        } else {
+            view.flashLabel = nullptr;
+            view.flashValue = nullptr;
+            view.flashFrac = -1.0f;
+        }
 
         Display::update(view);
     }

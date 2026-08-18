@@ -13,17 +13,28 @@
 #define SETTING_ADSR 2
 #define SETTING_FINE 3
 // --- impostazioni musicali ---
-#define SETTING_TIMBRO 4
-#define SETTING_SCALE 5
-#define SETTING_ROOT 6
+#define SETTING_SCALE 4
+#define SETTING_ROOT 5
 // --- luci sotto i tasti ---
-#define SETTING_LED 7
-#define SETTING_LEDLEARN 8  // azione: impara l'ordine della catena
+#define SETTING_LED 6
+#define SETTING_LEDLEARN 7  // azione: impara l'ordine della catena
 // --- uscita audio e MIDI ---
-#define SETTING_AUDIO 9
-#define SETTING_MIDIOUT 10
+#define SETTING_AUDIO 8
+#define SETTING_MIDIOUT 9
 // --- rete ---
-#define SETTING_NET 11  // azione: accende la radio
+#define SETTING_NET 10  // azione: accende la radio
+
+// Fin qui il menu. Il TIMBRO sta dopo apposta: resta una voce a tutti gli
+// effetti — ha un indice, un valore di fabbrica, un posto in NVS e risponde al
+// program change — ma **non si sceglie piu' da qui**. Ha una schermata sua,
+// perche' e' il punto da cui si comincia a suonare e non una preferenza da
+// impostare una volta e dimenticare.
+//
+// Spostarlo in coda non tocca la memoria: lo stato salva ogni impostazione in un
+// campo col suo nome (`setTimbro`), non un array indicizzato, quindi
+// rinumerare qui non sposta niente di quello che c'e' gia' nelle schede in giro.
+#define SETTING_MENU_COUNT 11
+#define SETTING_TIMBRO 11
 #define SETTING_COUNT 12
 
 namespace Settings {

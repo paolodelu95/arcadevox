@@ -5,18 +5,32 @@
 
 #include "settings.h"
 
-// Ordine del ciclo: OSC, OTTAVA, LIVELLI, EFFETTI, SEQUENCER, VU, SCOPE,
-// SETTINGS. Le schermate di edit (ADSR, step edit, luci) stanno fuori dal ciclo:
-// ci si entra da un tasto e si torna esattamente dov'eravamo.
-#define SCREEN_OSC 0
-#define SCREEN_OCTAVE 1
-#define SCREEN_LEVELS 2
-#define SCREEN_FX 3        // 8 BIT, eco, LFO, drive, sub, detune, glide
-#define SCREEN_SEQ 4
-#define SCREEN_VU 5        // VU meter ad ago
-#define SCREEN_SCOPE 6     // oscilloscopio dell'uscita
-#define SCREEN_SETTINGS 7  // ultima del ciclo: encoder, tastiera, luci, rete
-#define SCREEN_COUNT 8
+// Un solo anello di schermate, percorso col joystick sinistra/destra.
+//
+// Non ci sono piu' modi nascosti dietro una pressione lunga: l'ADSR era una
+// modalita' in cui si entrava tenendo premuto FN5, adesso e' una schermata come
+// le altre e i suoi quattro parametri stanno sui quattro encoder esattamente
+// come ovunque. La vecchia schermata OTTAVA e' sparita: mostrava un numero che
+// interessa solo nell'istante in cui lo cambi, e per quello adesso c'e'
+// l'overlay, che lo fa vedere sopra qualunque schermata senza spostarti.
+#define SCREEN_HOME 0      // onda, ottava, scala, stato: la schermata del suonare
+#define SCREEN_TIMBRI 1    // i quindici timbri, fuori dalle impostazioni
+#define SCREEN_LEVELS 2    // cutoff, risonanza, volume
+#define SCREEN_ADSR 3      // attack, decay, sustain, release
+#define SCREEN_FX 4        // 8 BIT, eco, LFO, drive, sub, detune, glide
+#define SCREEN_SEQ 5
+#define SCREEN_VU 6        // VU meter ad ago
+#define SCREEN_SCOPE 7     // oscilloscopio dell'uscita
+#define SCREEN_SETTINGS 8  // ultima dell'anello: encoder, tastiera, luci, rete
+#define SCREEN_COUNT 9
+
+// Le schermate "a elenco" sono l'unica eccezione alla regola delle quattro
+// manopole, e la seconda e ultima regola del sistema: encoder 1 scorre le voci,
+// encoder 2 cambia il valore di quella selezionata. Su tutte le altre i quattro
+// encoder sono i quattro parametri disegnati, nell'ordine in cui si leggono.
+inline bool screenIsList(uint8_t s) {
+    return s == SCREEN_SETTINGS || s == SCREEN_TIMBRI;
+}
 
 // Fotografia dello stato del synth passata al display ad ogni refresh.
 struct SynthView {
@@ -78,14 +92,31 @@ struct SynthView {
     bool ledLearn;
     uint8_t ledLearnIndex;
 
-    // Messaggio breve in sovrimpressione, nullptr se non ce n'e' uno.
-    const char *toast;
+    uint8_t timbro;       // timbro di fabbrica corrente, per la schermata TIMBRI
+    uint8_t timbroCursor; // riga selezionata nell'elenco dei timbri
+
+    // --- overlay ---
+    // Quello che e' appena cambiato, mostrato sopra la schermata corrente per un
+    // paio di secondi e poi tolto di mezzo, senza mai spostare la schermata che
+    // stavi guardando.
+    //
+    // Esiste per una ragione precisa: le manopole e i tasti cambiano cose che
+    // spesso *non sono disegnate dove ti trovi*. Prima toccava andare a cercare
+    // la schermata che confermava il gesto; adesso il gesto si conferma da se'.
+    const char *flashLabel;  // "OTTAVA", "CUTOFF", nullptr se non c'e' overlay
+    const char *flashValue;  // "+2", "SAW", "PIANOFORTE"
+    float flashFrac;         // 0..1 per la barra, negativo se non ha senso
 };
 
 namespace Display {
 
 void begin();
-void nextScreen();          // tasto FN7
+// L'anello si percorre nei due sensi: destra avanti, sinistra indietro. Poterlo
+// fare all'indietro non e' un vezzo — con nove schermate, tornare a quella
+// appena lasciata costava otto passi.
+void nextScreen();
+void prevScreen();
+void goHome();  // FN7 tenuto premuto: la via di casa da qualunque schermata
 uint8_t currentScreen();
 void update(const SynthView &v);  // ridisegna solo cio' che e' cambiato
 

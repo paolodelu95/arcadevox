@@ -85,14 +85,16 @@ const Entry ENTRIES[SETTING_COUNT] = {
     // I nomi dei timbri stanno in presets.cpp e non in una tabella qui: sono
     // gia' scritti accanto ai parametri che descrivono, ed e' li' che vanno
     // tenuti allineati. valueLabel() sa dove pescarli.
-    {"TASTIERA", "TIMBRO", 0xFF, 0, nullptr},
-    {nullptr, "SCALA", SCALE_COUNT, 0, SCALE_LABELS},
+    {"TASTIERA", "SCALA", SCALE_COUNT, 0, SCALE_LABELS},
     {nullptr, "TONICA", 12, 0, ROOT_LABELS},
     {"LUCI", "LUMINOSITA'", 9, 5, LED_LABELS},
     {nullptr, "IMPARA LUCI", 0, 0, nullptr},
     {"AUDIO", "USCITA", AUDIO_ORDER_COUNT, 0, AudioEngine::AUDIO_ORDER_NAMES},
     {nullptr, "MIDI OUT", 3, 1, MIDIOUT_LABELS},
     {"RETE", "MODALITA' WIFI", 0, 0, nullptr},
+    // Fuori dal menu (sta oltre SETTING_MENU_COUNT): esiste per la memoria, per
+    // il program change e per la schermata TIMBRI, che lo disegna da se'.
+    {nullptr, "TIMBRO", 0xFF, 0, nullptr},
 };
 
 // Quante posizioni ha una voce. Il TIMBRO e' l'unica che non lo sa da sola: i
