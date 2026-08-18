@@ -12,6 +12,7 @@
 
 #include <Arduino.h>
 
+#include "input_handler.h"  // gli indici dei tasti funzione
 #include "pinout.h"
 
 // Colori delle famiglie di tasti, esposti perche' il display li usa nelle
@@ -36,6 +37,18 @@ struct LightView {
     uint8_t brightness;   // 0..8, dalla schermata impostazioni
     int8_t scaleRoot;     // tonica della scala (0..11), -1 = cromatica libera
     uint16_t scaleMask;   // bit 0..12: nota compresa nella scala scelta
+    // Nessuno ha ancora premuto un tasto da quando la scheda si e' accesa: i
+    // tredici tasti nota respirano insieme, piano. Non e' un lampeggio — il
+    // lampeggio dice urgenza, il respiro dice possibilita' — e si spegne da solo
+    // alla prima nota. E' un invito a suonare che non ha una schermata da
+    // chiudere, non si ripete e non occupa un pixel di display: per chi non ha
+    // mai visto un synth, e' la differenza fra un oggetto acceso e un oggetto
+    // che sta aspettando lui.
+    bool invite;
+    // AVVIA pulsa sul movimento anche a pattern fermo: chi non ha mai visto un
+    // sequencer capisce cos'e' il tempo guardando un tasto battere, e girando la
+    // manopola TEMPO lo vede cambiare prima ancora di premere qualcosa.
+    bool tempoPulse;
 };
 
 namespace Keylight {

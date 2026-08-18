@@ -18,11 +18,12 @@
 // --- luci sotto i tasti ---
 #define SETTING_LED 6
 #define SETTING_LEDLEARN 7  // azione: impara l'ordine della catena
+#define SETTING_LEDRESET 8  // azione: rimette l'ordine di fabbrica
 // --- uscita audio e MIDI ---
-#define SETTING_AUDIO 8
-#define SETTING_MIDIOUT 9
+#define SETTING_AUDIO 9
+#define SETTING_MIDIOUT 10
 // --- rete ---
-#define SETTING_NET 10  // azione: accende la radio
+#define SETTING_NET 11  // azione: accende la radio
 
 // Fin qui il menu. Il TIMBRO sta dopo apposta: resta una voce a tutti gli
 // effetti — ha un indice, un valore di fabbrica, un posto in NVS e risponde al
@@ -33,9 +34,9 @@
 // Spostarlo in coda non tocca la memoria: lo stato salva ogni impostazione in un
 // campo col suo nome (`setTimbro`), non un array indicizzato, quindi
 // rinumerare qui non sposta niente di quello che c'e' gia' nelle schede in giro.
-#define SETTING_MENU_COUNT 11
-#define SETTING_TIMBRO 11
-#define SETTING_COUNT 12
+#define SETTING_MENU_COUNT 12
+#define SETTING_TIMBRO 12
+#define SETTING_COUNT 13
 
 namespace Settings {
 
@@ -53,7 +54,9 @@ extern const Entry ENTRIES[SETTING_COUNT];
 // Quante posizioni ha la voce (il TIMBRO lo chiede a presets.cpp).
 uint8_t valueCount(uint8_t which);
 
-// Una voce d'azione si esegue, non si regola: gli encoder non la toccano.
+// Una voce d'azione si esegue, non si regola: si tiene premuto il click della
+// seconda manopola e l'anello esterno si riempie. Sono le tre cose che non si
+// tornano indietro, ed e' l'unico posto del menu dove il rosso vuol dire qualcosa.
 inline bool isAction(uint8_t which) { return ENTRIES[which].count == 0; }
 
 // Indice riportato dentro i limiti della sua voce: quello che arriva dalla NVS

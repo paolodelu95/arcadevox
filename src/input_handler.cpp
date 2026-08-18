@@ -374,10 +374,21 @@ struct PressTracker {
 
 PressTracker fnTrackers[FN_COUNT];
 
-// Le due funzioni piu' distruttive (svuota pattern, accendi la radio) hanno la
-// soglia lunga; le altre quella normale.
+// Un tasto solo ha ancora la pressione lunga, ed e' quella che svuota il
+// pattern: la soglia lenta serve a dare il tempo di pentirsi.
+//
+// Agli altri sei si da' una soglia irraggiungibile invece di una condizione in
+// piu' nel ciclo. Non e' un trucco da risparmiare una riga: e' la traduzione
+// esatta di "questo tasto non ha una funzione lunga". Il confronto
+// (now - pressedAt) >= longMs non scatta mai, quindi longFired resta falso e il
+// breve arriva **sempre** al rilascio, che il tasto sia stato sfiorato o tenuto
+// giu' dieci secondi. Prima, con la soglia a 600 ms per tutti, tenere premuto un
+// tasto senza funzione lunga voleva dire non far succedere niente — un tasto
+// muto, senza nessuna spiegazione a schermo.
+constexpr uint32_t FN_NO_LONG = 0xFFFFFFFFu;
+
 uint32_t fnThreshold(int fn) {
-    return (fn == FN_PLAY || fn == FN_SCREEN) ? FN_LONG_PRESS_SLOW_MS : FN_LONG_PRESS_MS;
+    return (fn == FN_PLAY) ? FN_LONG_PRESS_SLOW_MS : FN_NO_LONG;
 }
 
 }  // namespace
@@ -506,6 +517,12 @@ bool fnIsDown(int fn) {
     return buttons[B_MATRIX0 + FN_SLOT[fn]].state;
 }
 
+uint32_t fnHeldMs(int fn) {
+    if (fn < 0 || fn >= FN_COUNT) return 0;
+    const Button &b = buttons[B_MATRIX0 + FN_SLOT[fn]];
+    return b.state ? (millis() - b.pressedAt) : 0;
+}
+
 int encDelta(int which) {
     if (which < 0 || which >= 4) return 0;
     return encoderConsume(encoders[which]);
@@ -514,6 +531,11 @@ int encDelta(int which) {
 bool encClick(int which) {
     if (which < 0 || which >= 4) return false;
     return consume(buttons[B_ENC_SW0 + which].edgeDown);
+}
+
+bool encRelease(int which) {
+    if (which < 0 || which >= 4) return false;
+    return consume(buttons[B_ENC_SW0 + which].edgeUp);
 }
 
 bool encIsDown(int which) {

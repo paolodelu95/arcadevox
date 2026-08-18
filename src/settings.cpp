@@ -89,6 +89,10 @@ const Entry ENTRIES[SETTING_COUNT] = {
     {nullptr, "TONICA", 12, 0, ROOT_LABELS},
     {"LUCI", "LUMINOSITA'", 9, 5, LED_LABELS},
     {nullptr, "IMPARA LUCI", 0, 0, nullptr},
+    // Da' finalmente un chiamante a Keylight::resetMap(), che esisteva da sempre
+    // e non la chiamava nessuno: se la mappa veniva imparata storta, l'unico
+    // rimedio da pannello era rifare tutta la procedura.
+    {nullptr, "AZZERA LUCI", 0, 0, nullptr},
     {"AUDIO", "USCITA", AUDIO_ORDER_COUNT, 0, AudioEngine::AUDIO_ORDER_NAMES},
     {nullptr, "MIDI OUT", 3, 1, MIDIOUT_LABELS},
     {"RETE", "MODALITA' WIFI", 0, 0, nullptr},

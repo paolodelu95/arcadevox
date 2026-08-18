@@ -111,9 +111,13 @@ const Rgb FN_COLOR[FN_COUNT] = {
     {255, 90, 0},    // FN2 8 BIT   arancio
     {255, 0, 40},    // FN3 REC     rosso
     {0, 255, 90},    // FN4 PLAY    verde
-    {255, 210, 0},   // FN5 HOLD    ambra
-    {170, 0, 255},   // FN6 POLI    viola
-    {255, 255, 255}, // FN7 SCHERMO bianco
+    {255, 210, 0},   // FN5 TIENI   ambra
+    {170, 0, 255},   // FN6 VOCI    viola
+    // L'unico bianco della fila, e adesso e' anche l'unico tasto d'emergenza: si
+    // trova di taglio, senza leggere e senza cercarlo. Prima questo colore stava
+    // sotto il tasto che scorreva le schermate, cioe' sotto la funzione meno
+    // urgente delle sette.
+    {255, 255, 255}, // FN7 SILENZIO bianco
 };
 
 Rgb scale(Rgb c, uint16_t num, uint16_t den) {
@@ -185,6 +189,22 @@ void update(uint32_t now, const LightView &v) {
                 // verde, il colore del trasporto.
                 c = {0, 255, 120};
             }
+            // Il respiro dell'invito: un ciclo lento di tre secondi, e solo sui
+            // tasti che non hanno gia' qualcosa da dire. Un tasto che sta
+            // suonando — perche' lo tieni premuto, perche' lo suona la sequenza
+            // o perche' gli arriva una nota dal cavo MIDI — ha una notizia piu'
+            // importante di "puoi suonarmi", e l'invito non deve coprirgliela.
+            //
+            // Un triangolo e non un seno: a venti LED e otto bit la differenza
+            // non si vede, e una moltiplicazione intera costa molto meno.
+            const bool busy = (v.noteSound & (1u << n)) || (v.noteHeld & (1u << n)) ||
+                              (v.seqNote == n);
+            if (v.invite && !busy) {
+                const uint32_t t = now % 3000;
+                const uint16_t k = (t < 1500) ? (uint16_t)(t / 6) : (uint16_t)((3000 - t) / 6);
+                const Rgb glow = IS_SHARP[n] ? Rgb{120, 40, 200} : Rgb{40, 200, 220};
+                c = scale(glow, k, 250);
+            }
             put(slot, c);
         }
 
@@ -196,6 +216,15 @@ void update(uint32_t now, const LightView &v) {
             if (v.fnPending & (1u << f)) {
                 const bool on = ((now / 200) % 2) == 0;
                 c = on ? col : scale(col, 1, 6);
+            }
+            // AVVIA batte il tempo anche da fermo: e' il metronomo che lo
+            // strumento non ha, e insegna cos'e' il BPM a chi non lo sa. Tace
+            // pero' quando il tasto ha gia' qualcosa da dire — il preconteggio
+            // lampeggia sullo stesso LED, e due battiti sovrapposti non si
+            // leggono ne' come l'uno ne' come l'altro.
+            const bool busy = ((v.fnActive | v.fnPending) & (1u << f)) != 0;
+            if (f == FN_PLAY && v.tempoPulse && !busy) {
+                c = scale(col, 1, 3);
             }
             put(FN_SLOT[f], c);
         }

@@ -12,7 +12,6 @@
 
 #define SEQ_STEPS 16
 #define SEQ_PER_BEAT 4  // step per movimento: la griglia e' in sedicesimi
-#define BPM_PRESET_COUNT 8
 
 #define BPM_MIN 40
 #define BPM_MAX 240
@@ -63,14 +62,16 @@ void noteEvent(uint32_t now, int note, int8_t oct);
 
 // --- editor passo-passo ---
 void setEditing(bool on);
-void toggleEditing();
 bool editing();
 int cursor();
 void moveCursor(int delta);
-void writeAtCursor(int note, int8_t oct);  // nota, SEQ_REST o SEQ_TIE
+void writeAtCursor(int note, int8_t oct);  // nota, SEQ_REST o SEQ_TIE; avanza il cursore
+// Scrive senza avanzare. Serve alla manopola NOTA, che deve poter scorrere i
+// valori sullo stesso passo: se il cursore scappasse in avanti ad ogni scatto non
+// si potrebbe scegliere niente.
+void setAtCursor(int note, int8_t oct);
 
 // --- tempo ---
-void cycleBpm();          // leva BPM: preset successivo
 void nudgeBpm(int steps); // encoder: BPM continuo entro BPM_MIN..BPM_MAX
 int bpm();
 void setBpm(int value);

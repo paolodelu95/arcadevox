@@ -3,33 +3,39 @@
 
 #include <Arduino.h>
 
+#include "fx_rows.h"
 #include "settings.h"
 
-// Un solo anello di schermate, percorso col joystick sinistra/destra.
+// Un solo anello di sette schermate, percorso col joystick sinistra/destra.
 //
-// Non ci sono piu' modi nascosti dietro una pressione lunga: l'ADSR era una
-// modalita' in cui si entrava tenendo premuto FN5, adesso e' una schermata come
-// le altre e i suoi quattro parametri stanno sui quattro encoder esattamente
-// come ovunque. La vecchia schermata OTTAVA e' sparita: mostrava un numero che
-// interessa solo nell'istante in cui lo cambi, e per quello adesso c'e'
-// l'overlay, che lo fa vedere sopra qualunque schermata senza spostarti.
-#define SCREEN_HOME 0      // onda, ottava, scala, stato: la schermata del suonare
-#define SCREEN_TIMBRI 1    // i quindici timbri, fuori dalle impostazioni
-#define SCREEN_LEVELS 2    // cutoff, risonanza, volume
-#define SCREEN_ADSR 3      // attack, decay, sustain, release
-#define SCREEN_FX 4        // 8 BIT, eco, LFO, drive, sub, detune, glide
-#define SCREEN_SEQ 5
-#define SCREEN_VU 6        // VU meter ad ago
-#define SCREEN_SCOPE 7     // oscilloscopio dell'uscita
-#define SCREEN_SETTINGS 8  // ultima dell'anello: encoder, tastiera, luci, rete
-#define SCREEN_COUNT 9
+// Nove erano troppe, e tre di quelle nove esistevano solo perche' un parametro
+// non aveva trovato posto altrove. LEVELS spariva dentro SUONA — cutoff,
+// risonanza e volume sono le manopole del suonare, e stavano su una schermata
+// diversa da quella su cui si suona; SCOPE diventa la finestra centrale di
+// SUONA, cosi' la forma d'onda che scegli la vedi davvero invece di vederne il
+// ritratto disegnato a formule; FX si allarga in un elenco vero e cambia nome.
+//
+// Sette schermate hanno anche un vantaggio che si legge a colpo d'occhio: i
+// sette puntini sotto la ghiera dicono sempre dove sei, e con nove non ci
+// stavano. Il ritorno a casa con la pressione lunga non serve piu': da qualunque
+// punto dell'anello, casa e' al massimo tre passi in una delle due direzioni.
+#define SCREEN_SUONA 0      // onda vera, taglio, volume, risonanza: si suona qui
+#define SCREEN_TIMBRI 1     // i quindici timbri, la scala e l'accordo
+#define SCREEN_INVILUPPO 2  // attacco, decadimento, sostegno, rilascio
+#define SCREEN_EFFETTI 3    // elenco: grana, eco, LFO, arpeggio, corpo, filtro
+#define SCREEN_RITMO 4      // sequencer: il cursore c'e' sempre, non si "entra"
+#define SCREEN_LIVELLO 5    // VU meter ad ago
+#define SCREEN_MENU 6       // impostazioni
+#define SCREEN_COUNT 7
 
 // Le schermate "a elenco" sono l'unica eccezione alla regola delle quattro
-// manopole, e la seconda e ultima regola del sistema: encoder 1 scorre le voci,
-// encoder 2 cambia il valore di quella selezionata. Su tutte le altre i quattro
-// encoder sono i quattro parametri disegnati, nell'ordine in cui si leggono.
+// manopole: la 1 sceglie la riga, la 2 ne cambia il valore. Su tutte le altre le
+// quattro manopole sono i quattro parametri disegnati, nell'ordine in cui si
+// leggono — e in ogni caso la fascia sotto la ghiera scrive sempre, a lettere,
+// cosa fa ognuna delle quattro adesso. E' l'unica regola che resta da ricordare,
+// ed e' scritta a schermo, quindi non c'e' nemmeno bisogno di ricordarla.
 inline bool screenIsList(uint8_t s) {
-    return s == SCREEN_SETTINGS || s == SCREEN_TIMBRI;
+    return s == SCREEN_MENU || s == SCREEN_EFFETTI;
 }
 
 // Fotografia dello stato del synth passata al display ad ogni refresh.
@@ -40,7 +46,6 @@ struct SynthView {
     float resonance;  // 0..1
     float volume;     // 0..1
 
-    bool adsrEdit;
     float attackMs;
     float decayMs;
     float sustain;  // 0..1
@@ -49,7 +54,11 @@ struct SynthView {
     uint8_t seqMode;    // Sequencer::Mode
     uint8_t seqStep;    // 0..15, testina
     uint8_t seqCursor;  // 0..15, cursore dell'editor
-    bool seqEditing;    // STEP EDIT attivo
+    // Il cursore e' scrivibile: il giro e' fermo e sei sulla schermata RITMO.
+    // Non e' piu' una modalita' in cui si entra e da cui si esce — era il modo
+    // piu' sicuro per lasciare qualcuno dentro senza che se ne accorgesse.
+    bool seqEditing;
+    const char *seqNoteName;  // valore della manopola NOTA: "PAUSA", "DO#", "LEGATO"
     uint8_t countIn;    // movimenti mancanti al via (0 = non in preconteggio)
     uint16_t seqRev;    // revisione del pattern: cambia solo a scrittura avvenuta
     uint16_t bpm;
@@ -73,20 +82,28 @@ struct SynthView {
     float subLevel;
     float detuneCents;
     float glideMs;
-    const char *enc4Name;     // cosa comanda adesso il quarto encoder
-    uint8_t enc4Index;        // indice dello stesso, per evidenziare la riga giusta
+    // --- elenco EFFETTI ---
+    // I nomi delle righe stanno in fx_rows.h, che il display include: qui
+    // viaggia solo cio' che cambia. Il valore e' testo gia' formattato perche'
+    // "SPENTO", "220 ms" e "35 %" non hanno un formato comune, e la frazione
+    // serve alla barretta.
+    uint8_t fxCursor;                 // riga selezionata
+    float fxFrac[FX_ROW_COUNT];       // 0..1 per la barretta di ogni riga
+    char fxValue[FX_ROW_COUNT][10];   // valore scritto di ogni riga
 
     // --- tastiera ---
     const char *scaleName;
     const char *rootName;
     bool expanderOk;  // l'MCP23017 risponde: se no, la tastiera e' muta
 
-    uint8_t setIndex[SETTING_COUNT];  // valori scelti nella schermata SETTINGS
+    uint8_t setIndex[SETTING_COUNT];  // valori scelti nella schermata MENU
     uint8_t setCursor;                // riga selezionata
-    bool setEditing;                  // dentro al menu: il cursore e' visibile
-
-    // Millisecondi da quando il pattern e' stato svuotato, 0 se non e' successo.
-    uint32_t clearedAgo;
+    // Riempimento 0..255 della barra di conferma delle azioni: le tre voci
+    // rosse del menu e lo svuotamento del pattern non partono al tocco, si
+    // caricano mentre tieni premuto. Vedere il gesto riempirsi e' cio' che
+    // permette di cambiare idea, e trasforma una pressione lunga da trabocchetto
+    // invisibile in una domanda a cui stai rispondendo.
+    uint8_t holdFill;
 
     // Apprendimento dell'ordine dei LED: schermata a se', fuori dal ciclo.
     bool ledLearn;
@@ -103,22 +120,42 @@ struct SynthView {
     // Esiste per una ragione precisa: le manopole e i tasti cambiano cose che
     // spesso *non sono disegnate dove ti trovi*. Prima toccava andare a cercare
     // la schermata che confermava il gesto; adesso il gesto si conferma da se'.
-    const char *flashLabel;  // "OTTAVA", "CUTOFF", nullptr se non c'e' overlay
-    const char *flashValue;  // "+2", "SAW", "PIANOFORTE"
+    const char *flashLabel;  // "OTTAVA", "VOLUME", nullptr se non c'e' overlay
+    const char *flashValue;  // "+2", "70%", "SILENZIO"
     float flashFrac;         // 0..1 per la barra, negativo se non ha senso
+    // Contatore che cambia ad ogni overlay nuovo. Serve a ridisegnare il
+    // riquadro **una volta sola** invece che trenta volte al secondo, ed e' un
+    // contatore e non un confronto fra puntatori per una ragione precisa: i
+    // valori numerici si compongono sempre nello stesso buffer statico, quindi
+    // l'indirizzo non cambia mai nemmeno quando il testo cambia del tutto.
+    uint16_t flashRev;
+
 };
 
 namespace Display {
 
 void begin();
-// L'anello si percorre nei due sensi: destra avanti, sinistra indietro. Poterlo
-// fare all'indietro non e' un vezzo — con nove schermate, tornare a quella
-// appena lasciata costava otto passi.
+// L'anello si percorre nei due sensi: destra avanti, sinistra indietro.
 void nextScreen();
 void prevScreen();
-void goHome();  // FN7 tenuto premuto: la via di casa da qualunque schermata
 uint8_t currentScreen();
+void goTo(uint8_t s);  // REGISTRA e AVVIA portano su RITMO: si guarda cio' che si tocca
 void update(const SynthView &v);  // ridisegna solo cio' che e' cambiato
+
+// La corona dei comandi: cosa fa ogni manopola adesso, quanto vale, e quanto e'
+// piena la sua corsa. La riempie main.cpp — l'unico che sappia cosa comanda cosa
+// — e il display si limita a scriverla sotto l'arco della manopola giusta.
+//
+// E' il pezzo su cui si regge tutto lo schema di comandi: finche' ogni manopola
+// dichiara da se' il proprio mestiere, non c'e' niente da ricordare a memoria e
+// non serve un riquadro al centro dello schermo che venga a dirlo coprendo
+// proprio la cosa che stai guardando.
+//
+//   label      undici caratteri al massimo, "-" se la manopola qui non fa niente
+//   value      il valore, mostrato al posto del nome per 900 ms dopo uno scatto
+//   frac       0..1, il riempimento dell'arco
+//   flashValue true dopo uno scatto: fa partire i 900 ms del valore
+void setKnob(int slot, const char *label, const char *value, float frac, bool flashValue);
 
 // --- modalita' NETWORK (il synth e' muto, il loop normale non gira) ---
 void updateNetwork();

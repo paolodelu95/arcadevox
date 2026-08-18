@@ -90,9 +90,21 @@ struct SynthState {
     // STORAGE_STATE_REV, quindi leggere zero significa per forza "blob scritto
     // prima che questo campo esistesse", e i campi nuovi vanno ignorati.
     uint8_t stateRev;
+
+    // --- 2.1.0: l'inviluppo di filtro diventa regolabile ---
+    // Due parametri che il motore aveva da sempre e che nessun comando
+    // raggiungeva: li scrivevano solo i timbri di fabbrica. Adesso hanno due
+    // righe nell'elenco EFFETTI, quindi vanno anche ricordati — altrimenti
+    // sarebbero gli unici due che si azzerano ad ogni spegnimento.
+    //
+    // Stanno in coda per la stessa ragione di tutto il resto, e stavolta senza
+    // il rischio del riempimento: sono float, la struttura cresce di otto byte
+    // pieni e nessuna lunghezza vecchia puo' coincidere con quella nuova.
+    float filtEnvAmount;
+    float filtEnvMs;
 };
 
-#define STORAGE_STATE_REV 2
+#define STORAGE_STATE_REV 3
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.
 #define STORAGE_SCALE_REV 1

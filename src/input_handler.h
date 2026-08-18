@@ -11,22 +11,34 @@
 #include "pinout.h"
 
 #define DEBOUNCE_MS 12
-// Soglia unica per tutti i tasti funzione: sette tasti con due significati
-// ciascuno diventano ingestibili se ognuno ha i suoi tempi.
-#define FN_LONG_PRESS_MS 600
-// Piu' lunga delle altre: da qui si svuota il pattern e si accende la radio, e
-// non deve poter succedere per una pressione distratta.
+// L'unica soglia rimasta, ed e' quella del solo gesto che non si torna indietro:
+// svuotare i sedici passi. Novecento millisecondi non sono un'attesa, sono il
+// tempo di cambiare idea — e adesso si vedono, perche' l'anello esterno si
+// riempie mentre tieni premuto.
 #define FN_LONG_PRESS_SLOW_MS 900
 
 // Indici dei tasti funzione, nell'ordine in cui stanno sul pannello.
+//
+// Una parola stampata sopra, una cosa sola sotto. Prima ognuno dei sette ne
+// faceva due — una breve e una lunga — e le seconde erano invisibili: nessun
+// tasto ti dice che tenendolo premuto cambia mestiere, e chi non lo sapeva non
+// aveva modo di scoprirlo. Le sei funzioni nascoste non sono sparite, sono
+// andate dove si vedono: il modo dell'arpeggiator e la grana dell'8 BIT
+// nell'elenco EFFETTI, lo step edit dentro la schermata RITMO (che adesso ha
+// sempre il cursore), il modo accordo sulla quarta manopola di TIMBRI, e il
+// panico allo scoperto su FN7 — che prima duplicava il joystick.
+//
+// L'unica pressione lunga superstite e' su AVVIA, e non e' una seconda
+// funzione: e' una richiesta di conferma. Svuotare sedici passi e' l'unico
+// gesto distruttivo dello strumento, e l'attesa serve a poter cambiare idea.
 enum {
-    FN_ARP = 0,   // arpeggiator on/off      | lungo: modo dell'arpeggiator
-    FN_CRUSH,     // 8 BIT on/off            | lungo: profondita' del crush
-    FN_REC,       // registra                | lungo: STEP EDIT
-    FN_PLAY,      // play/stop               | lungo: svuota il pattern
-    FN_HOLD,      // hold/latch              | lungo: ADSR EDIT
-    FN_POLY,      // mono/polifonico         | lungo: modo accordo
-    FN_SCREEN     // schermata successiva    | lungo: menu impostazioni
+    FN_ARP = 0,   // arpeggiator acceso/spento
+    FN_CRUSH,     // 8 BIT acceso/spento
+    FN_REC,       // registra
+    FN_PLAY,      // avvia/ferma          | lungo: svuota il pattern
+    FN_HOLD,      // tieni (latch)
+    FN_POLY,      // mono/polifonico
+    FN_SILENCE    // panico: zittisce tutto
 };
 
 namespace Input {
@@ -60,12 +72,18 @@ bool joyLeft();
 bool joyRight();
 
 // --- tasti funzione ---
-// Lo short-press scatta al rilascio (prima della soglia), il long-press appena
-// la soglia viene superata, col tasto ancora premuto: cosi' le due funzioni non
-// si pestano i piedi.
+// Su sei tasti su sette lo short-press scatta al rilascio e basta, comunque a
+// lungo li si sia tenuti: un tasto che non fa niente perche' l'hai premuto
+// "troppo" e' esattamente il genere di sorpresa che questo schema toglie di
+// mezzo. Solo su AVVIA c'e' anche il long-press, che scatta alla soglia col
+// tasto ancora giu' e in quel caso il breve non arriva.
 bool fnShortPress(int fn);
 bool fnLongPress(int fn);
 bool fnIsDown(int fn);
+// Da quanti millisecondi e' premuto, 0 se non lo e'. Serve a far vedere il
+// caricamento della conferma: una pressione lunga che non mostra di essere in
+// corso e' indistinguibile da un tasto che non funziona.
+uint32_t fnHeldMs(int fn);
 
 // --- encoder rotativi (0..3) ---
 // Scatti accumulati dall'ultima chiamata: positivo = senso orario. La lettura
@@ -73,6 +91,11 @@ bool fnIsDown(int fn);
 int encDelta(int which);
 // Click dell'albero (fronte di discesa).
 bool encClick(int which);
+// Rilascio dell'albero (fronte di salita). Il ripristino di un parametro deve
+// scattare quando lasci, non quando premi: finche' tieni giu' il click la
+// manopola e' in passo fine, e se il ripristino partisse subito i due gesti si
+// pesterebbero i piedi ad ogni tentativo di regolazione precisa.
+bool encRelease(int which);
 bool encIsDown(int which);
 
 }  // namespace Input

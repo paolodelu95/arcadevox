@@ -191,6 +191,23 @@ class Arduino_GFX {
     void fillScreen(uint16_t color) { fillRect(0, 0, _width, _height, color); }
 
     // ------------------------------------------------------------------ cerchi
+    // Trascritta riga per riga da Arduino_GFX.cpp, come tutto il resto di questo
+    // file: i quattro angoli sono quattro quarti di writeEllipseHelper, non un
+    // arco improvvisato, altrimenti il controllo del cerchio darebbe differenze
+    // che sul chip vero non esistono.
+    void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+        const int16_t max_radius = ((w < h) ? w : h) / 2;
+        if (r > max_radius) r = max_radius;
+        writeFastHLine(x + r, y, w - 2 * r, color);
+        writeFastHLine(x + r, y + h - 1, w - 2 * r, color);
+        writeFastVLine(x, y + r, h - 2 * r, color);
+        writeFastVLine(x + w - 1, y + r, h - 2 * r, color);
+        writeEllipseHelper(x + r, y + r, r, r, 1, color);
+        writeEllipseHelper(x + w - r - 1, y + r, r, r, 2, color);
+        writeEllipseHelper(x + w - r - 1, y + h - r - 1, r, r, 4, color);
+        writeEllipseHelper(x + r, y + h - r - 1, r, r, 8, color);
+    }
+
     void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
         writeEllipseHelper(x, y, r, r, 0xf, color);
     }

@@ -14,8 +14,6 @@
 
 namespace {
 
-const int BPM_PRESETS[BPM_PRESET_COUNT] = {40, 60, 80, 100, 120, 140, 160, 180};
-
 Sequencer::Step steps[SEQ_STEPS];
 Sequencer::Mode currentMode = Sequencer::SEQ_IDLE;
 
@@ -176,8 +174,6 @@ void setEditing(bool on) {
     if (on) cursorPos = (currentMode == SEQ_IDLE) ? 0 : stepIndex;
 }
 
-void toggleEditing() { setEditing(!editActive); }
-
 bool editing() { return editActive; }
 
 int cursor() { return cursorPos; }
@@ -188,28 +184,20 @@ void moveCursor(int delta) {
     cursorPos = (uint8_t)p;
 }
 
-void writeAtCursor(int note, int8_t oct) {
+void setAtCursor(int note, int8_t oct) {
     steps[cursorPos].note = (int8_t)note;
     steps[cursorPos].oct = (note < 0) ? 0 : oct;
     ++rev;
+}
+
+void writeAtCursor(int note, int8_t oct) {
+    setAtCursor(note, oct);
     // Step input: il cursore avanza da solo, cosi' si scrive una melodia
     // premendo un tasto dopo l'altro senza altri comandi.
     moveCursor(1);
 }
 
 // -------------------------------------------------------------------- tempo
-
-void cycleBpm() {
-    // Primo preset piu' veloce di dove siamo adesso, poi si riparte dal basso:
-    // la leva resta prevedibile anche dopo una regolazione fine con l'encoder.
-    for (int i = 0; i < BPM_PRESET_COUNT; ++i) {
-        if (BPM_PRESETS[i] > bpmValue) {
-            setBpm(BPM_PRESETS[i]);
-            return;
-        }
-    }
-    setBpm(BPM_PRESETS[0]);
-}
 
 void nudgeBpm(int steps_) { setBpm(bpmValue + steps_); }
 

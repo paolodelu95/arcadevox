@@ -68,9 +68,14 @@ bool load(SynthState &s) {
     // coda, quindi un blob della 1.x si rilegge per intero e si perde solo
     // quello che nella 1.x non esisteva.
     constexpr size_t PRE_V2_BYTES = offsetof(SynthState, resonance);
+    // La 2.1.0 ha aggiunto in coda i due parametri dell'inviluppo di filtro.
+    // Sono float, quindi la struttura cresce di otto byte pieni: nessuna
+    // lunghezza vecchia puo' coincidere con quella nuova, e un blob lungo fin
+    // qui e' senza ambiguita' una 2.0.
+    constexpr size_t PRE_V21_BYTES = offsetof(SynthState, filtEnvAmount);
     const size_t stored = prefs.getBytesLength(KEY_STATE);
-    if (stored != sizeof(tmp) && stored != PRE_V2_BYTES && stored != PRE_SCALE_BYTES &&
-        stored != LEGACY_BYTES) {
+    if (stored != sizeof(tmp) && stored != PRE_V21_BYTES && stored != PRE_V2_BYTES &&
+        stored != PRE_SCALE_BYTES && stored != LEGACY_BYTES) {
         return false;
     }
     if (prefs.getBytes(KEY_STATE, &tmp, stored) != stored) return false;

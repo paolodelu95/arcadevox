@@ -7,8 +7,7 @@
 //    domani qualcuno sposta una fillRect di due pixel, i PNG cambiano senza che
 //    nessuno debba ricordarsi di aggiornare il simulatore. In cambio si ottiene
 //    anche l'accesso al namespace anonimo di display.cpp, quindi si possono
-//    chiamare direttamente chrome(), splash() e drawNetworkIdleScreen(), che
-//    dall'esterno non esistono.
+//    chiamare direttamente chrome() e splash(), che dall'esterno non esistono.
 //
 // 2) Ogni scena viene disegnata in un processo figlio suo. display.cpp e' pieno
 //    di stato statico (l'ultima vista, l'ago del VU, la traccia precedente
@@ -73,8 +72,8 @@ void boot() {
     gfx->fillScreen(BLACK);
     forceFull = true;
     prevValid = false;
-    inAdsrScreen = false;
     inSeqOverride = false;
+    inLedLearn = false;
 }
 
 // Sceglie la schermata del ciclo senza passare da nextScreen(), che ci
@@ -92,15 +91,15 @@ SynthView baseView() {
     v.octave = 0;
     v.cutoffHz = 2000.0f;
     v.volume = 0.5f;
-    v.adsrEdit = false;
     v.attackMs = 10.0f;
-    v.decayMs = 120.0f;
+    v.decayMs = 150.0f;
     v.sustain = 0.7f;
-    v.releaseMs = 200.0f;
+    v.releaseMs = 250.0f;
     v.seqMode = Sequencer::SEQ_IDLE;
     v.seqStep = 0;
     v.seqCursor = 0;
     v.seqEditing = false;
+    v.seqNoteName = "PAUSA";
     v.countIn = 0;
     v.seqRev = 1;
     v.bpm = 120;
@@ -126,19 +125,43 @@ SynthView baseView() {
     v.subLevel = 0.0f;
     v.detuneCents = 0.0f;
     v.glideMs = 0.0f;
-    v.enc4Name = "BPM";
-    v.enc4Index = 0;
+
+    // L'elenco EFFETTI: i valori sono testo gia' formattato, come li compone
+    // main.cpp. Le lunghezze vere contano — sono loro a decidere se la riga sta
+    // dentro il cerchio.
+    v.fxCursor = FX_ECO_MIX;
+    static const char *const FX_DEMO[FX_ROW_COUNT] = {
+        "8 BIT", "0 %",  "220 ms", "35 %", "SPENTO", "5.0 Hz", "0 %",
+        "SU",    "0 %",  "0 ct",   "0 %",  "NO",     "0 %",    "300 ms"};
+    for (int i = 0; i < FX_ROW_COUNT; ++i) {
+        v.fxFrac[i] = 0.35f;
+        snprintf(v.fxValue[i], sizeof(v.fxValue[i]), "%s", FX_DEMO[i]);
+    }
+
     v.scaleName = "CROMAT.";
     v.rootName = "DO";
     v.expanderOk = true;
     v.ledLearn = false;
     v.ledLearnIndex = 0;
-    v.toast = nullptr;
+    v.holdFill = 0;
+    v.flashLabel = nullptr;
+    v.flashValue = nullptr;
+    v.flashFrac = -1.0f;
+    v.flashRev = 0;
     for (int i = 0; i < SETTING_COUNT; ++i) v.setIndex[i] = Settings::ENTRIES[i].byDefault;
     v.setCursor = 0;
-    v.setEditing = false;
-    v.clearedAgo = 0;
     return v;
+}
+
+// Le quattro didascalie, che sul synth le riempie main.cpp. Senza, la corona
+// resterebbe vuota e le scene non proverebbero la parte che regge tutto lo
+// schema dei comandi.
+void knobs(const char *a, const char *b, const char *c, const char *d, float fa = 0.35f,
+           float fb = 0.5f, float fc = 0.5f, float fd = 0.7f) {
+    Display::setKnob(0, a, "", fa, false);
+    Display::setKnob(1, b, "", fb, false);
+    Display::setKnob(2, c, "", fc, false);
+    Display::setKnob(3, d, "", fd, false);
 }
 
 // Un aggiornamento come lo farebbe il loop: passa il tempo, poi si ridisegna.
@@ -152,110 +175,327 @@ void tick(const SynthView &v, uint32_t ms = 33) {
 // Ogni scena e' una funzione che lascia il framebuffer nello stato da salvare.
 // Il nome del file e' il contratto con check.py: il prefisso dice la schermata,
 // e i controlli sull'anello si saltano in base a quello.
+//
+// Le sette schermate dell'anello condividono ormai un telaio solo — corona di
+// posizione, targhetta d'ottava, quattro archi con le loro didascalie — quindi
+// ogni scena deve riempire anche quello: e' proprio il telaio la parte che una
+// gomma sbagliata si porta via, ed e' la parte che non si ridisegna piu' fino al
+// cambio di pagina.
 
-// --- OSC --------------------------------------------------------------------
-void sceneOsc(uint8_t wave, bool poly, uint8_t voices) {
+// --- SUONA ------------------------------------------------------------------
+void sceneSuona(uint8_t wave, bool poly, uint8_t voices, float cutoff, float res) {
     boot();
-    gotoScreen(0);
+    gotoScreen(SCREEN_SUONA);
+    Sim::setScope(wave, 0.8f);
     SynthView v = baseView();
     v.waveform = wave;
     v.poly = poly;
     v.voices = voices;
-    tick(v);
-}
-void scene_osc_sine() { sceneOsc(WAVE_SINE, false, 1); }
-void scene_osc_square() { sceneOsc(WAVE_SQUARE, true, 4); }
-void scene_osc_saw() { sceneOsc(WAVE_SAW, true, 8); }
-void scene_osc_triangle() { sceneOsc(WAVE_TRIANGLE, false, 0); }
-void scene_osc_pulse() { sceneOsc(WAVE_PULSE, false, 2); }
-void scene_osc_noise() { sceneOsc(WAVE_NOISE, true, 6); }
-
-void scene_osc_dopo_uso() {
-    boot();
-    gotoScreen(0);
-    SynthView v = baseView();
-    tick(v);  // disegno completo
-    // Sette aggiornamenti che toccano tutte le fasce dinamiche della schermata:
-    // l'icona dell'onda, il nome, le caselle delle voci, la riga mono/poli.
-    const uint8_t waves[7] = {WAVE_SQUARE, WAVE_SAW,      WAVE_TRIANGLE, WAVE_SINE,
-                              WAVE_SAW,    WAVE_TRIANGLE, WAVE_SQUARE};
-    const uint8_t voices[7] = {1, 4, 8, 0, 3, 8, 2};
-    for (int i = 0; i < 7; ++i) {
-        v.waveform = waves[i];
-        v.poly = (i % 2) == 0;
-        v.voices = voices[i];
-        tick(v);
-    }
-}
-
-// --- OCTAVE -----------------------------------------------------------------
-void sceneOctave(int8_t oct) {
-    boot();
-    gotoScreen(1);
-    SynthView v = baseView();
-    v.octave = oct;
-    tick(v);
-}
-void scene_octave_min() { sceneOctave(-2); }
-void scene_octave_zero() { sceneOctave(0); }
-void scene_octave_max() { sceneOctave(2); }
-
-void scene_octave_dopo_uso() {
-    boot();
-    gotoScreen(1);
-    SynthView v = baseView();
-    tick(v);
-    const int8_t seq[8] = {1, 2, -2, -1, 0, 2, -2, 1};
-    for (int i = 0; i < 8; ++i) {
-        v.octave = seq[i];
-        tick(v);
-    }
-}
-
-// --- LEVELS -----------------------------------------------------------------
-void sceneLevels(float cutoff, float vol, float res = 0.0f) {
-    boot();
-    gotoScreen(SCREEN_LEVELS);
-    SynthView v = baseView();
     v.cutoffHz = cutoff;
-    v.volume = vol;
     v.resonance = res;
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
     tick(v);
 }
-void scene_levels_min() { sceneLevels(80.0f, 0.0f); }
-void scene_levels_max() { sceneLevels(8000.0f, 1.0f); }
-void scene_levels_medio() { sceneLevels(1234.0f, 0.55f); }
-// La risonanza al massimo e' il caso peggiore per la curva del filtro: la gobba
-// sul taglio e' alta venti volte il resto, e deve restare dentro il riquadro.
-void scene_levels_risonanza() { sceneLevels(1234.0f, 0.55f, 1.0f); }
-void scene_levels_risonanza_meta() { sceneLevels(400.0f, 0.8f, 0.5f); }
+void scene_suona_sine() { sceneSuona(WAVE_SINE, false, 1, 2000.0f, 0.0f); }
+void scene_suona_square() { sceneSuona(WAVE_SQUARE, true, 4, 800.0f, 0.4f); }
+void scene_suona_saw() { sceneSuona(WAVE_SAW, true, 8, 6000.0f, 0.9f); }
+void scene_suona_noise() { sceneSuona(WAVE_NOISE, false, 0, 120.0f, 0.0f); }
 
-// --- FX ---------------------------------------------------------------------
-void sceneFx(bool crush, float mix, float lfo, float drive, float sub, uint8_t enc4) {
+void scene_suona_tutto_acceso() {
     boot();
-    gotoScreen(SCREEN_FX);
+    gotoScreen(SCREEN_SUONA);
+    Sim::setScope(WAVE_SAW, 1.2f);  // oltre fondo scala: la traccia deve virare
     SynthView v = baseView();
-    v.crush = crush;
-    v.crushName = "8 BIT";
-    v.delayMix = mix;
-    v.delayMs = 220.0f;
-    v.lfoDepth = lfo;
-    v.lfoTargetName = lfo > 0.0f ? "VIBRATO" : "SPENTO";
-    v.drive = drive;
-    v.subLevel = sub;
-    v.detuneCents = sub > 0.0f ? 22.0f : 0.0f;
-    v.glideMs = sub > 0.0f ? 180.0f : 0.0f;
-    v.enc4Name = "ECO MIX";
-    v.enc4Index = enc4;
+    v.waveform = WAVE_SAW;
+    v.arp = true;
+    v.crush = true;
+    v.hold = true;
+    v.poly = true;
+    v.voices = 12;
+    v.octave = 2;
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
     tick(v);
 }
-void scene_fx_riposo() { sceneFx(false, 0.0f, 0.0f, 0.0f, 0.0f, 0); }
-void scene_fx_tutto() { sceneFx(true, 0.75f, 0.6f, 0.4f, 0.9f, 1); }
-// Il quarto encoder sull'ultima riga: la barretta selezionata e' quella in
-// fondo, dove il cerchio si e' gia' stretto parecchio.
-void scene_fx_glide_selezionato() { sceneFx(true, 0.2f, 0.0f, 0.0f, 0.5f, 8); }
 
-// --- luci -------------------------------------------------------------------
+void scene_suona_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_SUONA);
+    Sim::setScope(WAVE_SINE, 0.6f);
+    SynthView v = baseView();
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
+    tick(v);
+    // Dieci giri che toccano tutte le fasce dinamiche: la traccia, l'orizzonte
+    // del filtro, la corona delle voci, la fila delle targhette e l'ottava.
+    const uint8_t waves[10] = {WAVE_SQUARE, WAVE_SAW,   WAVE_TRIANGLE, WAVE_SINE, WAVE_PULSE,
+                               WAVE_NOISE,  WAVE_SAW,   WAVE_SQUARE,   WAVE_SINE, WAVE_SAW};
+    const int8_t octs[10] = {1, 2, -2, -1, 0, 2, -2, 1, 0, -1};
+    for (int i = 0; i < 10; ++i) {
+        v.waveform = waves[i];
+        v.octave = octs[i];
+        v.poly = (i % 2) == 0;
+        v.voices = (uint8_t)(i + 3);
+        v.cutoffHz = 200.0f + 700.0f * (float)i;
+        v.resonance = 0.1f * (float)i;
+        v.arp = (i % 3) == 0;
+        v.crush = (i % 4) == 0;
+        v.hold = (i % 5) == 0;
+        Sim::setScope(waves[i], 0.4f + 0.08f * (float)i);
+        tick(v);
+    }
+}
+
+// --- TIMBRI -----------------------------------------------------------------
+void sceneTimbri(uint8_t cursor, uint8_t loaded) {
+    boot();
+    gotoScreen(SCREEN_TIMBRI);
+    SynthView v = baseView();
+    v.timbroCursor = cursor;
+    v.timbro = loaded;
+    knobs("TIMBRO", "SCALA", "VOL", "ACCORDO");
+    tick(v);
+}
+void scene_timbri_primo() { sceneTimbri(0, 0); }
+// PAD SPAZIALE e CLAVICEMBALO sono i due nomi piu' lunghi: se un nome sborda dal
+// vetro, sborda qui.
+void scene_timbri_nome_lungo() { sceneTimbri(12, 1); }
+void scene_timbri_ultimo() { sceneTimbri(PRESET_COUNT - 1, 3); }
+
+void scene_timbri_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_TIMBRI);
+    SynthView v = baseView();
+    knobs("TIMBRO", "SCALA", "VOL", "ACCORDO");
+    tick(v);
+    for (int i = 0; i < (int)PRESET_COUNT; ++i) {
+        v.timbroCursor = (uint8_t)i;
+        v.timbro = (uint8_t)i;
+        tick(v);
+    }
+}
+
+// --- INVILUPPO --------------------------------------------------------------
+void sceneInviluppo(float a, float d, float s, float r) {
+    boot();
+    gotoScreen(SCREEN_INVILUPPO);
+    SynthView v = baseView();
+    v.attackMs = a;
+    v.decayMs = d;
+    v.sustain = s;
+    v.releaseMs = r;
+    knobs("ATTAC", "DECAD", "SOST", "RILAS");
+    tick(v);
+}
+void scene_inviluppo_min() { sceneInviluppo(2.0f, 5.0f, 0.0f, 10.0f); }
+void scene_inviluppo_max() { sceneInviluppo(500.0f, 1000.0f, 1.0f, 2000.0f); }
+void scene_inviluppo_medio() { sceneInviluppo(120.0f, 340.0f, 0.55f, 890.0f); }
+
+void scene_inviluppo_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_INVILUPPO);
+    SynthView v = baseView();
+    knobs("ATTAC", "DECAD", "SOST", "RILAS");
+    tick(v);
+    for (int i = 0; i < 10; ++i) {
+        v.attackMs = 2.0f + 50.0f * (float)i;
+        v.decayMs = 5.0f + 100.0f * (float)i;
+        v.sustain = 0.1f * (float)i;
+        v.releaseMs = 10.0f + 200.0f * (float)i;
+        tick(v);
+    }
+}
+
+// --- EFFETTI ----------------------------------------------------------------
+void sceneEffetti(uint8_t cursor) {
+    boot();
+    gotoScreen(SCREEN_EFFETTI);
+    SynthView v = baseView();
+    v.fxCursor = cursor;
+    knobs("SCEGLI", FX_ROWS[cursor].label, "VOL", "-");
+    tick(v);
+}
+void scene_effetti_prima() { sceneEffetti(FX_GRANA); }
+// "PROFONDITA" e' l'etichetta piu' lunga dell'elenco, "VELOCITA'" la seconda.
+void scene_effetti_etichetta_lunga() { sceneEffetti(FX_LFO_PROF); }
+void scene_effetti_ultima() { sceneEffetti(FX_CHIUSURA); }
+
+void scene_effetti_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_EFFETTI);
+    SynthView v = baseView();
+    tick(v);
+    for (int i = 0; i < FX_ROW_COUNT; ++i) {
+        v.fxCursor = (uint8_t)i;
+        v.fxFrac[i] = (float)i / (float)(FX_ROW_COUNT - 1);
+        knobs("SCEGLI", FX_ROWS[i].label, "VOL", "-");
+        tick(v);
+    }
+}
+
+// --- RITMO ------------------------------------------------------------------
+void sceneRitmo(bool full, uint8_t mode, bool editing, uint16_t bpm, const char *nota) {
+    boot();
+    gotoScreen(SCREEN_RITMO);
+    if (full) Sim::seqFill(); else Sim::seqClear();
+    SynthView v = baseView();
+    v.seqMode = mode;
+    v.seqEditing = editing;
+    v.seqNoteName = nota;
+    v.bpm = bpm;
+    v.seqStep = 5;
+    v.seqCursor = 9;
+    knobs("PASSO", "NOTA", "VOL", "TEMPO");
+    tick(v);
+}
+void scene_ritmo_vuoto() { sceneRitmo(false, Sequencer::SEQ_IDLE, true, 120, "PAUSA"); }
+void scene_ritmo_play() { sceneRitmo(true, Sequencer::SEQ_PLAYING, false, 240, "SOL#"); }
+void scene_ritmo_rec() { sceneRitmo(true, Sequencer::SEQ_RECORDING, false, 40, "LEGATO"); }
+void scene_ritmo_scrivi() { sceneRitmo(true, Sequencer::SEQ_IDLE, true, 137, "DO'"); }
+
+void scene_ritmo_countin() {
+    boot();
+    gotoScreen(SCREEN_RITMO);
+    Sim::seqFill();
+    SynthView v = baseView();
+    v.countIn = 3;
+    v.seqMode = Sequencer::SEQ_COUNTIN;
+    knobs("PASSO", "NOTA", "VOL", "TEMPO");
+    tick(v);
+}
+
+void scene_ritmo_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_RITMO);
+    Sim::seqFill();
+    SynthView v = baseView();
+    v.seqMode = Sequencer::SEQ_PLAYING;
+    v.seqEditing = false;
+    knobs("PASSO", "NOTA", "VOL", "TEMPO");
+    tick(v);
+    // La testina che gira per un giro intero piu' il tempo che cambia cifre: e'
+    // il caso in cui la fascia del leggio e l'orbita si toccano piu' spesso.
+    static const char *const NOMI[16] = {"DO",  "DO#", "RE",  "RE#", "MI",  "FA",  "FA#", "SOL",
+                                         "SOL#", "LA", "LA#", "SI",  "DO'", "PAUSA", "LEGATO", "MI"};
+    for (int i = 0; i < 16; ++i) {
+        v.seqStep = (uint8_t)i;
+        v.seqCursor = (uint8_t)((i * 7) % 16);
+        v.seqNoteName = NOMI[i];
+        v.bpm = (uint16_t)(40 + i * 13);
+        tick(v);
+    }
+}
+
+// --- LIVELLO ----------------------------------------------------------------
+void sceneLivello(float rms, float peak) {
+    boot();
+    gotoScreen(SCREEN_LIVELLO);
+    Sim::setLevels(rms, peak);
+    SynthView v = baseView();
+    knobs("-", "-", "VOL", "-");
+    tick(v);
+}
+void scene_livello_zero() { sceneLivello(0.0f, 0.0f); }
+void scene_livello_meta() { sceneLivello(0.1f, 0.2f); }
+void scene_livello_clip() { sceneLivello(0.99f, 1.0f); }
+
+void scene_livello_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_LIVELLO);
+    SynthView v = baseView();
+    knobs("-", "-", "VOL", "-");
+    Sim::setLevels(0.0f, 0.0f);
+    tick(v);
+    const float lv[10] = {0.02f, 0.3f, 0.9f, 0.05f, 0.6f, 1.0f, 0.001f, 0.4f, 0.75f, 0.15f};
+    for (int i = 0; i < 10; ++i) {
+        Sim::setLevels(lv[i], lv[i]);
+        tick(v);
+    }
+}
+
+// --- MENU -------------------------------------------------------------------
+void sceneMenu(uint8_t cursor) {
+    boot();
+    gotoScreen(SCREEN_MENU);
+    SynthView v = baseView();
+    v.setCursor = cursor;
+    knobs("SCEGLI", Settings::isAction(cursor) ? "TIENI" : Settings::ENTRIES[cursor].label,
+          "VOL", "-");
+    tick(v);
+}
+void scene_menu_prima() { sceneMenu(SETTING_VOL); }
+// "LRC BCK DIN" e' il valore piu' lungo del menu, "MODALITA' WIFI" l'etichetta.
+void scene_menu_uscita_audio() { sceneMenu(SETTING_AUDIO); }
+void scene_menu_azione_wifi() { sceneMenu(SETTING_NET); }
+void scene_menu_azione_luci() { sceneMenu(SETTING_LEDLEARN); }
+
+void scene_menu_conferma_a_meta() {
+    boot();
+    gotoScreen(SCREEN_MENU);
+    SynthView v = baseView();
+    v.setCursor = SETTING_NET;
+    v.holdFill = 160;  // l'anello esterno che si sta caricando
+    knobs("SCEGLI", "TIENI", "VOL", "-");
+    tick(v);
+}
+
+void scene_menu_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_MENU);
+    SynthView v = baseView();
+    tick(v);
+    for (int i = 0; i < SETTING_MENU_COUNT; ++i) {
+        v.setCursor = (uint8_t)i;
+        if (!Settings::isAction(i)) {
+            v.setIndex[i] = (uint8_t)(Settings::valueCount(i) - 1);
+        }
+        knobs("SCEGLI", Settings::isAction(i) ? "TIENI" : Settings::ENTRIES[i].label, "VOL", "-");
+        tick(v);
+    }
+}
+
+// --- overlay ----------------------------------------------------------------
+//
+// La banda che vibrava. Qui conta soprattutto la scena "dopo-uso": la banda
+// compare, scade, e cio' che resta a schermo deve essere una schermata intera —
+// senza il buco della banda e senza i due monconi colorati ai fianchi che il
+// vecchio riquadro, largo piu' di quanto la gomma riuscisse a cancellare,
+// lasciava appesi fino al cambio di pagina.
+void sceneOverlay(uint8_t scr, const char *label, const char *value, float frac) {
+    boot();
+    gotoScreen(scr);
+    SynthView v = baseView();
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
+    tick(v);
+    v.flashLabel = label;
+    v.flashValue = value;
+    v.flashFrac = frac;
+    v.flashRev = 1;
+    tick(v);
+}
+void scene_overlay_corto() { sceneOverlay(SCREEN_SUONA, nullptr, "SILENZIO", -1.0f); }
+void scene_overlay_lungo() { sceneOverlay(SCREEN_MENU, "USCITA AUDIO", "LRC BCK DIN", -1.0f); }
+void scene_overlay_barra() { sceneOverlay(SCREEN_INVILUPPO, "SOSTEGNO", "COM'ERA", 0.62f); }
+
+void scene_overlay_scaduto() {
+    boot();
+    gotoScreen(SCREEN_SUONA);
+    Sim::setScope(WAVE_SAW, 0.7f);
+    SynthView v = baseView();
+    v.waveform = WAVE_SAW;
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
+    tick(v);
+    v.flashLabel = "TAGLIO";
+    v.flashValue = "COM'ERA";
+    v.flashRev = 1;
+    tick(v);
+    tick(v);
+    // La banda scade: da qui in poi non deve restare niente di lei.
+    v.flashLabel = nullptr;
+    v.flashValue = nullptr;
+    tick(v);
+    tick(v);
+}
+
+// --- fuori dall'anello ------------------------------------------------------
 void sceneLuci(uint8_t index) {
     boot();
     SynthView v = baseView();
@@ -266,455 +506,112 @@ void sceneLuci(uint8_t index) {
 void scene_luci_impara_prima() { sceneLuci(0); }
 void scene_luci_impara_ultima() { sceneLuci(19); }
 
-// --- messaggio in sovrimpressione -------------------------------------------
-void sceneToast(const char *text) {
-    boot();
-    gotoScreen(SCREEN_OSC);
-    SynthView v = baseView();
-    tick(v);
-    v.toast = text;
-    tick(v);
-}
-void scene_toast_corto() { sceneToast("8 BIT"); }
-// Il piu' lungo che la logica possa produrre: se sborda dal cerchio si vede qui.
-void scene_toast_lungo() { sceneToast("PASSO NORMALE"); }
-
-void scene_levels_dopo_uso() {
-    boot();
-    gotoScreen(2);
-    SynthView v = baseView();
-    tick(v);
-    // Dal minimo al massimo e ritorno: il numero passa da 2 a 4 cifre e la
-    // fascia di pulizia del valore deve reggere entrambi senza lasciare code.
-    const float cut[7] = {80.0f, 8000.0f, 440.0f, 8000.0f, 95.0f, 3300.0f, 80.0f};
-    const float vol[7] = {0.0f, 1.0f, 0.07f, 1.0f, 0.5f, 0.0f, 1.0f};
-    for (int i = 0; i < 7; ++i) {
-        v.cutoffHz = cut[i];
-        v.volume = vol[i];
-        tick(v);
-    }
-}
-
-// --- SEQUENCER --------------------------------------------------------------
-void scene_seq_vuoto() {
-    boot();
-    gotoScreen(3);
-    Sim::seqClear();
-    SynthView v = baseView();
-    tick(v);
-}
-
-void scene_seq_pieno_play() {
-    boot();
-    gotoScreen(3);
-    Sim::seqFill();
-    SynthView v = baseView();
-    v.seqMode = Sequencer::SEQ_PLAYING;
-    v.seqStep = 6;
-    v.bpm = 240;  // tre cifre
-    tick(v);
-}
-
-void scene_seq_rec() {
-    boot();
-    gotoScreen(3);
-    Sim::seqFill();
-    SynthView v = baseView();
-    v.seqMode = Sequencer::SEQ_RECORDING;
-    v.seqStep = 12;
-    v.bpm = 40;  // due cifre
-    tick(v);
-}
-
-void scene_seq_stepedit() {
-    boot();
-    Sim::seqFill();
-    Sim::seqSetStep(9, SEQ_TIE, 0);
-    SynthView v = baseView();
-    v.seqEditing = true;
-    v.seqCursor = 4;  // una nota vera: la riga di dettaglio scrive "05  GAT +2"
-    v.seqStep = 4;
-    v.seqMode = Sequencer::SEQ_PLAYING;
-    tick(v);
-}
-
-void scene_seq_stepedit_legato() {
-    boot();
-    Sim::seqFill();
-    Sim::seqSetStep(9, SEQ_TIE, 0);
-    SynthView v = baseView();
-    v.seqEditing = true;
-    v.seqCursor = 9;  // legato: la riga di dettaglio e' la piu' lunga
-    v.seqStep = 2;
-    v.seqMode = Sequencer::SEQ_PLAYING;
-    tick(v);
-}
-
-void scene_seq_hold_arp() {
-    boot();
-    gotoScreen(3);
-    Sim::seqFill();
-    SynthView v = baseView();
-    v.seqMode = Sequencer::SEQ_PLAYING;
-    v.hold = true;
-    v.arp = true;
-    v.poly = true;
-    v.bpm = 176;
-    v.seqStep = 15;
-    tick(v);
-}
-
-void scene_seq_countin() {
-    boot();
-    Sim::seqFill();
-    SynthView v = baseView();
-    v.countIn = 4;
-    v.seqMode = Sequencer::SEQ_COUNTIN;
-    tick(v);
-}
-
-void scene_seq_svuotato() {
-    boot();
-    gotoScreen(3);
-    Sim::seqClear();
-    SynthView v = baseView();
-    tick(v);
-    v.clearedAgo = 400;  // dentro il secondo e mezzo di conferma
-    tick(v);
-}
-
-void scene_seq_dopo_uso() {
-    boot();
-    gotoScreen(3);
-    Sim::seqFill();
-    SynthView v = baseView();
-    tick(v);
-    // La testina che cammina, il tempo che cambia numero di cifre, le targhette
-    // che si accendono e si spengono: tutto quello che ripulisce una fascia.
-    const uint16_t bpms[8] = {120, 40, 240, 99, 100, 240, 88, 176};
-    for (int i = 0; i < 8; ++i) {
-        v.seqMode = (i < 4) ? Sequencer::SEQ_PLAYING : Sequencer::SEQ_IDLE;
-        v.seqStep = (uint8_t)((i * 3) % SEQ_STEPS);
-        v.bpm = bpms[i];
-        v.hold = (i % 2) == 0;
-        v.arp = (i % 3) == 0;
-        v.poly = (i % 2) == 1;
-        tick(v);
-    }
-}
-
-// --- ADSR -------------------------------------------------------------------
-void sceneAdsr(float a, float d, float s, float r) {
-    boot();
-    SynthView v = baseView();
-    v.adsrEdit = true;
-    v.attackMs = a;
-    v.decayMs = d;
-    v.sustain = s;
-    v.releaseMs = r;
-    tick(v);
-}
-void scene_adsr_min() { sceneAdsr(2.0f, 5.0f, 0.0f, 10.0f); }
-void scene_adsr_max() { sceneAdsr(500.0f, 1000.0f, 1.0f, 2000.0f); }
-
-void scene_adsr_dopo_uso() {
-    boot();
-    SynthView v = baseView();
-    v.adsrEdit = true;
-    tick(v);
-    const float a[7] = {2.0f, 500.0f, 37.0f, 500.0f, 2.0f, 128.0f, 499.0f};
-    const float d[7] = {5.0f, 1000.0f, 250.0f, 5.0f, 999.0f, 40.0f, 1000.0f};
-    const float s[7] = {0.0f, 1.0f, 0.33f, 1.0f, 0.0f, 0.9f, 1.0f};
-    const float r[7] = {10.0f, 2000.0f, 750.0f, 10.0f, 1999.0f, 55.0f, 2000.0f};
-    for (int i = 0; i < 7; ++i) {
-        v.attackMs = a[i];
-        v.decayMs = d[i];
-        v.sustain = s[i];
-        v.releaseMs = r[i];
-        tick(v);
-    }
-}
-
-// --- SETTINGS ---------------------------------------------------------------
-void sceneSettings(bool editing, uint8_t cursor) {
-    boot();
-    gotoScreen(SCREEN_SETTINGS);
-    SynthView v = baseView();
-    v.setEditing = editing;
-    v.setCursor = cursor;
-    tick(v);
-}
-void scene_settings_chiuso() { sceneSettings(false, 0); }
-void scene_settings_riga0() { sceneSettings(true, 0); }
-void scene_settings_riga1() { sceneSettings(true, 1); }
-void scene_settings_riga2() { sceneSettings(true, 2); }
-void scene_settings_riga3() { sceneSettings(true, 3); }
-void scene_settings_riga4() { sceneSettings(true, 4); }
-
-void scene_settings_valori_estremi() {
-    boot();
-    gotoScreen(SCREEN_SETTINGS);
-    SynthView v = baseView();
-    v.setEditing = true;
-    v.setCursor = 3;
-    // Etichette piu' lunghe di ogni voce: "5.0 giri" e "1/16", scritte a size 2
-    // e allineate a destra, sono il caso in cui il valore rischia la cornice.
-    v.setIndex[SETTING_VOL] = 0;
-    v.setIndex[SETTING_CUTOFF] = 5;
-    v.setIndex[SETTING_ADSR] = 0;
-    v.setIndex[SETTING_FINE] = 3;
-    tick(v);
-}
-
-void scene_settings_dopo_uso() {
-    boot();
-    gotoScreen(SCREEN_SETTINGS);
-    SynthView v = baseView();
-    tick(v);          // fuori dal menu
-    v.setEditing = true;
-    tick(v);          // entrata nel menu: ridisegno completo
-    // Il cursore scende su ogni riga e i valori girano: e' lo scorrimento che si
-    // vede al banco, comprese le intestazioni di categoria che non devono
-    // sparire quando la riga sotto si ripulisce.
-    for (int i = 0; i < SETTING_COUNT; ++i) {
-        v.setCursor = (uint8_t)i;
-        if (!Settings::isAction((uint8_t)i)) {
-            v.setIndex[i] = (uint8_t)(Settings::ENTRIES[i].count - 1);
-        }
-        tick(v);
-    }
-    v.setCursor = 0;
-    v.setIndex[SETTING_VOL] = 0;
-    tick(v);
-    v.setEditing = false;
-    tick(v);
-}
-
-// --- VU ---------------------------------------------------------------------
-void sceneVu(float rms, float peak) {
-    boot();
-    gotoScreen(SCREEN_VU);
-    Sim::setLevels(rms, peak);
-    SynthView v = baseView();
-    tick(v);
-    // L'ago si muove solo se il livello e' cambiato rispetto all'ultimo
-    // fotogramma: un secondo giro lo porta nella posizione giusta anche quando
-    // il primo l'ha trovato gia' a zero.
-    tick(v);
-}
-// -40 dBFS e' fondo scala sinistro: l'ago sta a riposo.
-void scene_vu_zero() { sceneVu(0.0f, 0.0f); }
-// -20 dBFS: meta' corsa esatta.
-void scene_vu_meta() { sceneVu(0.1f, 0.15f); }
-// 0 dBFS con il picco in clip: ago a fondo, spia rossa accesa.
-void scene_vu_fondo() { sceneVu(1.0f, 1.0f); }
-
-void scene_vu_dopo_uso() {
-    boot();
-    gotoScreen(SCREEN_VU);
-    Sim::setLevels(0.0f, 0.0f);
-    SynthView v = baseView();
-    tick(v);
-    const float rms[8] = {0.02f, 0.3f, 0.9f, 0.05f, 0.5f, 1.0f, 0.01f, 0.25f};
-    const float pk[8] = {0.1f, 0.5f, 1.0f, 0.2f, 0.7f, 1.0f, 0.05f, 0.4f};
-    for (int i = 0; i < 8; ++i) {
-        Sim::setLevels(rms[i], pk[i]);
-        tick(v, 200);  // 200 ms: il picco fa in tempo a scendere fra un colpo e l'altro
-    }
-}
-
-// --- SCOPE ------------------------------------------------------------------
-void sceneScope(uint8_t wave, float amp) {
-    boot();
-    gotoScreen(SCREEN_SCOPE);
-    Sim::setScope(wave, amp);
-    SynthView v = baseView();
-    v.waveform = wave;
-    tick(v);
-}
-void scene_scope_silenzio() { sceneScope(WAVE_SINE, 0.0f); }
-void scene_scope_pieno() { sceneScope(WAVE_SQUARE, 127.0f); }
-
-void scene_scope_dopo_uso() {
-    boot();
-    gotoScreen(SCREEN_SCOPE);
-    Sim::setScope(WAVE_SINE, 60.0f);
-    SynthView v = baseView();
-    tick(v);
-    const uint8_t w[7] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE,
-                          WAVE_SAW,    WAVE_SQUARE, WAVE_TRIANGLE};
-    const float a[7] = {127.0f, 20.0f, 100.0f, 4.0f, 127.0f, 60.0f, 15.0f};
-    for (int i = 0; i < 7; ++i) {
-        Sim::setScope(w[i], a[i]);
-        v.waveform = w[i];
-        tick(v);
-    }
-}
-
-// --- NETWORK ----------------------------------------------------------------
-void scene_net_idle() {
-    boot();
-    SynthView v = baseView();
-    drawNetworkIdleScreen(v, true);
-}
-
-void scene_net_attesa() {
-    boot();
-    // Il QR di aggancio alla rete, con SSID e password di lunghezza vera.
-    Sim::netSet(NetPortal::NET_AP, "WIFI:S:ArcadeVox-7C3A;T:WPA;P:arcade9F7C;;",
-                "in attesa del telefono", "");
-    Display::updateNetwork();
-}
-
-void scene_net_portale() {
-    boot();
-    Sim::netSet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "apri il portale", "");
-    Display::updateNetwork();
-}
-
-void scene_net_in_rete() {
-    boot();
-    // Indirizzo lungo: "in rete: 192.168.100.237" e' la riga piu' larga che
-    // questa schermata possa scrivere.
-    Sim::netSet(NetPortal::NET_STA_OK, "http://192.168.100.237/", "collegato a internet",
-                "192.168.100.237");
-    Display::updateNetwork();
-}
-
-void scene_net_dopo_uso() {
-    boot();
-    Sim::netSet(NetPortal::NET_AP, "WIFI:S:ArcadeVox-7C3A;T:WPA;P:arcade9F7C;;",
-                "in attesa del telefono", "");
-    Display::updateNetwork();
-    // La sequenza vera di una sessione: aggancio, portale, tentativo verso casa,
-    // rientro riuscito. Il QR cambia una volta sola, tutto il resto e' riscrittura
-    // della sola fascia di stato — che e' esattamente dove si nascondono i guai.
-    Sim::netSet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "apri il portale", "");
-    Display::updateNetwork();
-    Sim::netSet(NetPortal::NET_STA_WAIT, "http://192.168.4.1/", "collegamento in corso", "");
-    Display::updateNetwork();
-    Sim::netSet(NetPortal::NET_STA_WAIT, "http://192.168.4.1/", "mi ricollego alla rete", "");
-    Display::updateNetwork();
-    Sim::netSet(NetPortal::NET_STA_FAIL, "http://192.168.4.1/", "rete non raggiunta", "");
-    Display::updateNetwork();
-    Sim::netSet(NetPortal::NET_STA_OK, "http://192.168.4.1/", "collegato a internet",
-                "192.168.100.237");
-    Display::updateNetwork();
-    Sim::netSet(NetPortal::NET_STA_OK, "http://192.168.4.1/", "scarico dalla rete",
-                "192.168.100.237");
-    Display::updateNetwork();
-}
-
-void sceneOta(int pct) {
-    boot();
-    // La barra parte sempre da un disegno completo: drawOtaProgress ricostruisce
-    // la cornice quando la percentuale torna indietro, e a freddo lastPct e' -1.
-    Display::drawOtaProgress(0);
-    if (pct > 0) {
-        for (int p = 1; p <= pct; ++p) Display::drawOtaProgress(p);
-    }
-}
-void scene_ota_0() { sceneOta(0); }
-void scene_ota_50() { sceneOta(50); }
-void scene_ota_100() { sceneOta(100); }
-
-void scene_net_fallito() {
-    boot();
-    // Il messaggio piu' lungo che net_portal.cpp puo' mettere in stato di errore.
-    Sim::netSet(NetPortal::NET_FAILED, "", "trasferimento interrotto", "");
-    Display::updateNetwork();
-}
-
-// --- SPLASH -----------------------------------------------------------------
 void scene_splash() {
     // Display::begin() vero, animazione compresa: le delay() non fermano nulla,
     // quindi quello che resta nel framebuffer e' l'ultimo fotogramma.
     Display::begin();
 }
 
-// ------------------------------------------------------------------ elenco
+// --- rete e aggiornamento ---------------------------------------------------
+// Pagine fuori dall'anello: nessun telaio radiale, si ridisegnano tutte ogni
+// volta. Non sono cambiate, ma restano nel banco perche' il QR e gli indirizzi
+// lunghi sono ancora il testo piu' largo che il firmware scriva.
+void sceneNet(uint8_t stage, const char *qr, const char *msg, const char *ip) {
+    boot();
+    Sim::netSet(stage, qr, msg, ip);
+    Display::updateNetwork();
+}
+void scene_net_attesa() {
+    sceneNet(NetPortal::NET_AP, "WIFI:T:WPA;S:ArcadeVox-3C4A;P:arcade3C4A;;", "", "");
+}
+void scene_net_portale() {
+    sceneNet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "", "");
+}
+void scene_net_in_rete() {
+    sceneNet(NetPortal::NET_STA_OK, "http://192.168.178.123/", "", "192.168.178.123");
+}
+void scene_net_fallito() {
+    sceneNet(NetPortal::NET_FAILED, "", "manifest non raggiungibile", "");
+}
+void sceneOta(int pct) {
+    boot();
+    Display::drawOtaProgress(pct);
+}
+void scene_ota_0() { sceneOta(0); }
+void scene_ota_50() { sceneOta(50); }
+void scene_ota_100() { sceneOta(100); }
+
 struct Scene {
     const char *file;
     void (*fn)();
 };
 
 const Scene SCENES[] = {
-    {"01-osc-sine-mono-1voce", scene_osc_sine},
-    {"02-osc-square-poli-4voci", scene_osc_square},
-    {"03-osc-saw-poli-8voci", scene_osc_saw},
-    {"04-osc-triangle-mono-0voci", scene_osc_triangle},
-    {"05-osc-dopo-uso", scene_osc_dopo_uso},
+    {"01-suona-sine", scene_suona_sine},
+    {"02-suona-square-poli", scene_suona_square},
+    {"03-suona-saw-risonanza", scene_suona_saw},
+    {"04-suona-noise", scene_suona_noise},
+    {"05-suona-tutto-acceso", scene_suona_tutto_acceso},
+    {"06-suona-dopo-uso", scene_suona_dopo_uso},
 
-    {"06-octave-min", scene_octave_min},
-    {"07-octave-zero", scene_octave_zero},
-    {"08-octave-max", scene_octave_max},
-    {"09-octave-dopo-uso", scene_octave_dopo_uso},
+    {"07-timbri-primo", scene_timbri_primo},
+    {"08-timbri-nome-lungo", scene_timbri_nome_lungo},
+    {"09-timbri-ultimo", scene_timbri_ultimo},
+    {"10-timbri-dopo-uso", scene_timbri_dopo_uso},
 
-    {"10-levels-min", scene_levels_min},
-    {"11-levels-max", scene_levels_max},
-    {"12-levels-medio", scene_levels_medio},
-    {"13-levels-dopo-uso", scene_levels_dopo_uso},
+    {"11-inviluppo-min", scene_inviluppo_min},
+    {"12-inviluppo-max", scene_inviluppo_max},
+    {"13-inviluppo-medio", scene_inviluppo_medio},
+    {"14-inviluppo-dopo-uso", scene_inviluppo_dopo_uso},
 
-    {"14-seq-vuoto", scene_seq_vuoto},
-    {"15-seq-pieno-play-bpm3cifre", scene_seq_pieno_play},
-    {"16-seq-rec-bpm2cifre", scene_seq_rec},
-    {"17-seq-stepedit-nota", scene_seq_stepedit},
-    {"18-seq-stepedit-legato", scene_seq_stepedit_legato},
-    {"19-seq-hold-arp-poli", scene_seq_hold_arp},
-    {"20-seq-countin", scene_seq_countin},
-    {"21-seq-svuotato", scene_seq_svuotato},
-    {"22-seq-dopo-uso", scene_seq_dopo_uso},
+    {"15-effetti-prima", scene_effetti_prima},
+    {"16-effetti-etichetta-lunga", scene_effetti_etichetta_lunga},
+    {"17-effetti-ultima", scene_effetti_ultima},
+    {"18-effetti-dopo-uso", scene_effetti_dopo_uso},
 
-    {"23-adsr-min", scene_adsr_min},
-    {"24-adsr-max", scene_adsr_max},
-    {"25-adsr-dopo-uso", scene_adsr_dopo_uso},
+    {"19-ritmo-vuoto", scene_ritmo_vuoto},
+    {"20-ritmo-play-bpm3cifre", scene_ritmo_play},
+    {"21-ritmo-rec-bpm2cifre", scene_ritmo_rec},
+    {"22-ritmo-scrivi", scene_ritmo_scrivi},
+    {"23-ritmo-countin", scene_ritmo_countin},
+    {"24-ritmo-dopo-uso", scene_ritmo_dopo_uso},
 
-    {"26-settings-chiuso", scene_settings_chiuso},
-    {"27-settings-riga0-volume", scene_settings_riga0},
-    {"28-settings-riga1-cutoff", scene_settings_riga1},
-    {"29-settings-riga2-adsr", scene_settings_riga2},
-    {"30-settings-riga3-passofine", scene_settings_riga3},
-    {"31-settings-riga4-azione-wifi", scene_settings_riga4},
-    {"32-settings-valori-estremi", scene_settings_valori_estremi},
-    {"33-settings-dopo-uso", scene_settings_dopo_uso},
+    {"25-livello-zero", scene_livello_zero},
+    {"26-livello-meta", scene_livello_meta},
+    {"27-livello-clip", scene_livello_clip},
+    {"28-livello-dopo-uso", scene_livello_dopo_uso},
 
-    {"34-vu-zero", scene_vu_zero},
-    {"35-vu-meta", scene_vu_meta},
-    {"36-vu-fondoscala-clip", scene_vu_fondo},
-    {"37-vu-dopo-uso", scene_vu_dopo_uso},
+    {"29-menu-prima", scene_menu_prima},
+    {"30-menu-uscita-audio", scene_menu_uscita_audio},
+    {"31-menu-azione-wifi", scene_menu_azione_wifi},
+    {"32-menu-azione-luci", scene_menu_azione_luci},
+    {"33-menu-conferma-a-meta", scene_menu_conferma_a_meta},
+    {"34-menu-dopo-uso", scene_menu_dopo_uso},
 
-    {"38-scope-silenzio", scene_scope_silenzio},
-    {"39-scope-pieno", scene_scope_pieno},
-    {"40-scope-dopo-uso", scene_scope_dopo_uso},
+    {"35-overlay-corto", scene_overlay_corto},
+    {"36-overlay-lungo", scene_overlay_lungo},
+    {"37-overlay-barra", scene_overlay_barra},
+    {"38-overlay-scaduto", scene_overlay_scaduto},
 
-    {"41-network-idle", scene_net_idle},
-    {"42-network-qr-rete", scene_net_attesa},
-    {"43-network-qr-indirizzo", scene_net_portale},
-    {"44-network-in-rete-ip-lungo", scene_net_in_rete},
-    {"45-network-ota-0", scene_ota_0},
-    {"46-network-ota-50", scene_ota_50},
-    {"47-network-ota-100", scene_ota_100},
-    {"48-network-fallito", scene_net_fallito},
-    {"49-network-dopo-uso", scene_net_dopo_uso},
+    {"39-luci-impara-primo", scene_luci_impara_prima},
+    {"40-luci-impara-ultimo", scene_luci_impara_ultima},
 
-    {"50-splash", scene_splash},
+    {"41-network-qr-rete", scene_net_attesa},
+    {"42-network-qr-indirizzo", scene_net_portale},
+    {"43-network-in-rete-ip-lungo", scene_net_in_rete},
+    {"44-network-ota-0", scene_ota_0},
+    {"45-network-ota-50", scene_ota_50},
+    {"46-network-ota-100", scene_ota_100},
+    {"47-network-fallito", scene_net_fallito},
 
-    {"51-osc-pulse", scene_osc_pulse},
-    {"52-osc-noise", scene_osc_noise},
-    {"53-levels-risonanza-max", scene_levels_risonanza},
-    {"54-levels-risonanza-meta", scene_levels_risonanza_meta},
-    {"55-fx-riposo", scene_fx_riposo},
-    {"56-fx-tutto-acceso", scene_fx_tutto},
-    {"57-fx-glide-selezionato", scene_fx_glide_selezionato},
-    {"58-luci-impara-primo", scene_luci_impara_prima},
-    {"59-luci-impara-ultimo", scene_luci_impara_ultima},
-    {"60-toast-corto", scene_toast_corto},
-    {"61-toast-lungo", scene_toast_lungo},
+    {"48-splash", scene_splash},
 };
 
 constexpr int SCENE_COUNT = (int)(sizeof(SCENES) / sizeof(SCENES[0]));
 
 }  // namespace
+
+
 
 int main(int argc, char **argv) {
     if (argc > 1) gOutDir = argv[1];

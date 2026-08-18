@@ -24,7 +24,8 @@ con un inviluppo vero e un filtro risonante.
   fino a un soffio dall'autoscillazione, una manopola per ciascuno
 - **8 BIT** su un tasto: bitcrusher più decimazione, quattro gradini da 12 a 4 bit
 - **Eco, drive, sub-oscillatore, detune, portamento e LFO** (vibrato / filtro / tremolo)
-- **Inviluppo ADSR** reale, un encoder per parametro
+- **Inviluppo ADSR** reale, una manopola per parametro, con il profilo disegnato a schermo
+- **Inviluppo di filtro** regolabile: è l'ingrediente che distingue un pianoforte da un organo
 - **Uscita I2S** 44.1 kHz / 16 bit verso un MAX98357
 - **MONO / POLIFONICO** commutabile: 16 voci, ognuna con fase, inviluppo e filtro suoi
 - **13 tasti nota** — un'ottava cromatica intera — con last-note-priority e memoria
@@ -37,12 +38,12 @@ con un inviluppo vero e un filtro risonante.
   preconteggio e metronomo
 - **20 LED RGB sotto i tasti**: la tastiera si disegna da sola, le funzioni attive si
   accendono, l'ordine della catena la scheda **se lo impara** da sola
-- **Display GC9A01** tondo con 8 schermate cicliche — fra cui effetti, VU meter ad ago,
-  oscilloscopio e un menu impostazioni per categorie
+- **Display GC9A01** tondo con un'interfaccia **radiale**: sette schermate, la ghiera che dice
+  dove sei, e sotto ogni manopola scritto cosa fa in quel momento
 - **MIDI IN** dalla porta USB nativa: il synth compare al computer come strumento,
   con dinamica vera, pitch bend, pedale di risonanza e i CC che tutti i DAW danno per scontati
 - **15 timbri di fabbrica** — pianoforte, chitarra, organo, archi, campane, acido, arcade… —
-  scelti dal menu o dal cambio programma MIDI
+  con una schermata tutta loro, e il ritratto di ognuno: forma d'onda e inviluppo
 - **Memoria**: pattern, parametri e mappa dei LED sopravvivono allo spegnimento
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
 
@@ -81,36 +82,111 @@ senza ricompilare niente.
 
 ## I comandi
 
-**13 tasti nota** in basso e al centro, disposti come un pezzo di pianoforte: i tasti neri
-nella fila di mezzo, i bianchi in quella sotto. **7 tasti funzione** nella fila in alto: ognuno
-fa una cosa premuto e un'altra tenuto premuto.
+Una regola sola, e c'è scritta a schermo: **ogni tasto fa la parola che ha stampata sopra, e
+ogni manopola fa quello che il display le scrive sotto.** Non c'è nient'altro da ricordare.
 
-| Tasto | Pressione breve | Tenuto premuto |
-|---|---|---|
-| **FN1** | arpeggiator on/off | cambia modo (su, giù, su/giù, casuale, ordine) |
-| **FN2** | **8 BIT** on/off | cambia profondità: 12, 8, 6, 4 bit |
-| **FN3** | REC | STEP EDIT |
-| **FN4** | play / stop | svuota il pattern |
-| **FN5** | HOLD | ADSR edit |
-| **FN6** | mono / polifonico | modalità accordo |
-| **FN7** | schermata successiva | menu impostazioni |
+### I sette tasti funzione
 
-I quattro encoder cambiano mestiere secondo dove ti trovi:
+Fila in alto, una funzione ciascuno. Niente seconde funzioni nascoste sotto la pressione
+lunga: se un tasto fa una cosa, la fa e basta, sempre, in ogni schermata e in ogni modalità.
 
-| | uso normale | ADSR edit | menu impostazioni | step edit |
+| Tasto | Cosa fa |
+|---|---|
+| **ARPEGGIO** | arpeggiator on/off |
+| **8 BIT** | il degrado on/off |
+| **REGISTRA** | REC — e ti porta sulla schermata RITMO |
+| **AVVIA** | play / stop — e ti porta sulla schermata RITMO |
+| **TIENI** | latch: le note continuano a suonare a tasti rilasciati |
+| **VOCI** | mono / polifonico |
+| **SILENZIO** | zittisce tutto, subito |
+
+L'unica pressione lunga rimasta è su **AVVIA**, e non è una seconda funzione: è una richiesta
+di conferma. Tenendolo premuto **si svuota il pattern**, e mentre tieni l'anello esterno del
+display si riempie di rosso — molli prima e non è successo niente.
+
+Le sei funzioni che prima erano nascoste non sono sparite, sono andate dove si vedono: il modo
+dell'arpeggiator e la grana dell'8 BIT sono righe della schermata **EFFETTI**, il modo accordo
+è la quarta manopola di **TIMBRI**, e lo step edit non esiste più come modalità perché su
+**RITMO** il cursore c'è sempre.
+
+### Le quattro manopole
+
+Cambiano mestiere a seconda della schermata, ma non c'è niente da imparare: sotto ognuna, in
+basso sul display, c'è **scritto cosa fa adesso**, con un arco che mostra a che punto della
+corsa sei. Girando, il nome lascia il posto al valore per un secondo e poi torna.
+
+| Schermata | 1 | 2 | 3 | 4 |
 |---|---|---|---|---|
-| **ENC 1** | cutoff | attack | scorre le voci | scorre il cursore |
-| **ENC 2** | **risonanza** | decay | cambia il valore | — |
-| **ENC 3** | volume | sustain | — | — |
-| **ENC 4** | parametro a scelta | release | — | BPM |
+| **SUONA** | onda | taglio | volume | risonanza |
+| **TIMBRI** | timbro | scala | volume | accordo |
+| **INVILUPPO** | attacco | decadimento | **sostegno** | rilascio |
+| **EFFETTI** | scegli la riga | cambia il valore | volume | — |
+| **RITMO** | passo | nota | volume | tempo |
+| **LIVELLO** | — | — | volume | — |
+| **MENU** | scegli la voce | cambia il valore | volume | — |
 
-Il **click dell'albero** dei primi tre inserisce il passo fine; quello del quarto sceglie cosa
-comanda l'encoder 4 fra BPM, eco (mix e tempo), velocità e profondità dell'LFO, drive, sub,
-detune e glide. Il joystick fa ottava (su/giù) e forma d'onda (sinistra/destra).
+La terza è **sempre il volume**, tranne su INVILUPPO dove le lettere da regolare sono quattro
+e la terza è la S. Dove una manopola non fa niente c'è scritto un trattino: è
+un'informazione anche quella, e nessuno resta a chiedersi perché non succede nulla.
+
+### Il click delle manopole
+
+Due gesti, e li conosci già tutti e due:
+
+- **tieni premuto il click e gira** → passo fine, finché lo tieni;
+- **premi e lascia** (senza aver girato) → quel parametro **torna com'era** nel timbro
+  caricato, con la conferma a schermo.
+
+Il secondo è il comando più importante di tutto lo strumento e non è una scorciatoia da
+esperti: è un'assicurazione. Una manopola che non conosci la giri volentieri solo se sai come
+tornare indietro.
+
+Nel **MENU** le tre righe rosse — IMPARA LUCI, AZZERA LUCI, MODALITÀ WIFI — non si premono, si
+**tengono**: il click della seconda manopola per novecento millisecondi, con l'anello esterno
+che si riempie. È lo stesso patto di AVVIA/svuota, applicato all'unico altro posto dove ci sono
+gesti che non si tornano indietro.
+
+### Il joystick
+
+| Direzione | Cosa fa |
+|---|---|
+| ← → | schermata precedente / successiva |
+| ↑ ↓ | ottava, da −2 a +2 |
+
+Una regola sola, valida ovunque, e nessun tasto la duplica. Il joystick è anche il **torna
+indietro** dello strumento: è lui che esce dall'apprendimento delle luci e dalla modalità WiFi.
+E siccome è cablato direttamente sui GPIO, funziona anche quando l'espansore I2C non risponde
+e la tastiera è muta.
+
+L'ottava non fa comparire nessun riquadro: sta scritta in permanenza in alto a sinistra, su una
+targhetta del colore dell'ottava — lo stesso che prendono le celle del sequencer.
+
+### Le sette schermate
+
+Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in sette settori
+colorati, uno per schermata: quello dove sei è acceso pieno, gli altri sono spenti. Dopo due
+giri diventa una mappa — il viola sono i timbri, il lime è il ritmo.
+
+| Schermata | Cosa mostra |
+|---|---|
+| **SUONA** | la forma d'onda vera che esce, con la curva del filtro dietro come orizzonte |
+| **TIMBRI** | i quindici timbri di fabbrica, con il ritratto di quello scelto |
+| **INVILUPPO** | il profilo A/D/S/R disegnato, che si deforma mentre giri |
+| **EFFETTI** | quattordici righe: grana, eco, LFO, arpeggio, corpo, inviluppo di filtro |
+| **RITMO** | la griglia a 16 passi, con la testina che orbita sul bordo |
+| **LIVELLO** | il VU meter ad ago, concentrico al vetro |
+| **MENU** | le impostazioni |
+
+### Quando il display parla
+
+La banda al centro compare solo per dire quello che **non è già sotto i tuoi occhi**: i tasti
+funzione quando la loro targhetta non è a schermo, il ripristino di una manopola, gli allarmi.
+Non compare mai per una manopola — quella ha già il suo arco e la sua didascalia — né per
+l'ottava, che sta nel telaio. Dura novecento millisecondi e si disegna una volta sola.
 
 ## Mono e polifonico
 
-**FN6** commuta fra monofonico e polifonico. Il motore ha **16 voci**, ognuna con fase,
+Il tasto **VOCI** commuta fra monofonico e polifonico. Il motore ha **16 voci**, ognuna con fase,
 inviluppo e filtro propri — una nota nuova non eredita lo stato di quella precedente. Gli
 identificativi sono esattamente quanti servono (13 tasti, 1 per il sequencer, 2 per le note
 aggiunte dagli accordi), quindi ogni voce è dedicata: niente allocazione dinamica, niente
@@ -122,7 +198,7 @@ mancare un blocco e far sentire un buco.
 |---|---|---|
 | tasti | una nota alla volta, last-note-priority | tutti i tasti suonano insieme |
 | sequenza | le dita hanno la **precedenza**, la sequenza tace | la sequenza suona **sotto** le dita: ci suoni sopra |
-| HOLD | tiene l'ultima nota | tiene l'**accordo**, e ogni tasto premuto dopo ci si aggiunge |
+| TIENI | tiene l'ultima nota | tiene l'**accordo**, e ogni tasto premuto dopo ci si aggiunge |
 | arpeggiator | invariato | invariato: resta monofonico, è il suo senso |
 
 L'ampiezza è compensata sull'**energia** delle voci e non sul loro numero, così una nota in
@@ -131,64 +207,72 @@ si ritrova all'accensione successiva.
 
 ## Usare il sequencer
 
-Sedici step, un sedicesimo ciascuno. Due modi di riempirli, che convivono: si può editare
-anche mentre il loop gira.
+Sedici passi, un sedicesimo ciascuno, sulla schermata **RITMO**. Due modi di riempirli, che
+convivono: si può scrivere anche mentre il loro giro sta suonando.
 
-### STEP EDIT — scrivere con calma
+### Scrivere con calma
 
-Tieni premuto **FN3** per mezzo secondo. Compare un cursore bianco sulla griglia: da lì in
-poi non c'è nessuna fretta, il tempo non scorre.
+Non si "entra" più in niente: a giro fermo, su RITMO, **il cursore c'è già** e i tasti
+scrivono. Lo dice la targhetta `SCRIVI` in cima alla schermata, e la si vede senza doverla
+cercare — che è poi l'unico modo di non restare dentro una modalità senza accorgersene.
 
 | Comando | Cosa fa |
 |---|---|
 | tasto nota | scrive la nota sotto il cursore, te la fa sentire, **avanza da solo** |
-| joystick ↑ ↓ | ottava dello step che stai per scrivere |
-| joystick ← → | sposta il cursore |
-| encoder 1 | scorre il cursore velocemente |
-| encoder 4 | BPM continuo, 40–240 |
-| FN5 (breve) | svuota lo step e avanza |
-| FN1 (breve) | scrive un **legato**: la nota precedente prosegue senza ripartire |
-| FN4 (breve) | avvia o ferma il loop — puoi continuare a scrivere mentre suona |
-| FN4 (lungo) | **svuota tutti i 16 step**: non si torna indietro |
-| FN3 (lungo) | esce |
+| manopola 1 | sposta il cursore |
+| manopola 2 | scorre il contenuto del passo: pausa, le tredici note, legato |
+| manopola 4 | tempo, 40–240 BPM |
+| joystick ↑ ↓ | ottava del passo che stai per scrivere |
+| click manopola 2 | svuota il passo sotto il cursore |
+| **AVVIA** | fa partire o fermare il giro — puoi continuare a scrivere mentre suona |
+| **AVVIA** tenuto | **svuota tutti i 16 passi**: non si torna indietro, e l'anello lo dice |
 
-Il tasto che scrive e fa avanzare il cursore è il *step input* di MPC e Roland MC: si digita
-una melodia premendo un tasto dopo l'altro, come si scrive su una tastiera.
+Il tasto che scrive e fa avanzare il cursore è lo *step input* di MPC e Roland MC: si digita
+una melodia premendo un tasto dopo l'altro, come si scrive su una tastiera. La manopola 2
+serve a chi non sa dove sta il MI — e a mettere pause e legati, che un tasto non ha.
 
-### REC — registrare suonando
+### Registrare suonando
 
-**REC** breve. Parte una battuta di preconteggio col metronomo (durante la quale il pattern
-che c'è già suona), poi il loop gira all'infinito e tutto quello che suoni ci finisce dentro.
+**REGISTRA**. Parte una battuta di preconteggio col metronomo (durante la quale il pattern che
+c'è già suona), poi il giro va all'infinito e tutto quello che suoni ci finisce dentro.
 
 - Le note si agganciano al sedicesimo **più vicino**: a 120 BPM hai ±62 ms di tolleranza.
 - È un **overdub**: ogni passata aggiunge, niente viene cancellato. Non serve azzeccare tutto
   in una volta.
-- Tieni premuto **HOLD** mentre gira per **svuotare** gli step che passano sotto la testina.
-- **REC** di nuovo per uscire dalla registrazione lasciando il loop in play.
+- **REGISTRA** di nuovo per uscire dalla registrazione lasciando il giro in play.
 - Con l'arpeggiator acceso finiscono nel pattern i suoi passi, non i tasti che tieni.
 
+REGISTRA e AVVIA ti portano da soli su RITMO: quello che vedi e quello che le manopole toccano
+non possono più andare fuori sincrono.
+
 La griglia mostra il contenuto: ogni cella porta l'iniziale della nota e un colore per
-l'ottava, i legati una barretta. La cornice verde è la testina, quella bianca il cursore.
+l'ottava, i legati una barretta. La cornice verde è la testina, quella bianca il cursore. Sul
+bordo del display un pallino **orbita** sui sedici passi: il giro visto come giro.
 
-## ADSR edit
+## Inviluppo
 
-Long-press di **FN5** (>600 ms). Con quattro encoder la faccenda delle modalità da ricordare
-finisce: **un parametro per manopola**, nello stesso ordine in cui sono scritti sullo schermo.
+Una schermata dell'anello come le altre, non più una modalità in cui si entra tenendo premuto
+un tasto. **Un parametro per manopola**, nello stesso ordine in cui si leggono:
 
-| Parametro | Comando |
+| Parametro | Manopola |
 |---|---|
-| **A**ttack | encoder 1 |
-| **D**ecay | encoder 2 |
-| **S**ustain | encoder 3 |
-| **R**elease | encoder 4 |
+| **A**ttacco | 1 |
+| **D**ecadimento | 2 |
+| **S**ostegno | 3 |
+| **R**ilascio | 4 |
 
-Al joystick, che qui resterebbe senza lavoro, va il bersaglio dell'LFO: sinistra e destra
-scorrono fra spento, vibrato, filtro e tremolo. La legenda è scritta in fondo alla schermata:
-`1=A  2=D  3=S  4=R`.
+Il **sostegno sulla terza** è l'unica eccezione alla regola "la terza è sempre il volume", ed è
+una promessa mantenuta: la vecchia schermata scriveva `3=S` sotto le quattro righe mentre la
+manopola faceva il volume, e il sustain era l'unico parametro del synth che nessun comando
+poteva toccare — si poteva solo ereditarlo caricando un timbro.
+
+Al centro il profilo dell'inviluppo è **disegnato**, e si deforma mentre giri. Ogni tratto ha
+il colore della manopola che lo comanda, così si vede a colpo d'occhio quale delle quattro
+muove quale pezzo della curva.
 
 ## 8 BIT
 
-**FN2** e tutto quello che esce diventa a 8 bit. L'effetto agisce sul segnale finale — non su
+Premi **8 BIT** e tutto quello che esce diventa, appunto, a 8 bit. L'effetto agisce sul segnale finale — non su
 una voce sola — e fa due cose insieme, che è quello che serve perché suoni davvero come un
 chip e non come un file rovinato:
 
@@ -197,53 +281,65 @@ chip e non come un file rovinato:
 2. **quantizzazione**: i livelli si riducono a 2ⁿ, e sulle code di rilascio si sente il
    gradino.
 
-Tenendo premuto **FN2** si scorrono i quattro gradini: `12 BIT` (appena sporco), `8 BIT`
-(quello classico), `6 BIT`, `4 BIT` (console tascabile). Cambiare gradino accende anche
-l'effetto: nessuno gira quella manopola per sentire il silenzio.
+Il tasto **8 BIT** accende e spegne, e basta. I quattro gradini — `12 BIT` (appena sporco),
+`8 BIT` (quello classico), `6 BIT`, `4 BIT` (console tascabile) — stanno sulla riga **GRANA**
+della schermata EFFETTI, dove si vedono scritti invece di scorrere al buio sotto una pressione
+lunga. Cambiare gradino accende anche l'effetto: nessuno gira quella manopola per sentire il
+silenzio.
 
 ## Luci sotto i tasti
 
 Ogni tasto ha un SK6812 dentro, tutti in catena su un filo solo. Le note disegnano la
 tastiera (bianchi e neri hanno tinte diverse) e si accendono quando suonano; la sequenza si
 distingue perché è verde; i tasti funzione stanno sempre accesi appena appena, e si
-illuminano quando la loro funzione è inserita.
+illuminano quando la loro funzione è inserita — ognuno del colore della sua targhetta a
+schermo, così il tasto e quello che si legge sul display sono la stessa cosa.
+
+Finché nessuno ha ancora suonato, i tredici tasti nota **respirano** insieme, piano: è un
+invito che non ha una schermata da chiudere, non si ripete e non occupa un pixel di display, e
+si spegne da solo alla prima nota. Il tasto **AVVIA** batte il tempo anche a pattern fermo: chi
+non ha mai visto un sequencer capisce cos'è il BPM guardando un tasto lampeggiare, e girando la
+manopola TEMPO lo vede cambiare prima ancora di premere qualcosa.
 
 **L'ordine della catena non è deducibile dallo schematico** oltre al primo LED, quindi la
-scheda non lo indovina: **SETTINGS → LUCI → IMPARA LUCI** accende un LED alla volta e aspetta
+scheda non lo indovina: **MENU → LUCI → IMPARA LUCI** (tenendo il click della seconda manopola) accende un LED alla volta e aspetta
 che tu prema il tasto che si è illuminato. Venti pressioni, e la mappa finisce in NVS per
-sempre. La luminosità si regola nella voce sopra, da spenta a otto.
+sempre; si esce in qualunque momento col joystick a sinistra, e **AZZERA LUCI** rimette
+l'ordine di fabbrica se la mappa è venuta storta. La luminosità si regola nella voce sopra, da
+spenta a otto.
 
 ## Sensibilità degli encoder
 
 Gli encoder sono incrementali, e quanto muove uno scatto era cablato nel codice:
 col volume a 1/50 di corsa per scatto servivano **due giri e mezzo** di manopola
-per andare da zero a fondo scala. Ora si regola dalla schermata **SETTINGS**.
+per andare da zero a fondo scala. Ora si regola dalla schermata **MENU**.
 
 | Categoria | Voce | Cosa fa | Default |
 |---|---|---|---|
-| ENCODER | VOLUME | sensibilità dell'encoder 3 | 2.4 giri per l'intera corsa |
-| | CUTOFF | sensibilità degli encoder 1 e 2 | 3.2 giri da 80 Hz a 7,2 kHz |
-| | ADSR | sensibilità in ADSR edit e sull'encoder 4 | 2.4 giri |
-| | PASSO FINE | divisore col click dell'encoder | 1/4 |
+| ENCODER | VOLUME | sensibilità della manopola del volume | 2.4 giri per l'intera corsa |
+| | CUTOFF | sensibilità di taglio e risonanza | 3.2 giri da 80 Hz a 7,2 kHz |
+| | ADSR | sensibilità dell'inviluppo e delle righe di EFFETTI | 2.4 giri |
+| | PASSO FINE | divisore tenendo premuto il click | 1/4 |
 | TASTIERA | SCALA | cromatica, maggiore, minore, pentatonica, blues, dorica, araba | cromatica |
 | | TONICA | da quale nota parte la scala | DO |
 | LUCI | LUMINOSITÀ | da spente a 8 | 5 |
 | | IMPARA LUCI | insegna alla scheda l'ordine della catena | — |
+| | AZZERA LUCI | rimette l'ordine di fabbrica | — |
 | AUDIO | USCITA | quale filo è BCK, LRC e DIN | LRC BCK DIN |
+| | MIDI OUT | cosa manda al computer | NOTE |
 | RETE | MODALITÀ WIFI | accende la radio e mostra il QR | — |
 
-Per modificarle **tieni premuto FN7** dalla schermata SETTINGS: si entra nel menu. Da dentro,
-una **pressione breve** dello stesso tasto scende di una voce — e sulle voci d'azione la
-esegue — mentre una **lunga** esce. L'encoder 2 cambia il valore della voce scelta, l'encoder
-1 la scorre: lì gli encoder non fanno cutoff e volume, che restano fermi finché non esci. I
-valori sono scritti in giri di manopola perché è la grandezza che senti sotto le dita, non
-frazioni di corsa.
+Non si "entra" nel menu: guardarlo **è** esserci dentro. La manopola 1 scorre le voci, la 2
+cambia il valore di quella scelta, e le tre voci rosse — che sono le uniche azioni che non si
+tornano indietro — si eseguono **tenendo premuto il click della manopola 2** per novecento
+millisecondi, con l'anello esterno che si riempie. I valori sono scritti in giri di manopola
+perché è la grandezza che senti sotto le dita, non frazioni di corsa.
 
-Le voci sono dieci e il vetro è tondo: se ne vedono cinque per volta, e la finestra segue il
-cursore. Due frecce ai lati dicono che sopra o sotto c'è dell'altro.
-
-Il *passo fine* adesso è raggiungibile davvero: sulla scheda nuova i pulsanti degli alberi
-sono cablati, e i primi tre encoder lo commutano col click.
+Il *passo fine* non è più uno stato che si inserisce e si dimentica: **si tiene premuto il
+click e si gira**, come il tasto che rallenta il puntatore del mouse. Il divisore qui sopra
+dice di quanto. Prima era un interruttore invisibile, senza conferma a schermo e per giunta
+inerte su cinque schermate su nove: chi lasciava una manopola a 1/16 se la ritrovava, mesi
+dopo, apparentemente rotta.
 
 ## MIDI IN
 
@@ -283,7 +379,7 @@ risonanza 71, volume 7), il cambio programma quando scegli un timbro, e — se l
 start/stop e il clock a 24 impulsi per movimento, così un DAW può andare a tempo con il
 sequencer.
 
-Si regola da **SETTINGS → AUDIO → MIDI OUT**: `SPENTO`, `NOTE`, `NOTE+CLOCK`. Il clock è
+Si regola da **MENU → AUDIO → MIDI OUT**: `SPENTO`, `NOTE`, `NOTE+CLOCK`. Il clock è
 separato apposta — un DAW che riceve impulsi di sincronismo senza aspettarseli comincia a
 seguire il tempo del synth, e chi non lo sapeva si ritrova il progetto che accelera da solo.
 
@@ -313,24 +409,26 @@ organo con l'attacco veloce.
 
 Sono quindici: BASE, PIANOFORTE, CHITARRA, ORGANO, BASSO, ARCHI, FLAUTO, CAMPANE,
 CLAVICEMBALO, VIBRAFONO, ACIDO, ARCADE, PAD SPAZIALE, TAMBURO, LASER. Si scelgono da
-**SETTINGS → TASTIERA → TIMBRO**, e si sentono mentre giri la manopola. Caricarne uno
+la schermata **TIMBRI**, e si sentono mentre giri la manopola: scorrere *è* caricare. Caricarne uno
 sovrascrive i parametri correnti: da lì in poi si ritocca liberamente, un preset è un punto
 di partenza e non una gabbia.
 
 ## Aggiornare il firmware via WiFi
 
-> **Scorciatoia senza tastiera.** La modalità rete si raggiunge dal menu impostazioni, cioè
-> dalla tastiera — che su una scheda con l'espansore non ancora funzionante non c'è. Per
+> **Scorciatoia senza tastiera.** La modalità rete si raggiunge dal menu, cioè
+> dalle manopole — che su una scheda con l'espansore non ancora funzionante non c'è. Per
 > questo **tenendo premuto il tasto BOOT della DevKit per due secondi** si entra in modalità
 > rete comunque: quel tasto sta sul modulo e non dipende da niente del PCB. Le credenziali
 > del portale finiscono anche sulla seriale, quindi si può aggiornare pure con il display
 > spento.
 
-Scorri fino a **SETTINGS**, tieni premuto il pulsante *scorri display* per entrare nel menu,
-poi scendi con pressioni brevi fino a **MODALITÀ WIFI**: lì una pressione breve mostra il QR.
-Il cursore non torna a capo apposta — si scende fino all'ultima voce e ci si ferma, così non
-si accende la radio credendo di tornare in cima. Per risalire c'è l'encoder 1. Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio,
-quindi la modalità è esclusiva — e sul display compare un QR.
+Vai col joystick fino a **MENU**, scorri con la manopola 1 fino a **MODALITÀ WIFI** e
+**tieni premuto il click della manopola 2**: l'anello esterno si riempie in novecento
+millisecondi e la radio si accende. Il cursore non torna a capo apposta — si scende fino
+all'ultima voce e ci si ferma, così non si arriva sulla riga rossa credendo di tornare in cima.
+Il synth **ammutolisce** — lo stack WiFi occupa lo stesso core del motore audio, quindi la
+modalità è esclusiva — e sul display compare un QR. Si esce col **joystick a sinistra**, che
+riavvia la scheda.
 
 1. Inquadra il QR con la fotocamera del telefono: è la rete stessa, ti ci agganci senza
    digitare niente.
@@ -427,8 +525,9 @@ src/
   audio_engine.*      16 voci, filtro risonante, ADSR, 8 BIT, eco, LFO, task I2S sul core 0
   input_handler.*     matrice su MCP23017, 4 encoder, joystick, debounce
   keylight.*          catena di 20 SK6812: driver RMT, colori, apprendimento della mappa
-  sequencer.*         16 step, step edit, record quantizzato, preconteggio
-  display.*           GC9A01, 8 schermate cicliche + menu, ADSR, effetti, QR
+  sequencer.*         16 passi, scrittura col cursore, record quantizzato, preconteggio
+  fx_rows.*           l'elenco della schermata EFFETTI, condiviso fra logica e display
+  display.*           GC9A01, interfaccia radiale: 7 schermate, corone, overlay, QR
   logo.h              wordmark della schermata di avvio (generato, non editare)
   storage.*           persistenza NVS con scrittura ritardata
   net_portal.*        access point, captive portal, OTA

@@ -1,13 +1,33 @@
 // display.cpp — GC9A01 240x240 IPS su SPI hardware (Arduino_GFX).
 //
-// Le schermate cicliche sono 6 (pulsante GPIO 18). Quando l'ADSR EDIT MODE e'
-// attivo si passa automaticamente a una schermata dedicata, che bypassa il
-// ciclo; all'uscita si torna esattamente alla schermata di prima.
+// Il vetro e' tondo, e per due versioni l'interfaccia ha fatto finta di no:
+// rettangoli centrati, elenchi allineati a sinistra, fasce di pulizia larghe
+// quanto il quadrato che poi si mangiavano la ghiera perche' il cerchio, li',
+// era gia' rientrato. Le quattro mezzelune laterali restavano vuote e i commenti
+// del file erano pieni di note su quel pixel e quell'altro che sbordava.
 //
-// Per evitare flicker si ridisegna la parte statica solo al cambio schermata, e i
-// valori dinamici solo quando cambiano davvero. VU e SCOPE fanno eccezione: il
-// loro contenuto cambia ad ogni fotogramma, quindi cancellano e ridisegnano solo
-// i pixel che occupavano prima invece di ripulire aree intere.
+// Adesso il sistema e' radiale, e la differenza non e' estetica: in un layout a
+// raggi gli angoli non esistono, quindi non c'e' piu' niente da sprecare e
+// nessun bordo da difendere caso per caso. Ogni raggio ha un mestiere fisso,
+// uguale su tutte le schermate:
+//
+//   r 117/118   anello esterno, nell'accento della schermata
+//   r 112..115  corona di posizione: sette settori, uno per schermata
+//   r 100..110  corona dei comandi: i quattro archi delle manopole
+//   r 84        didascalie: cosa fa ogni manopola, e per un attimo quanto vale
+//   r <= 54     disco dei contenuti, centro (120,122): cio' di cui parla la
+//               schermata
+//
+// Chi aggiunge una schermata non deve decidere dove mettere le cose: le mette
+// dove sono sempre. Ed e' anche il motivo per cui non serve piu' ricordare cosa
+// fanno le manopole — c'e' scritto sotto ognuna, sempre, su ogni schermata.
+//
+// Per evitare flicker si ridisegna la parte statica solo al cambio schermata e i
+// valori dinamici solo quando cambiano davvero. La traccia e l'ago del VU fanno
+// eccezione: cambiano ad ogni fotogramma, quindi cancellano e ridisegnano solo i
+// pixel che occupavano prima invece di ripulire aree intere. L'overlay segue la
+// stessa regola, e prima non la seguiva: e' quello, e solo quello, il motivo per
+// cui vibrava.
 
 #include "display.h"
 
@@ -20,77 +40,87 @@
 #include "logo.h"
 #include "net_portal.h"
 #include "pinout.h"
-#include "presets.h"  // nomi e descrizioni dei timbri, per la schermata TIMBRI
+#include "presets.h"
 #include "sequencer.h"
 #include "settings.h"
 #include "version.h"
 
 namespace {
 
-constexpr int CX = 120;  // centro del display tondo
+// ------------------------------------------------------------------ geometria
+constexpr int CX = 120;  // centro del vetro
 constexpr int CY = 120;
+
+// Il disco dei contenuti sta un po' piu' in alto del centro del vetro: sopra ci
+// vuole spazio per il titolo e per la fila delle targhette, sotto ci sono gli
+// archi delle manopole e le loro didascalie.
+constexpr int DISC_CY = 112;
+constexpr int DISC_R = 42;
+constexpr int DISC_CX_LEFT = CX - DISC_R + 2;
+
+constexpr int RING_R = 118;      // anello esterno
+constexpr int POSRING_IN = 112;  // corona di posizione
+constexpr int POSRING_OUT = 115;
+constexpr int KNOB_IN = 100;  // corona dei comandi
+constexpr int KNOB_OUT = 110;
+constexpr int CAPTION_R = 84;  // didascalie delle manopole
+
+// Fascia delle targhette di stato, subito sotto la riga di separazione. Sta a 56
+// e non a 50 per due pixel di corda in piu': a quella quota la corona di
+// posizione passa a x=27 e x=213, e le targhette devono starci dentro senza
+// sfiorarla.
+constexpr int CHIP_Y = 56;
+constexpr int CHIP_X0 = 32;
+constexpr int CHIP_X1 = 208;
+// Compatibilita' con le schermate fuori dall'anello (rete, aggiornamento), che
+// scrivono ancora dall'alto in giu' come una pagina.
+constexpr int CONTENT_TOP = 54;
+
+// I raggi di sicurezza, ed e' la cosa piu' importante di tutto il file.
+//
+// In un'interfaccia radiale ogni anello e' un vicino di casa degli altri, e una
+// pulizia larga quanto sembra ragionevole ne cancella tre. La vecchia regola
+// ("non superare la corda del cerchio") bastava quando dentro non c'era niente;
+// adesso dentro c'e' la corona di posizione a 113, la corona dei comandi a 100 e
+// le didascalie a 84, e una gomma che arriva fin li' se le porta via — senza
+// ridisegnarle, perche' il telaio si rifa' solo al cambio di pagina.
+//
+//   FLASH_R   104  la banda dell'overlay: sotto la corona di posizione, e i suoi
+//                  quattro angoli cadono appena fuori dal ventaglio dei comandi
+//   CONTENT_R  96  tutto cio' che disegnano le sette schermate dell'anello
+//
+// Le pagine fuori dall'anello — avvio, rete, aggiornamento — non hanno corone e
+// si ridisegnano tutte: li' vale ancora la vecchia regola del solo cerchio.
+constexpr int FLASH_R = 104;
+constexpr int CONTENT_R = 96;
+// E una quota: sotto questa riga cominciano gli archi delle manopole (il loro
+// pixel piu' alto sta a y=156), quindi il contenuto di una schermata non ci
+// arriva mai.
+constexpr int CONTENT_BOTTOM = 154;
 
 Arduino_DataBus *bus = nullptr;
 Arduino_GFX *gfx = nullptr;
 
 uint8_t screen = 0;
-bool inSeqOverride = false;  // STEP EDIT o preconteggio: la SEQ scavalca il ciclo
-bool inLedLearn = false;     // apprendimento dell'ordine dei LED sotto i tasti
+bool inSeqOverride = false;  // preconteggio o registrazione: RITMO scavalca
+bool inLedLearn = false;
 bool forceFull = true;
 
 SynthView prev;
 bool prevValid = false;
 
-// ------------------------------------------------------------------- helper
-void textAt(const char *s, int x, int y, uint8_t size, uint16_t color) {
-    gfx->setTextSize(size);
-    gfx->setTextColor(color);
-    gfx->setCursor(x, y);
-    gfx->print(s);
-}
-
-void textCentered(const char *s, int y, uint8_t size, uint16_t color) {
-    int w = 6 * size * (int)strlen(s);
-    textAt(s, CX - w / 2, y, size, color);
-}
-
-// Testo allineato a destra: i valori numerici che cambiano di cifre restano
-// ancorati al bordo invece di ballare.
-void textRight(const char *s, int xEnd, int y, uint8_t size, uint16_t color) {
-    textAt(s, xEnd - 6 * size * (int)strlen(s), y, size, color);
-}
-
-// Cancella una fascia orizzontale (usata prima di riscrivere un valore dinamico).
-//
-// La fascia non puo' essere un rettangolo fisso largo quanto il quadrato. Il
-// vetro e' tondo: allontanandosi dal centro il cerchio rientra, e appena si
-// superano i 37 px di distanza — sopra y=83 o sotto y=157 — l'anello passa a
-// x <= 8, cioe' dentro il fillRect da 8 a 231, che se lo mangia aprendo due
-// tagli, uno per fianco. Non sono tagli che si richiudono: la cornice si
-// ridisegna solo al cambio schermata, quindi restano li' finche' non si esce.
-// Percio' la mezza larghezza si stringe seguendo il cerchio.
-//
-// Il raggio di riferimento e' 116 e non 118: l'anello e' spesso due pixel (117
-// e 118) e sotto ci vuole un pixel di nero, altrimenti la fascia arriva a
-// sbavare sulla cornice invece di mangiarsela. Comanda la riga piu' lontana dal
-// centro, che e' quella dove il cerchio e' piu' stretto. Il tetto a 112 e' la
-// mezza larghezza di sempre: verso il centro non serve allargarsi di piu'.
-void clearBand(int y, int h) {
-    int top = y - CY, bot = y + h - 1 - CY;
-    if (top < 0) top = -top;
-    if (bot < 0) bot = -bot;
-    const int dy = (top > bot) ? top : bot;
-    int half = (dy < 116) ? (int)sqrtf((float)(116 * 116 - dy * dy)) : 0;
-    if (half > 112) half = 112;
-    gfx->fillRect(CX - half, y, 2 * half, h, BLACK);
-}
-
 // ------------------------------------------------------------------- colore
 //
-// Tutto il display parla la stessa lingua della schermata di avvio: fondo nero,
-// struttura in ciano, accenti magenta e ambra. La regola di leggibilita' che
-// viene prima dello stile: i *valori* si scrivono chiari e grandi su nero, e il
-// colore lo portano etichette e strutture, mai il numero che devi leggere.
+// Fondo nero, struttura fredda, accenti caldi. La regola di leggibilita' che
+// viene prima dello stile e non si tocca: i *valori* si scrivono chiari e grandi
+// su nero, e il colore lo portano etichette e strutture, mai il numero che devi
+// leggere.
+//
+// Il rosso e' uscito dalla ruota degli accenti. Prima era il colore della
+// schermata ADSR, dove non c'era niente da segnalare, e quel prestito costava
+// caro: se il rosso e' anche una decorazione, il rosso della registrazione e
+// quello del clip pesano meno di quanto dovrebbero. Da qui in poi, se e' rosso
+// c'e' qualcosa che non va o che non si torna indietro.
 
 constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
@@ -113,22 +143,245 @@ uint16_t dim565(uint16_t c, int num, int den) {
                       ((((c >> 5) & 0x3F) * num / den) << 5) | ((c & 0x1F) * num / den));
 }
 
-const uint16_t HUD_NEON = rgb565(0, 255, 255);      // struttura, titoli
-const uint16_t HUD_MAGENTA = rgb565(255, 32, 140);  // accento caldo
-const uint16_t HUD_AMBER = rgb565(255, 196, 64);    // valori in salita
-const uint16_t HUD_ICE = rgb565(210, 250, 255);     // testo dei valori
-const uint16_t HUD_LIME = rgb565(120, 255, 120);    // stato buono
-const uint16_t HUD_RED = rgb565(255, 60, 60);       // allarme
-const uint16_t HUD_TRACK = rgb565(0, 46, 58);       // segmenti spenti
-const uint16_t HUD_LABEL = rgb565(0, 150, 180);     // etichette piccole
+// Il fantasma di un accento: la sua versione spenta, sempre ricavata allo stesso
+// modo. E' la regola che chiude la tavolozza — non si sceglie a mano il colore
+// di uno stato spento, lo si deriva — ed e' il motivo per cui l'anello di
+// posizione si legge come un'unica cosa invece che come sette colori accostati.
+inline uint16_t ghost(uint16_t c) { return dim565(c, 1, 4); }
 
-// ------------------------------------------------------------------- chrome
+const uint16_t HUD_NEON = rgb565(0, 255, 255);      // telaio, accento di SUONA
+const uint16_t HUD_MAGENTA = rgb565(255, 32, 140);  // selezione, accento di EFFETTI
+const uint16_t HUD_AMBER = rgb565(255, 196, 64);    // valori, accento di INVILUPPO
+const uint16_t HUD_ICE = rgb565(210, 250, 255);     // i numeri da leggere
+const uint16_t HUD_LIME = rgb565(120, 255, 120);    // sta andando, accento di RITMO
+const uint16_t HUD_VIOLET = rgb565(150, 110, 255);  // accento di TIMBRI
+const uint16_t HUD_ORANGE = rgb565(255, 120, 0);    // 8 BIT inserito
+const uint16_t HUD_RED = rgb565(255, 60, 60);       // solo allarme: mai un accento
+// Era rgb565(0,150,180) ed e' il colore piu' usato del file: troppo scuro per un
+// testo, giusto per una struttura. Alzandolo le etichette si leggono davvero, e
+// il vecchio valore torna utile come HUD_DIM, che e' il mestiere che gli riesce.
+const uint16_t HUD_LABEL = rgb565(96, 186, 204);  // etichette
+const uint16_t HUD_DIM = rgb565(0, 96, 120);      // secondario: righe non scelte
+const uint16_t HUD_TRACK = rgb565(8, 58, 72);     // segmenti spenti
+
+// Un colore per ottava, lo stesso ovunque: celle del sequencer, targhetta
+// d'ottava del telaio, LED sotto i tasti. Un colore che vuol dire la stessa cosa
+// in tre posti diversi si impara da solo.
+const uint16_t OCT_COLORS[5] = {rgb565(150, 110, 255), rgb565(80, 170, 255), rgb565(0, 230, 230),
+                                rgb565(140, 240, 120), rgb565(255, 190, 70)};
+
+uint16_t octColor(int8_t oct) {
+    int i = oct + 2;
+    if (i < 0) i = 0;
+    if (i > 4) i = 4;
+    return OCT_COLORS[i];
+}
+
+// L'accento di ogni schermata dell'anello. La corona di posizione li mostra
+// tutti e sette insieme: la ghiera diventa la mappa a colori dello strumento e
+// dice dove sei prima che tu legga il titolo.
+const uint16_t SCREEN_ACCENT[SCREEN_COUNT] = {
+    HUD_NEON,    // SUONA
+    HUD_VIOLET,  // TIMBRI
+    HUD_AMBER,   // INVILUPPO
+    HUD_MAGENTA, // EFFETTI
+    HUD_LIME,    // RITMO
+    HUD_ICE,     // LIVELLO
+    HUD_LABEL,   // MENU: il piu' silenzioso della ruota, qui non si suona
+};
+
+const char *const SCREEN_TITLE[SCREEN_COUNT] = {"SUONA", "TIMBRI", "INVIL.",  "EFFETTI",
+                                                "RITMO", "LIVELLO", "MENU"};
+
+// ------------------------------------------------------------------- helper
+void textAt(const char *s, int x, int y, uint8_t size, uint16_t color) {
+    gfx->setTextSize(size);
+    gfx->setTextColor(color);
+    gfx->setCursor(x, y);
+    gfx->print(s);
+}
+
+void textCentered(const char *s, int y, uint8_t size, uint16_t color) {
+    int w = 6 * size * (int)strlen(s);
+    textAt(s, CX - w / 2, y, size, color);
+}
+
+// Testo allineato a destra: i valori numerici che cambiano di cifre restano
+// ancorati al bordo invece di ballare.
+void textRight(const char *s, int xEnd, int y, uint8_t size, uint16_t color) {
+    textAt(s, xEnd - 6 * size * (int)strlen(s), y, size, color);
+}
+
+// Testo centrato su un punto qualsiasi, che e' quello che serve per le
+// didascalie disposte lungo un arco. Le lettere restano dritte: il font 6x8 non
+// ruota, e ruotarlo a mano vorrebbe dire disegnare i glifi pixel per pixel. Il
+// tondo lo fanno gli archi; le parole si limitano a disporsi lungo di loro.
+void textAtPoint(const char *s, int cx, int cy, uint8_t size, uint16_t color) {
+    textAt(s, cx - 3 * size * (int)strlen(s), cy - 4 * size, size, color);
+}
+
+// La gomma unica del sistema. Cancella una fascia calcolando la mezza corda su
+// OGNI riga, non sulla piu' stretta: cosi' non morde mai la ghiera e non lascia
+// mai un pixel acceso di quello che c'era prima.
 //
-// Cornice comune a tutte le schermate: anello, titolo fra parentesi HUD e una
-// riga di separazione accesa al centro. Sotto la riga, da y=54, comincia l'area
-// dei contenuti.
-constexpr int CONTENT_TOP = 54;
+// I morsi nella cornice sono il difetto piu' insidioso di un vetro tondo, perche'
+// non si richiudono da soli: l'anello si ridisegna solo al cambio schermata,
+// quindi un fillRect largo quanto il quadrato lascia due tacche nella ghiera che
+// restano li' finche' non cambi pagina. Con la corda vera non puo' succedere.
+void radiusFill(int y, int h, int r, uint16_t color) {
+    if (h <= 0) return;
+    gfx->startWrite();
+    for (int yy = y; yy < y + h; ++yy) {
+        const int dy = yy - CY;
+        const int d2 = r * r - dy * dy;
+        if (d2 <= 0) continue;
+        const int half = (int)sqrtf((float)d2);
+        gfx->writeFastHLine(CX - half, yy, 2 * half, color);
+    }
+    gfx->endWrite();
+}
 
+// La gomma delle sette schermate dell'anello: si ferma prima di ogni corona.
+void contentFill(int y, int h, uint16_t color = BLACK) {
+    if (y + h > CONTENT_BOTTOM + 1) h = CONTENT_BOTTOM + 1 - y;
+    radiusFill(y, h, CONTENT_R, color);
+}
+
+// ------------------------------------------------------------- primitive radiali
+//
+// Gli angoli si misurano in gradi dal 12 in punto, positivi in senso orario: e'
+// la convenzione dei quadranti, non quella della trigonometria, perche' qui si
+// ragiona su un display tondo e non su un piano cartesiano.
+inline void polar(float deg, float r, int &x, int &y) {
+    const float a = deg * (float)M_PI / 180.0f;
+    x = CX + (int)(r * sinf(a) + 0.5f);
+    y = CY - (int)(r * cosf(a) + 0.5f);
+}
+
+// Un blocco d'arco pieno fra due angoli e due raggi: il mattone di tutto il
+// resto. Disegnato come raggi radiali a passo di un grado dentro un solo
+// startWrite/endWrite, cosi' e' streaming puro sull'SPI.
+void arcSeg(float a0, float a1, int rIn, int rOut, uint16_t color) {
+    if (a1 < a0) {
+        const float t = a0;
+        a0 = a1;
+        a1 = t;
+    }
+    gfx->startWrite();
+    // Mezzo grado di passo e non uno: a raggio 115 un grado sono due pixel di
+    // arco, e a passo intero il blocco esce rigato.
+    for (float a = a0; a <= a1; a += 0.5f) {
+        int x0, y0, x1, y1;
+        polar(a, (float)rIn, x0, y0);
+        polar(a, (float)rOut, x1, y1);
+        gfx->writeLine(x0, y0, x1, y1, color);
+    }
+    gfx->endWrite();
+}
+
+// L'arco a segmenti che sostituisce la barra rettangolare, ed e' quello che
+// rende visibile ogni manopola su ogni schermata. Il valore si legge come
+// frazione di corsa e non come lunghezza assoluta: a colpo d'occhio "sono a tre
+// quarti" e' molto piu' facile da stimare di "sono a 4200 Hz".
+constexpr int KNOB_SEGS = 10;
+constexpr float KNOB_SPAN = 30.0f;  // gradi occupati da un arco di manopola
+// Da sinistra a destra nell'ordine fisico delle manopole. 180 gradi e' il fondo
+// del vetro: le quattro si aprono a ventaglio attorno a li'.
+const float KNOB_CENTER[4] = {234.0f, 198.0f, 162.0f, 126.0f};
+
+void arcGauge(int slot, float frac, uint16_t lo, uint16_t hi) {
+    if (frac < 0.0f) frac = 0.0f;
+    if (frac > 1.0f) frac = 1.0f;
+    const float a0 = KNOB_CENTER[slot] + KNOB_SPAN / 2.0f;  // orario = verso il basso
+    const int lit = (int)(frac * KNOB_SEGS + 0.5f);
+    const float seg = KNOB_SPAN / (float)KNOB_SEGS;
+    for (int i = 0; i < KNOB_SEGS; ++i) {
+        // Il primo segmento sta dal lato esterno del ventaglio, cosi' i quattro
+        // archi si riempiono tutti "verso il centro" e la simmetria si legge.
+        const float s0 = a0 - (float)(i + 1) * seg + 0.6f;
+        const float s1 = a0 - (float)i * seg - 0.6f;
+        const uint16_t c =
+            (i < lit) ? mix565(lo, hi, (float)i / (float)(KNOB_SEGS - 1)) : HUD_TRACK;
+        arcSeg(s0, s1, KNOB_IN, KNOB_OUT, c);
+    }
+}
+
+// n tacche radiali distribuite fra due angoli, le prime `lit` accese.
+void radialTicks(int rIn, int rOut, int n, float a0, float a1, int lit, uint16_t on,
+                 uint16_t off) {
+    for (int i = 0; i < n; ++i) {
+        const float a = a0 + (a1 - a0) * (float)i / (float)(n - 1);
+        int x0, y0, x1, y1;
+        polar(a, (float)rIn, x0, y0);
+        polar(a, (float)rOut, x1, y1);
+        gfx->drawLine(x0, y0, x1, y1, (i < lit) ? on : off);
+    }
+}
+
+// ---------------------------------------------------------------- targhette
+//
+// Etichetta su fondo pieno: si usa per gli stati (AVVIA, REC, TIENI) dove conta
+// riconoscere il colore prima ancora di leggere la parola.
+//
+// Il colore del testo si sceglie sulla luminanza del fondo invece di essere
+// sempre nero. Non e' un raffinamento: con il nero d'ufficio, "8 BIT SPENTO"
+// scritto su HUD_TRACK — rgb(8,58,72) — era nero su quasi-nero, cioe' invisibile,
+// e per due versioni la riga piu' importante della schermata effetti non si e'
+// letta.
+uint16_t chipText(uint16_t bg) {
+    const int r = (bg >> 11) & 0x1F, g = (bg >> 5) & 0x3F, b = bg & 0x1F;
+    const int luma = (2 * r * 2 + 5 * g + b * 2) / 8;  // pesi 2/5/1 su scala ~63
+    return (luma > 30) ? BLACK : HUD_ICE;
+}
+
+int hudChipWidth(const char *text, uint8_t size) { return 6 * size * (int)strlen(text) + 10; }
+
+void hudChip(int x, int y, const char *text, uint16_t bg, uint8_t size) {
+    const int w = hudChipWidth(text, size);
+    const int h = 8 * size + 6;
+    gfx->fillRect(x, y, w, h, bg);
+    textAt(text, x + 5, y + 3, size, chipText(bg));
+}
+
+void hudChipCentered(int y, const char *text, uint16_t bg, uint8_t size) {
+    hudChip(CX - hudChipWidth(text, size) / 2, y, text, bg, size);
+}
+
+// Targhetta di uno stato spento: contorno invece di pieno. Acceso e spento si
+// distinguono per pieno contro vuoto, non per sfumatura di colore — che su un
+// vetro piccolo e' una differenza che non si vede.
+void hudChipOff(int x, int y, const char *text, uint8_t size) {
+    const int w = hudChipWidth(text, size);
+    const int h = 8 * size + 6;
+    gfx->fillRect(x, y, w, h, BLACK);
+    gfx->drawRect(x, y, w, h, HUD_TRACK);
+    textAt(text, x + 5, y + 3, size, HUD_DIM);
+}
+
+// Barra rettangolare: sopravvive per l'aggiornamento del firmware, che e' una
+// pagina e non una schermata dello strumento.
+void hudBar(int x, int y, int w, int h, float frac, uint16_t lo, uint16_t hi) {
+    if (frac < 0.0f) frac = 0.0f;
+    if (frac > 1.0f) frac = 1.0f;
+    constexpr int SEG = 6, GAP = 2;
+    const int count = (w + GAP) / (SEG + GAP);
+    const int lit = (int)(frac * count + 0.5f);
+    for (int i = 0; i < count; ++i) {
+        const uint16_t c =
+            (i < lit) ? mix565(lo, hi, (count > 1) ? (float)i / (float)(count - 1) : 0.0f)
+                      : HUD_TRACK;
+        gfx->fillRect(x + i * (SEG + GAP), y, SEG, h, c);
+    }
+}
+
+// ------------------------------------------------------------------- telaio
+//
+// Quello che c'e' su ogni schermata, sempre nello stesso posto. Si ridisegna
+// solo al cambio di pagina: da li' in poi si aggiornano i quattro archi delle
+// manopole e nient'altro.
+
+// Compatibilita' con le pagine fuori dall'anello (rete, aggiornamento, avvio):
+// li' il telaio radiale non serve, serve un titolo e un fondo pulito.
 void chrome(const char *title, uint16_t accent) {
     gfx->fillScreen(BLACK);
     gfx->drawCircle(CX, CY, 118, dim565(accent, 1, 3));
@@ -138,22 +391,13 @@ void chrome(const char *title, uint16_t accent) {
 
     // Parentesi ai lati del titolo. La lunghezza si adatta: con un titolo lungo
     // lo spazio dentro il cerchio finisce, e un trattino che sborda si vedrebbe
-    // tagliato dalla cornice tonda. Da nove caratteri in su (SEQUENCER, STEP
-    // EDIT) il braccio scenderebbe sotto i 10 px e allora si rinuncia: meglio
-    // niente parentesi che due monconi appiccicati al titolo.
+    // tagliato dalla cornice tonda.
     const int tw = 12 * (int)strlen(title);
     const uint16_t bracket = dim565(accent, 2, 3);
-    // Sei pixel d'aria fra titolo e parentesi e non otto: qui sotto si vede che
-    // di spazio ce n'e' poco, e due pixel restituiti al braccio sono la
-    // differenza fra tenere le parentesi su SETTINGS e COUNT IN o perderle.
     const int inner = tw / 2 + 6;
     // Il punto critico e' la cima del trattino verticale, a y=24, cioe' 96 px
-    // sopra il centro. Perche' resti dentro l'area dei contenuti (raggio 116,
-    // sotto l'anello) la mezza larghezza li' vale al massimo
-    // sqrt(116^2 - 96^2) = 65.1. Con il 74 di prima il trattino usciva
-    // addirittura dal vetro: la sua punta stava a raggio 121.2 e i tre pixel
-    // piu' alti, oltre 119.5, sul pannello tondo non esistono proprio; gli
-    // altri quattro finivano appoggiati all'anello.
+    // sopra il centro: perche' resti dentro l'area utile la mezza larghezza li'
+    // vale al massimo sqrt(116^2 - 96^2) = 65.
     const int outer = 65;
     if (outer - inner >= 10) {
         for (int side = 0; side < 2; ++side) {
@@ -168,397 +412,611 @@ void chrome(const char *title, uint16_t accent) {
     gfx->drawFastHLine(CX - 30, 47, 60, dim565(accent, 1, 2));
 }
 
-// --------------------------------------------------------------- primitive HUD
-
-// Barra a segmenti. I segmenti spenti restano visibili come traccia: il valore
-// si legge come frazione della corsa e non come lunghezza assoluta, che a colpo
-// d'occhio e' molto piu' facile da stimare. Il colore scorre da `lo` a `hi`
-// lungo la barra, cosi' anche la zona alta si riconosce senza leggere il numero.
-void hudBar(int x, int y, int w, int h, float frac, uint16_t lo, uint16_t hi) {
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-
-    constexpr int SEG = 6, GAP = 2;
-    const int count = (w + GAP) / (SEG + GAP);
-    const int lit = (int)(frac * count + 0.5f);
-
-    for (int i = 0; i < count; ++i) {
-        const uint16_t c =
-            (i < lit) ? mix565(lo, hi, (count > 1) ? (float)i / (float)(count - 1) : 0.0f)
-                      : HUD_TRACK;
-        gfx->fillRect(x + i * (SEG + GAP), y, SEG, h, c);
+// La corona di posizione: sette settori, uno per schermata, ognuno del proprio
+// accento. Quello dove sei e' acceso pieno, gli altri sei sono il loro fantasma.
+//
+// Serve a rispondere alla domanda che l'anello di schermate poneva e non
+// risolveva: con nove pagine percorribili nei due sensi, l'unico segnale di dove
+// ti trovassi era il titolo, e per sapere quanto mancava alla prossima bisognava
+// ricordarsi l'ordine. Sette settori colorati si contano con la coda dell'occhio,
+// e siccome ogni settore ha il colore della sua pagina, dopo due giri la ghiera
+// e' una mappa: il viola e' i timbri, il lime e' il ritmo.
+void drawPosRing(uint8_t current) {
+    constexpr float STEP = 360.0f / (float)SCREEN_COUNT;
+    constexpr float GAP = 6.0f;
+    for (int i = 0; i < SCREEN_COUNT; ++i) {
+        const float a0 = (float)i * STEP + GAP / 2.0f;
+        const float a1 = (float)(i + 1) * STEP - GAP / 2.0f;
+        const uint16_t c = SCREEN_ACCENT[i];
+        // I settori spenti sono a due quinti e non al quarto del fantasma
+        // standard: qui non stanno dicendo "questo e' disattivato", stanno
+        // disegnando una mappa, e una mappa che non si legge non e' una mappa.
+        // Restano comunque molto piu' scuri dell'attivo, che e' pieno.
+        arcSeg(a0, a1, POSRING_IN, POSRING_OUT, (i == current) ? c : dim565(c, 2, 5));
     }
 }
 
-// Etichetta piccola su fondo pieno: si usa per gli stati (PLAY, REC, HOLD) dove
-// conta riconoscere il colore prima ancora di leggere la parola.
-void hudChip(int x, int y, const char *text, uint16_t bg, uint8_t size) {
-    const int w = 6 * size * (int)strlen(text) + 10;
-    const int h = 8 * size + 6;
-    gfx->fillRect(x, y, w, h, bg);
-    textAt(text, x + 5, y + 3, size, BLACK);
+// La targhetta dell'ottava, in alto a sinistra, su ogni schermata e in ogni
+// modalita'. E' il motivo per cui il joystick verticale non ha piu' bisogno di
+// far comparire un riquadro al centro: un valore sempre a video non va
+// annunciato, va guardato. Il fondo e' il colore dell'ottava, lo stesso che
+// prendono le celle del sequencer e i LED sotto i tasti.
+void drawOctaveChip(int8_t oct) {
+    char buf[6];
+    snprintf(buf, sizeof(buf), "%+d", (int)oct);
+    // Ventisei pixel di gomma e non quarantaquattro: il testo e' sempre di due
+    // caratteri (da "-2" a "+2"), quindi la targhetta e' larga 22 e finisce a
+    // x=50. Le targhette di stato, allineate a destra, cominciano a x=60: una
+    // gomma piu' larga ne staccherebbe la prima lettera ad ogni cambio d'ottava,
+    // e siccome l'ottava si disegna **dopo** il contenuto, il morso resterebbe.
+    gfx->fillRect(26, CHIP_Y, 26, 14, BLACK);
+    hudChip(28, CHIP_Y, buf, octColor(oct), 1);
 }
 
-int hudChipWidth(const char *text, uint8_t size) { return 6 * size * (int)strlen(text) + 10; }
+// La corona dei comandi. Quattro archi in basso, uno per manopola, da sinistra a
+// destra come stanno sul pannello, e sotto ognuno la sua didascalia.
+//
+// E' il pezzo su cui si regge tutto il resto: finche' ogni manopola dichiara da
+// se' cosa fa e quanto vale, non serve un riquadro che lo venga a dire al centro
+// dello schermo coprendo proprio la cosa che stai guardando. La didascalia mostra
+// il NOME quando la manopola e' ferma e il VALORE per i novecento millisecondi
+// dopo uno scatto: il nome insegna, il valore conferma, e nessuno dei due ruba
+// spazio all'altro.
+struct KnobSlot {
+    // Undici caratteri piu' il terminatore: e' la riga piu' lunga dell'elenco
+    // EFFETTI ("PROFONDITA") e la piu' lunga del menu ("IMPARA LUCI"). Con otto
+    // byte venivano tagliate a sette e la didascalia diceva "IMPARA " — che in
+    // una schermata il cui unico scopo e' non far ricordare niente e' proprio il
+    // difetto che non ci si puo' permettere.
+    char label[12];
+    char value[12];
+    float frac;
+    uint32_t valueUntil;
+};
 
-void hudChipCentered(int y, const char *text, uint16_t bg, uint8_t size) {
-    hudChip(CX - hudChipWidth(text, size) / 2, y, text, bg, size);
+KnobSlot knobSlot[4];
+
+// Pulizia della didascalia, larga quanto il testo e non quanto il caso peggiore.
+//
+// Le due didascalie di mezzo hanno i centri a soli 52 px l'uno dall'altro: un
+// riquadro fisso da undici caratteri sarebbe largo 66 e i due si sovrapporrebbero
+// di quattordici pixel, cioe' riscrivendo VOL si mangerebbe la coda di
+// "PROFONDITA" senza ridisegnarla. Cancellando la larghezza vera il problema non
+// si pone, perche' quella di mezzo a destra e' sempre corta (VOL, SOST) e le due
+// esterne stanno su un'altra riga.
+void clearCaption(int slot, int chars) {
+    int cx, cy;
+    polar(KNOB_CENTER[slot], (float)CAPTION_R, cx, cy);
+    const int w = 6 * chars + 4;
+    gfx->fillRect(cx - w / 2, cy - 5, w, 10, BLACK);
 }
 
-// Valore -1..+1 della forma d'onda alla fase t (0..1). Stessa forma del motore audio.
-float iconValue(uint8_t wave, float t) {
+void drawCaption(int slot, uint32_t now) {
+    int cx, cy;
+    polar(KNOB_CENTER[slot], (float)CAPTION_R, cx, cy);
+    const bool showValue = (knobSlot[slot].valueUntil != 0) && (now < knobSlot[slot].valueUntil);
+    const char *s = showValue ? knobSlot[slot].value : knobSlot[slot].label;
+    textAtPoint(s, cx, cy, 1, showValue ? HUD_ICE : HUD_LABEL);
+}
+
+// Il numero della manopola, disegnato una volta sola al cambio schermata. Un "1"
+// accanto al primo ventaglio e' quello che lega la cosa disegnata alla cosa che
+// hai sotto le dita.
+//
+// Sta **dentro** l'arco, a raggio 94, e non fuori: a 116 il glifo arrivava a
+// raggio 117,4, cioe' esattamente addosso all'anello — e siccome l'anello si
+// ridisegna solo al cambio di pagina, quella cifra ci restava appoggiata sopra
+// come una sbavatura. Fra la didascalia (84) e l'arco (100) di spazio ce n'e', e
+// li' il numero e' anche piu' vicino a cio' che nomina.
+void drawKnobIndex(int slot) {
+    int cx, cy;
+    polar(KNOB_CENTER[slot], 94.0f, cx, cy);
+    char n[2] = {(char)('1' + slot), '\0'};
+    textAtPoint(n, cx, cy, 1, HUD_DIM);
+}
+
+// ------------------------------------------------------- disco dei contenuti
+//
+// La gomma del disco: come chordFill, ma sulla corda del disco invece che su
+// quella del vetro. Serve perche' dentro il disco si cancella spesso, e cancellare
+// sulla corda grande porterebbe via gli archi delle manopole che stanno appena
+// piu' in basso.
+void discFill(int y, int h, uint16_t color = BLACK) {
+    if (h <= 0) return;
+    gfx->startWrite();
+    for (int yy = y; yy < y + h; ++yy) {
+        const int dy = yy - DISC_CY;
+        const int d2 = DISC_R * DISC_R - dy * dy;
+        if (d2 <= 0) continue;
+        const int half = (int)sqrtf((float)d2);
+        gfx->writeFastHLine(CX - half, yy, 2 * half, color);
+    }
+    gfx->endWrite();
+}
+
+// ------------------------------------------------------------------- SUONA
+//
+// La schermata su cui si sta di piu' era la piu' povera dell'anello: usava tre
+// campi su oltre trenta e lasciava sessanta righe di pixel vuote proprio dove il
+// vetro e' piu' largo. Disegnava anche l'onda scelta, ma la disegnava a formule —
+// un ritratto, non la cosa.
+//
+// Adesso al centro c'e' la traccia VERA dell'uscita, e dietro, come orizzonte, la
+// risposta del filtro con la gobba della risonanza. Sono le quattro manopole di
+// questa pagina messe in figura: giri la prima e la forma cambia, giri la seconda
+// e l'orizzonte scorre, giri la quarta e gli si alza la gobba. Non c'e' niente da
+// annunciare con un riquadro, perche' e' gia' tutto sotto gli occhi.
+constexpr int TR_X0 = DISC_CX_LEFT;
+constexpr int TR_W = 2 * DISC_R - 3;
+
+int16_t curveY[TR_W];  // l'orizzonte: y della risposta del filtro, colonna per colonna
+
+// Risposta del filtro a due poli, la stessa del motore audio, campionata sulle
+// colonne della traccia. Con la risonanza a zero e' la solita discesa dolce,
+// alzandola compare la gobba sul taglio: e' l'unico modo di far vedere cosa fa
+// quella manopola senza doverla sentire.
+void computeFilterCurve(float cutoffHz, float resonance) {
+    const float decades = logf(100.0f);
+    const float damp = 2.0f - 1.94f * resonance;
+    for (int i = 0; i < TR_W; ++i) {
+        const int x = TR_X0 + i;
+        const int dx = x - CX;
+        const int d2 = DISC_R * DISC_R - dx * dx;
+        if (d2 <= 0) {
+            curveY[i] = -1;
+            continue;
+        }
+        const int half = (int)sqrtf((float)d2);
+        const float f = 80.0f * expf(decades * (float)i / (float)(TR_W - 1));
+        const float r = f / cutoffHz;
+        const float den = (1.0f - r * r);
+        float mag = 1.0f / sqrtf(den * den + (damp * r) * (damp * r));
+        mag = mag / (1.0f + mag * 0.35f);  // il picco puo' andare a venti volte
+        int y = DISC_CY + half - (int)(mag * (float)(2 * half - 2));
+        if (y < DISC_CY - half) y = DISC_CY - half;
+        if (y > DISC_CY + half) y = DISC_CY + half;
+        curveY[i] = (int16_t)y;
+    }
+}
+
+void drawFilterCurve(uint16_t color) {
+    for (int i = 0; i < TR_W; ++i) {
+        if (curveY[i] >= 0) gfx->drawPixel(TR_X0 + i, curveY[i], color);
+    }
+}
+
+void drawSuonaScreen(const SynthView &v, bool full) {
+    static int8_t samples[SCOPE_SAMPLES];
+    static int16_t colTop[TR_W];
+    static uint8_t colH[TR_W];
+    static bool traced = false;
+    static float zoom = 1.0f;
+
+    const uint16_t horizon = ghost(HUD_MAGENTA);
+
+    if (full) {
+        // La fila delle targhette: quattro interruttori che si leggono per pieno
+        // contro vuoto. Sono gli stessi quattro tasti che hanno la parola
+        // stampata sopra, e portano lo stesso colore del LED che li illumina: la
+        // targhetta e il tasto sono la stessa cosa, e non c'e' bisogno di dirlo.
+        gfx->fillRect(58, CHIP_Y, CHIP_X1 - 58, 14, BLACK);
+        struct Flag {
+            const char *label;
+            bool on;
+            uint16_t color;
+        } flags[4] = {
+            {"ARP", v.arp, HUD_NEON},
+            {"8BIT", v.crush, HUD_ORANGE},
+            {"TIENI", v.hold, HUD_AMBER},
+            {v.poly ? "POLI" : "MONO", v.poly, HUD_LIME},
+        };
+        int total = 0;
+        for (int i = 0; i < 4; ++i) total += hudChipWidth(flags[i].label, 1) + 4;
+        int x = CHIP_X1 - (total - 4);
+        for (int i = 0; i < 4; ++i) {
+            if (flags[i].on) {
+                hudChip(x, CHIP_Y, flags[i].label, flags[i].color, 1);
+            } else {
+                hudChipOff(x, CHIP_Y, flags[i].label, 1);
+            }
+            x += hudChipWidth(flags[i].label, 1) + 4;
+        }
+
+        discFill(DISC_CY - DISC_R, 2 * DISC_R);
+        computeFilterCurve(v.cutoffHz, v.resonance);
+        drawFilterCurve(horizon);
+        traced = false;
+        zoom = 1.0f;
+    } else {
+        // Le targhette non hanno un valore che scivola: cambiano di scatto, e
+        // quando cambiano si rifa' la fila intera. Costa 158x14 px una volta ogni
+        // pressione di tasto, cioe' niente.
+        if (v.arp != prev.arp || v.crush != prev.crush || v.hold != prev.hold ||
+            v.poly != prev.poly) {
+            drawSuonaScreen(v, true);
+            return;
+        }
+        if (fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f ||
+            fabsf(v.resonance - prev.resonance) > 0.005f) {
+            drawFilterCurve(BLACK);
+            computeFilterCurve(v.cutoffHz, v.resonance);
+            drawFilterCurve(horizon);
+        }
+    }
+
+    // La corona delle voci: sedici tacche sull'arco basso, accese quante ne stanno
+    // suonando. Il colore dice la modalita' — lime in polifonico, ambra in mono —
+    // quindi premere VOCI si vede qui prima ancora che nella targhetta.
+    if (full || v.voices != prev.voices || v.poly != prev.poly) {
+        radialTicks(48, 55, 16, 130.0f, 230.0f, v.voices,
+                    v.poly ? HUD_LIME : HUD_AMBER, HUD_TRACK);
+    }
+
+    // Finestra nuova o niente: senza aggancio fresco si tiene a video l'ultima.
+    if (!AudioEngine::copyScope(samples)) return;
+
+    int peak = 1;
+    for (int i = 0; i < SCOPE_SAMPLES; ++i) {
+        const int a = (samples[i] < 0) ? -samples[i] : samples[i];
+        if (a > peak) peak = a;
+    }
+    // Zoom automatico: a volume dimezzato e con la compensazione di polifonia una
+    // traccia a scala fissa sarebbe una riga quasi piatta. Il fattore insegue il
+    // valore giusto lentamente, altrimenti l'onda "respira" ad ogni fotogramma.
+    float target = 110.0f / (float)peak;
+    if (target > 8.0f) target = 8.0f;
+    if (target < 1.0f) target = 1.0f;
+    zoom = traced ? (zoom + (target - zoom) * 0.15f) : target;
+
+    gfx->startWrite();
+    int prevY = DISC_CY;
+    bool clipped = false;
+    for (int i = 0; i < TR_W; ++i) {
+        const int x = TR_X0 + i;
+        const int dx = x - CX;
+        const int d2 = DISC_R * DISC_R - dx * dx;
+        if (d2 <= 0) continue;
+        // Ogni colonna e' tosata sulla corda del disco: e' cosi' che la traccia
+        // prende la forma tonda invece di stare dentro un riquadro.
+        const int half = (int)sqrtf((float)d2);
+
+        // 105 colonne da 180 campioni: si prende il campione piu' vicino, che a
+        // questa densita' non si distingue da un'interpolazione.
+        const int s = samples[(i * SCOPE_SAMPLES) / TR_W];
+        int y = DISC_CY - (int)((float)s * zoom * ((float)DISC_R / 127.0f));
+        if (y < DISC_CY - half) {
+            y = DISC_CY - half;
+            clipped = true;
+        }
+        if (y > DISC_CY + half) {
+            y = DISC_CY + half;
+            clipped = true;
+        }
+        if (i == 0) prevY = y;
+
+        if (traced) {
+            gfx->writeFastVLine(x, colTop[i], colH[i], BLACK);
+            // La cancellazione porta via anche l'orizzonte: si rimette solo dove
+            // passava davvero, un pixel alla volta. E' la stessa tecnica con cui
+            // la vecchia schermata SCOPE rimetteva la griglia, ed e' la ragione
+            // per cui qui non lampeggia niente.
+            if (curveY[i] >= colTop[i] && curveY[i] < colTop[i] + colH[i]) {
+                gfx->writePixel(x, curveY[i], horizon);
+            }
+        }
+
+        // Il segmento copre il salto rispetto alla colonna precedente: sui fronti
+        // ripidi (quadra, dente di sega) la traccia resta continua.
+        const int top = (y < prevY) ? y : prevY;
+        const int h = ((y < prevY) ? (prevY - y) : (y - prevY)) + 1;
+        colTop[i] = (int16_t)top;
+        colH[i] = (uint8_t)h;
+        prevY = y;
+    }
+    // Il colore si decide dopo aver guardato tutte le colonne: la traccia e' una
+    // cosa sola e non puo' cambiare tinta a meta'. In arancione vuol dire che sta
+    // toccando i bordi — prima un clip a schermo si vedeva identico a un'onda
+    // quadra, e non c'era nessun modo di accorgersene.
+    const uint16_t tc = clipped ? HUD_ORANGE : HUD_LIME;
+    for (int i = 0; i < TR_W; ++i) {
+        const int dx = TR_X0 + i - CX;
+        if (DISC_R * DISC_R - dx * dx <= 0) continue;
+        gfx->writeFastVLine(TR_X0 + i, colTop[i], colH[i], tc);
+    }
+    gfx->endWrite();
+    traced = true;
+}
+
+// ------------------------------------------------------------------- ritratti
+//
+// Mezzo ciclo dell'onda e profilo dell'inviluppo: due disegnini che dicono di un
+// timbro molto piu' del suo nome. Servono a TIMBRI, e il profilo serve anche a
+// INVILUPPO, dove e' grande e si deforma mentre giri.
+
+// Valore -1..+1 della forma d'onda alla fase t (0..1). Stessa forma del motore.
+float waveValue(uint8_t wave, float t) {
     switch (wave) {
-        case WAVE_SQUARE:
-            return (t < 0.5f) ? 1.0f : -1.0f;
-        case WAVE_SAW:
-            return 2.0f * t - 1.0f;
-        case WAVE_TRIANGLE:
-            return (t < 0.5f) ? (4.0f * t - 1.0f) : (3.0f - 4.0f * t);
-        case WAVE_PULSE:
-            return (t < 0.25f) ? 1.0f : -1.0f;  // stesso duty del motore audio
+        case WAVE_SQUARE: return (t < 0.5f) ? 1.0f : -1.0f;
+        case WAVE_SAW: return 2.0f * t - 1.0f;
+        case WAVE_TRIANGLE: return (t < 0.5f) ? (4.0f * t - 1.0f) : (3.0f - 4.0f * t);
+        case WAVE_PULSE: return (t < 0.25f) ? 1.0f : -1.0f;
         case WAVE_NOISE: {
-            // Rumore *riproducibile*: a parita' di t esce sempre lo stesso
-            // valore. Con un random vero l'icona cambierebbe ad ogni fotogramma
-            // e sembrerebbe rotta invece che rumorosa.
+            // Rumore *riproducibile*: a parita' di t esce sempre lo stesso valore.
+            // Con un random vero l'icona cambierebbe ad ogni fotogramma e
+            // sembrerebbe rotta invece che rumorosa.
             uint32_t h = (uint32_t)(t * 64.0f) * 1664525u + 1013904223u;
             h ^= h >> 13;
             return (float)((int32_t)((h >> 8) & 0xFFFF) - 32768) * (1.0f / 32768.0f);
         }
         case WAVE_SINE:
-        default:
-            return sinf(2.0f * (float)M_PI * t);
+        default: return sinf(2.0f * (float)M_PI * t);
     }
 }
 
-// Icona disegnata con primitive grafiche (nessuna bitmap): 2 cicli, ampiezza 26 px.
-// Sotto ci passa una griglia appena accennata, la stessa dell'oscilloscopio: le
-// due schermate mostrano la stessa cosa e devono somigliarsi.
-void drawWaveIcon(uint8_t wave, int cy, uint16_t color) {
-    constexpr int HALF_W = 60;
-    constexpr float AMP = 26.0f;
-    constexpr int PERIOD = 60;  // px per ciclo -> 2 cicli in 120 px
-
-    for (int dy = -26; dy <= 26; dy += 13) {
-        if (dy == 0) continue;
-        gfx->drawFastHLine(CX - HALF_W, cy + dy, 2 * HALF_W, HUD_TRACK);
-    }
-    for (int x = CX - HALF_W; x < CX + HALF_W; x += 6) gfx->drawFastHLine(x, cy, 3, HUD_LABEL);
-
-    int prevX = CX - HALF_W;
-    int prevY = cy - (int)(AMP * iconValue(wave, 0.0f));
-    for (int dx = 1; dx <= 2 * HALF_W; ++dx) {
-        float t = (float)(dx % PERIOD) / (float)PERIOD;
-        int x = CX - HALF_W + dx;
-        int y = cy - (int)(AMP * iconValue(wave, t));
-        gfx->drawLine(prevX, prevY, x, y, color);
-        // seconda passata a 1px di offset: tratto piu' spesso, si legge meglio
-        gfx->drawLine(prevX, prevY + 1, x, y + 1, color);
-        prevX = x;
-        prevY = y;
-    }
-}
-
-// Otto caselle, una per voce del pool: quante ne stanno suonando si conta a
-// colpo d'occhio, senza leggere un numero.
-// Una casella per voce del motore. La misura non e' piu' fissa: con le 8 voci
-// della scheda vecchia ci stavano quadratini da 14 px, con le 16 di adesso la
-// fila sarebbe uscita dal vetro di quaranta pixel per parte — e uscendo non si
-// sarebbe vista, perche' il display taglia in silenzio. Le caselle si ricavano
-// quindi dalla larghezza disponibile, e la static_assert fa in modo che la
-// prossima volta che il pool cresce se ne accorga il compilatore invece
-// dell'occhio.
-void drawVoiceSlots(int y, uint8_t voices, bool poly) {
-    constexpr int ROW_W = 160;  // largo quanto la corda del cerchio a quell'altezza
-    constexpr int GAP = 2;
-    constexpr int SLOT = (ROW_W - GAP * (MAX_VOICES - 1)) / MAX_VOICES;
-    constexpr int total = MAX_VOICES * SLOT + (MAX_VOICES - 1) * GAP;
-    static_assert(SLOT >= 4, "troppe voci per una fila sola: servono due righe");
-    static_assert(total <= 180, "la fila delle voci esce dall'area circolare");
-    const int x0 = CX - total / 2;
-    for (int i = 0; i < MAX_VOICES; ++i) {
-        const int x = x0 + i * (SLOT + GAP);
-        if (i < voices) {
-            gfx->fillRect(x, y, SLOT, SLOT, poly ? HUD_LIME : HUD_AMBER);
-        } else {
-            gfx->drawRect(x, y, SLOT, SLOT, HUD_TRACK);
-        }
-    }
-}
-
-// ----------------------------------------------------------------- schermate
-
-void drawWaveScreen(const SynthView &v, bool full) {
-    if (full) {
-        chrome("OSC", HUD_NEON);
-        textCentered("JOY < > CAMBIA ONDA", CONTENT_TOP, 1, HUD_LABEL);
-    }
-    if (full || v.waveform != prev.waveform) {
-        gfx->fillRect(56, 72, 128, 60, BLACK);
-        drawWaveIcon(v.waveform, 102, HUD_NEON);
-        clearBand(142, 24);
-        textCentered(WAVEFORM_NAMES[v.waveform], 142, 3, HUD_ICE);
-    }
-    // La schermata della voce e' il posto giusto per dire quante ne suonano.
-    if (full || v.poly != prev.poly || v.voices != prev.voices) {
-        gfx->fillRect(40, 176, 160, 14, BLACK);
-        drawVoiceSlots(176, v.voices, v.poly);
-        clearBand(198, 8);
-        textCentered(v.poly ? "POLIFONICO" : "MONOFONICO", 198, 1,
-                     v.poly ? HUD_LIME : HUD_LABEL);
-    }
-}
-
-// I quindici timbri, che prima stavano sepolti in fondo alle impostazioni. Sono
-// il punto da cui si comincia a suonare, non una preferenza da configurare una
-// volta sola: meritano una schermata loro, raggiungibile come tutte le altre.
-//
-// Elenco a finestra scorrevole di cinque righe, la selezionata al centro quando
-// puo' starci. La riga sotto porta il `hint` del preset: "attacco secco, coda
-// che muore" dice cosa aspettarsi molto meglio del solo nome.
-void drawTimbriScreen(const SynthView &v, bool full) {
-    if (full) {
-        chrome("TIMBRI", HUD_MAGENTA);
-        textCentered("ENC1 SCEGLIE - SUONA PER PROVARE", CONTENT_TOP, 1, HUD_LABEL);
-    }
-    if (!full && v.timbroCursor == prev.timbroCursor && v.timbro == prev.timbro) return;
-
-    constexpr int ROWS = 5, ROW_H = 20, LIST_TOP = 66;
-
-    // Finestra centrata sul cursore, ferma agli estremi: scorrere oltre la fine
-    // per tenere il cursore al centro lascerebbe righe vuote in fondo.
-    int first = (int)v.timbroCursor - ROWS / 2;
-    const int last = (int)PRESET_COUNT - ROWS;
-    if (first > last) first = last;
-    if (first < 0) first = 0;
-
-    for (int r = 0; r < ROWS; ++r) {
-        const int idx = first + r;
-        const int y = LIST_TOP + r * ROW_H;
-        gfx->fillRect(14, y, 212, ROW_H, BLACK);
-        if (idx >= (int)PRESET_COUNT) continue;
-
-        const bool onCursor = (idx == (int)v.timbroCursor);
-        const bool loaded = (idx == (int)v.timbro);
-
-        if (onCursor) {
-            gfx->fillRect(14, y, 212, ROW_H - 2, dim565(HUD_MAGENTA, 1, 4));
-            gfx->drawRect(14, y, 212, ROW_H - 2, HUD_MAGENTA);
-        }
-        // Il pallino dice quale sta *suonando adesso*, che con l'encoder che
-        // scorre liberamente non e' per forza quello sotto il cursore.
-        if (loaded) gfx->fillCircle(24, y + 8, 3, HUD_ICE);
-        textAt(PRESETS[idx].name, 34, y + 4, 1, onCursor ? HUD_ICE : HUD_LABEL);
-    }
-
-    clearBand(176, 22);
-    if (v.timbroCursor < PRESET_COUNT) {
-        textCentered(PRESETS[v.timbroCursor].hint, 178, 1, HUD_LABEL);
-    }
-}
-
-// Risposta del passa-basso one-pole disegnata in piccolo: |H| = 1/sqrt(1+(f/fc)^2)
-// su asse logaritmico 80 Hz..8 kHz, lo stesso della barra qui sopra. Serve a
-// vedere *dove* taglia, non solo a che numero e' arrivata la manopola.
-// Risposta del filtro a due poli, quello vero del motore: con la risonanza a
-// zero e' la solita discesa dolce, alzandola compare la gobba sul taglio. E'
-// l'unico modo di far capire cosa fa la seconda manopola senza suonare.
-void drawFilterCurve(int x, int y, int w, int h, float cutoffHz, float resonance) {
-    gfx->fillRect(x, y, w, h, BLACK);
-    gfx->drawFastHLine(x, y + h - 1, w, HUD_TRACK);
-
-    const float decades = logf(100.0f);
-    const int cx = x + (int)((float)w * logf(cutoffHz / 80.0f) / decades);
-    if (cx > x && cx < x + w) {
-        for (int yy = y; yy < y + h; yy += 3) gfx->drawPixel(cx, yy, dim565(HUD_MAGENTA, 1, 2));
-    }
-
-    // Stesso smorzamento usato dal motore audio: 2 senza risonanza, verso zero
-    // quando il filtro sta per mettersi a fischiare.
-    const float damp = 2.0f - 1.94f * resonance;
-
-    int prevY = y;
+void drawWaveShape(int x, int y, int w, int h, uint8_t wave, uint16_t color) {
+    const int cy = y + h / 2;
+    int prevY = cy;
+    gfx->startWrite();
     for (int i = 0; i < w; ++i) {
-        const float f = 80.0f * expf(decades * (float)i / (float)(w - 1));
-        const float r = f / cutoffHz;
-        const float den = (1.0f - r * r);
-        float mag = 1.0f / sqrtf(den * den + (damp * r) * (damp * r));
-        // Il picco puo' andare a venti volte: si comprime, altrimenti la gobba
-        // esce dal riquadro e con lei il resto della curva.
-        mag = mag / (1.0f + mag * 0.35f);
-        int yy = y + h - 1 - (int)(mag * (float)(h - 2));
-        if (yy < y) yy = y;
+        const float t = (float)i / (float)(w - 1) * 2.0f;  // due cicli
+        const int yy = cy - (int)(waveValue(wave, t - (float)(int)t) * (float)(h / 2 - 1));
         if (i == 0) prevY = yy;
         const int top = (yy < prevY) ? yy : prevY;
         const int hh = ((yy < prevY) ? (prevY - yy) : (yy - prevY)) + 1;
-        gfx->drawFastVLine(x + i, top, hh, HUD_MAGENTA);
+        gfx->writeFastVLine(x + i, top, hh, color);
         prevY = yy;
     }
+    gfx->endWrite();
 }
 
-void drawLevelsScreen(const SynthView &v, bool full) {
-    constexpr int BX = 44, BW = 152;
-    if (full) {
-        chrome("LEVELS", HUD_AMBER);
-        textAt("CUTOFF", BX, 54, 1, HUD_LABEL);
-        textAt("RISONANZA", BX, 100, 1, HUD_LABEL);
-        textAt("VOLUME", BX, 146, 1, HUD_LABEL);
-        textCentered("1 CUT  2 RIS  3 VOL", 196, 1, HUD_LABEL);
-    }
-
-    // cutoff: mappatura log 80..8000 Hz per una barra percettivamente lineare
-    const float cf = logf(v.cutoffHz / 80.0f) / logf(100.0f);
-    if (full || fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d Hz", (int)v.cutoffHz);
-        gfx->fillRect(BX + 66, 50, BW - 66, 16, BLACK);
-        textRight(buf, BX + BW, 50, 2, HUD_ICE);
-        hudBar(BX, 68, BW, 20, cf, HUD_NEON, HUD_MAGENTA);
-    }
-
-    // La risonanza cambia la forma della curva, non solo un numero: la si
-    // ridisegna insieme alla barra, perche' e' li' che si capisce cosa fa.
-    if (full || fabsf(v.resonance - prev.resonance) > 0.005f ||
-        fabsf(v.cutoffHz - prev.cutoffHz) > 5.0f) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d %%", (int)(v.resonance * 100.0f + 0.5f));
-        gfx->fillRect(BX + 66, 96, BW - 66, 16, BLACK);
-        textRight(buf, BX + BW, 96, 2, v.resonance > 0.85f ? HUD_RED : HUD_ICE);
-        hudBar(BX, 114, BW, 20, v.resonance, HUD_AMBER, HUD_RED);
-        drawFilterCurve(BX, 172, BW, 26, v.cutoffHz, v.resonance);
-    }
-
-    if (full || fabsf(v.volume - prev.volume) > 0.01f) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d %%", (int)(v.volume * 100.0f + 0.5f));
-        gfx->fillRect(BX + 66, 142, BW - 66, 16, BLACK);
-        textRight(buf, BX + BW, 142, 2, HUD_ICE);
-        hudBar(BX, 160, BW, 10, v.volume, HUD_LIME, HUD_RED);
-    }
-}
-
-// --------------------------------------------------------- schermata EFFETTI
+// Il profilo A/D/S/R disegnato dai valori veri. I tempi vanno in scala
+// logaritmica come le frazioni delle manopole, altrimenti l'attacco — che va da 2
+// a 500 ms — occuperebbe un pixel per tre quarti della sua corsa.
 //
-// Sette parametri che prima non esistevano, tutti sul quarto encoder: la
-// schermata serve soprattutto a ricordare quale sta comandando adesso, ed e'
-// per questo che la riga selezionata e' l'unica scritta in chiaro.
-void drawFxRow(int y, const char *label, float frac, const char *value, bool selected,
-               uint16_t lo, uint16_t hi) {
-    gfx->fillRect(38, y - 1, 164, 19, BLACK);
-    if (selected) gfx->fillRect(34, y, 3, 16, HUD_MAGENTA);
-    textAt(label, 42, y + 1, 1, selected ? HUD_ICE : HUD_LABEL);
-    hudBar(100, y + 1, 58, 8, frac, lo, hi);
-    textRight(value, 200, y + 1, 1, selected ? HUD_AMBER : HUD_LABEL);
-}
+// E' l'unica cosa che INVILUPPO descriveva senza farla vedere: quattro numeri e
+// quattro barre per una forma che si capisce in un colpo d'occhio se solo la
+// disegni. Con i colori divisi per tratto — e gli stessi quattro colori sugli
+// archi delle manopole — si vede anche quale manopola comanda quale pezzo.
+void drawEnvelope(int x, int y, int w, int h, float aMs, float dMs, float sus, float rMs,
+                  bool colorful) {
+    const float fa = logf(aMs / 2.0f) / logf(250.0f);
+    const float fd = logf(dMs / 5.0f) / logf(200.0f);
+    const float fr = logf(rMs / 10.0f) / logf(200.0f);
+    // Le quattro fasi si spartiscono la larghezza in proporzione, con un minimo
+    // perche' nessun tratto sparisca del tutto: un attacco a 2 ms resta una
+    // parete verticale, ma deve restare visibile che c'e'.
+    const float tot = fa + fd + 0.9f + fr + 0.4f;
+    const int wa = (int)((fa + 0.1f) / tot * w);
+    const int wd = (int)((fd + 0.1f) / tot * w);
+    const int wr = (int)((fr + 0.1f) / tot * w);
+    int ws = w - wa - wd - wr;
+    if (ws < 4) ws = 4;
 
-void drawFxScreen(const SynthView &v, bool full) {
-    if (full) chrome("FX", HUD_MAGENTA);
-
-    // Il riquadro dell'8 BIT sta in cima e cambia colore: e' l'effetto che si
-    // accende e si spegne con un tasto, e deve vedersi da lontano.
-    if (full || v.crush != prev.crush || v.crushName != prev.crushName) {
-        gfx->fillRect(40, 44, 160, 24, BLACK);
-        hudChipCentered(46, v.crush ? v.crushName : "8 BIT OFF",
-                        v.crush ? rgb565(255, 120, 0) : HUD_TRACK, 2);
+    const int yBot = y + h - 1;
+    const int ySus = yBot - (int)(sus * (float)(h - 1));
+    int px = x, py = yBot;
+    struct Leg {
+        int x, y;
+        uint16_t c;
+    } legs[4] = {
+        {x + wa, y, colorful ? HUD_RED : HUD_AMBER},
+        {x + wa + wd, ySus, colorful ? HUD_MAGENTA : HUD_AMBER},
+        {x + wa + wd + ws, ySus, colorful ? HUD_AMBER : HUD_AMBER},
+        {x + wa + wd + ws + wr, yBot, colorful ? HUD_LIME : HUD_AMBER},
+    };
+    for (int i = 0; i < 4; ++i) {
+        gfx->drawLine(px, py, legs[i].x, legs[i].y, legs[i].c);
+        gfx->drawLine(px, py + 1, legs[i].x, legs[i].y + 1, legs[i].c);
+        px = legs[i].x;
+        py = legs[i].y;
     }
-
-    // Riga i-esima -> valore di Enc4Target che la evidenzia. La riga dell'LFO ne
-    // ha due (velocita' e profondita'), perche' e' l'unica con due manopole che
-    // guardano la stessa barra.
-    struct FxRow {
-        int y;
-        const char *label;
-        uint8_t e4a;
-        uint8_t e4b;
-        uint16_t lo;
-        uint16_t hi;
-    };
-    static const FxRow ROWS[7] = {
-        {74, "ECO", 1, 1, HUD_NEON, HUD_MAGENTA},
-        {92, "TEMPO", 2, 2, HUD_NEON, HUD_MAGENTA},
-        {110, "LFO", 3, 4, HUD_LIME, HUD_AMBER},
-        {128, "DRIVE", 5, 5, HUD_AMBER, HUD_RED},
-        {146, "SUB", 6, 6, HUD_NEON, HUD_LIME},
-        {164, "DETUNE", 7, 7, HUD_NEON, HUD_LIME},
-        {182, "GLIDE", 8, 8, HUD_NEON, HUD_LIME},
-    };
-
-    const float frac[7] = {
-        v.delayMix, (v.delayMs - 20.0f) / 375.0f, v.lfoDepth, v.drive,
-        v.subLevel, v.detuneCents / 50.0f,        v.glideMs / 500.0f,
-    };
-    const float fracPrev[7] = {
-        prev.delayMix, (prev.delayMs - 20.0f) / 375.0f, prev.lfoDepth, prev.drive,
-        prev.subLevel, prev.detuneCents / 50.0f,        prev.glideMs / 500.0f,
-    };
-
-    char buf[16];
-    for (int i = 0; i < 7; ++i) {
-        const bool sel = (v.enc4Index == ROWS[i].e4a) || (v.enc4Index == ROWS[i].e4b);
-        const bool wasSel = (prev.enc4Index == ROWS[i].e4a) || (prev.enc4Index == ROWS[i].e4b);
-        if (!full && sel == wasSel && fabsf(frac[i] - fracPrev[i]) < 0.005f &&
-            !(i == 2 && v.lfoTargetName != prev.lfoTargetName)) {
-            continue;
-        }
-        switch (i) {
-            case 0:
-            case 3:
-            case 4:
-                snprintf(buf, sizeof(buf), "%d%%", (int)(frac[i] * 100.0f + 0.5f));
-                break;
-            case 1:
-                snprintf(buf, sizeof(buf), "%dms", (int)v.delayMs);
-                break;
-            case 2:
-                snprintf(buf, sizeof(buf), "%s", v.lfoTargetName ? v.lfoTargetName : "");
-                break;
-            case 5:
-                snprintf(buf, sizeof(buf), "%dc", (int)v.detuneCents);
-                break;
-            default:
-                if (v.glideMs <= 0.0f) {
-                    snprintf(buf, sizeof(buf), "OFF");
-                } else {
-                    snprintf(buf, sizeof(buf), "%dms", (int)v.glideMs);
-                }
-                break;
-        }
-        drawFxRow(ROWS[i].y, ROWS[i].label, frac[i], buf, sel, ROWS[i].lo, ROWS[i].hi);
+    if (colorful) {
+        // Un pallino sui vertici, del colore del suo parametro: lega la manopola
+        // al punto della curva che muove.
+        for (int i = 0; i < 4; ++i) gfx->fillCircle(legs[i].x, legs[i].y, 3, legs[i].c);
     }
 }
 
-// Iniziali usate dentro le celle: una lettera sola deve bastare, e in notazione
-// italiana SOL e SI collidono. La riga di dettaglio sotto la griglia scrive
-// comunque il nome per esteso, come sul pannello.
-// Con tredici tasti le alterazioni entrano in scena: nella cella ci sta una
-// lettera sola, quindi i tasti neri prendono la minuscola della nota che
-// alterano (c = DO#, d = RE#...). Si distingue a colpo d'occhio senza aggiungere
-// un secondo carattere che non ci starebbe.
-const char NOTE_LETTERS[NOTE_COUNT] = {'C', 'c', 'D', 'd', 'E', 'F', 'f',
-                                       'G', 'g', 'A', 'a', 'B', 'C'};
-const char *const NOTE_NAMES_IT[NOTE_COUNT] = {"DO",  "DO#", "RE",  "RE#", "MI",
-                                               "FA",  "FA#", "SOL", "SOL#", "LA",
-                                               "LA#", "SI",  "DO'"};
+// ------------------------------------------------------------------ TIMBRI
+//
+// Non piu' un elenco rettangolare piantato dentro un cerchio — con le righe che
+// sulla prima riga sbordavano e staccavano due morsi dalla ghiera — ma una
+// scheda: il nome scelto grande al centro, i vicini piccoli sopra e sotto, e in
+// mezzo il ritratto del timbro, che prima non c'era. Due livelli di importanza
+// dove ce n'era uno solo, ed e' la ragione per cui la voce scelta si vede senza
+// bisogno di un riquadro che venga a dirlo.
+constexpr float LIST_A0 = 35.0f;  // arco di posizione dell'elenco, sul fianco destro
+constexpr float LIST_A1 = 100.0f;
 
-// Le note non sono piu' una potenza di due: l'indice va controllato, non mascherato.
+void drawListArc(int index, int count, uint16_t accent) {
+    if (count < 1) return;
+    const float span = (LIST_A1 - LIST_A0) / (float)count;
+    for (int i = 0; i < count; ++i) {
+        const float a0 = LIST_A0 + span * (float)i + 0.4f;
+        const float a1 = LIST_A0 + span * (float)(i + 1) - 0.4f;
+        arcSeg(a0, a1, KNOB_IN, KNOB_OUT, (i == index) ? accent : ghost(accent));
+    }
+}
+
+void drawTimbriScreen(const SynthView &v, bool full) {
+    if (!full && v.timbroCursor == prev.timbroCursor && v.timbro == prev.timbro) return;
+
+    const int sel = (v.timbroCursor < PRESET_COUNT) ? v.timbroCursor : 0;
+    const Preset &p = PRESETS[sel];
+
+    contentFill(68, 88);
+
+    if (sel > 0) textCentered(PRESETS[sel - 1].name, 70, 1, HUD_DIM);
+    if (sel + 1 < (int)PRESET_COUNT) textCentered(PRESETS[sel + 1].name, 146, 1, HUD_DIM);
+
+    // Il pallino dice quale sta *suonando adesso*, che con la manopola che scorre
+    // liberamente non e' per forza quello sotto il cursore.
+    textCentered(p.name, 82, 2, HUD_ICE);
+    if (sel == (int)v.timbro) gfx->fillCircle(CX - 6 * (int)strlen(p.name) - 10, 90, 3, HUD_VIOLET);
+
+    textCentered(p.hint, 102, 1, HUD_LABEL);
+
+    // Il ritratto: com'e' fatta la voce e come si spegne. Un timbro si sceglie
+    // per come suona, ma vedere che il pianoforte ha la coda che scende e
+    // l'organo no e' esattamente cio' che insegna a cosa servono le altre
+    // schermate.
+    drawWaveShape(CX - 48, 114, 96, 14, p.wave, HUD_NEON);
+    drawEnvelope(CX - 48, 130, 96, 14, p.attackMs, p.decayMs, p.sustain, p.releaseMs, false);
+
+    drawListArc(sel, PRESET_COUNT, HUD_VIOLET);
+}
+
+// --------------------------------------------------------------- INVILUPPO
+//
+// Le quattro righe A/D/S/R sono sparite: erano quattro etichette, quattro barre e
+// quattro numeri per dire quello che adesso dicono le quattro manopole della
+// corona, che stanno sempre li' e nello stesso ordine in cui si leggono. Il disco
+// se lo prende tutto la forma, che finalmente c'e': era l'unica schermata che
+// descriveva una figura senza disegnarla.
+void drawInviluppoScreen(const SynthView &v, bool full) {
+    if (!full && fabsf(v.attackMs - prev.attackMs) < 0.5f &&
+        fabsf(v.decayMs - prev.decayMs) < 0.5f && fabsf(v.sustain - prev.sustain) < 0.005f &&
+        fabsf(v.releaseMs - prev.releaseMs) < 0.5f) {
+        return;
+    }
+
+    contentFill(66, 88);
+
+    // I quattro numeri, piccoli e in alto: il valore esatto serve quando lo
+    // cerchi, non mentre giri — mentre giri lo dice gia' la didascalia della
+    // manopola, che sta nel punto dove hai la mano.
+    char buf[40];
+    snprintf(buf, sizeof(buf), "%d  %d  %d%%  %d", (int)v.attackMs, (int)v.decayMs,
+             (int)(v.sustain * 100.0f + 0.5f), (int)v.releaseMs);
+    textCentered(buf, 68, 1, HUD_DIM);
+
+    // Il tratteggio verticale sotto la curva le da' massa senza costare come un
+    // pieno: una riga ogni sei pixel, in fantasma.
+    const int x0 = CX - 52, w = 104, y0 = 84, h = 68;
+    for (int i = 0; i < w; i += 6) {
+        gfx->drawFastVLine(x0 + i, y0 + h - 14, 13, ghost(HUD_AMBER));
+    }
+    drawEnvelope(x0, y0, w, h, v.attackMs, v.decayMs, v.sustain, v.releaseMs, true);
+}
+
+// ---------------------------------------------------------- elenchi a carosello
+//
+// TIMBRI, EFFETTI e MENU sono tre volte la stessa cosa: una voce scelta grande al
+// centro con il suo valore, due vicine piccole e spente, e un arco che dice a che
+// punto dell'elenco sei. Prima erano tre implementazioni incompatibili — tre
+// passi verticali diversi, tre larghezze di pulizia diverse, tre corpi diversi per
+// il valore — ed era la mancanza di astrazione che costava di piu' a chi doveva
+// ridisegnare.
+struct CarouselItem {
+    const char *category;
+    const char *label;
+    const char *value;
+    bool action;
+};
+
+void drawCarousel(int cursor, int count, uint16_t accent, float frac,
+                  CarouselItem (*fetch)(int)) {
+    contentFill(66, 90);
+
+    const CarouselItem cur = fetch(cursor);
+
+    // L'intestazione di categoria della voce scelta: dice in che famiglia sei
+    // senza costringerti a scorrere all'indietro per ritrovarla. Se la voce non
+    // ne apre una nuova si risale finche' non se ne trova una.
+    const char *cat = nullptr;
+    for (int i = cursor; i >= 0 && !cat; --i) cat = fetch(i).category;
+    if (cat) textCentered(cat, 68, 1, HUD_LABEL);
+
+    if (cursor > 0) textCentered(fetch(cursor - 1).label, 80, 1, HUD_DIM);
+    if (cursor + 1 < count) textCentered(fetch(cursor + 1).label, 146, 1, HUD_DIM);
+
+    textCentered(cur.label, 92, 2, cur.action ? HUD_RED : accent);
+    // Il corpo si sceglie sulla lunghezza. A corpo 3 un valore da undici caratteri
+    // — "LRC BCK DIN", l'ordine dei fili dell'uscita audio — sarebbe largo 198 px
+    // su una corda che li' ne offre 188: sborderebbe dal cerchio e resterebbe
+    // fuori anche dalla fascia che lo cancella.
+    const size_t vn = strlen(cur.value);
+    const uint8_t vs = (vn <= 8) ? 3 : (vn <= 12) ? 2 : 1;
+    textCentered(cur.value, 112 + (24 - 8 * vs) / 2, vs, cur.action ? HUD_RED : HUD_ICE);
+
+    if (!cur.action) {
+        // Barra a segmenti larga 120: la frazione di corsa si legge prima del
+        // numero, ed e' quello che serve mentre giri.
+        hudBar(CX - 60, 138, 120, 5, frac, ghost(accent), accent);
+    }
+
+    drawListArc(cursor, count, accent);
+}
+
+// ------------------------------------------------------------------ EFFETTI
+const SynthView *carouselView = nullptr;
+
+CarouselItem fxItem(int i) {
+    CarouselItem it;
+    it.category = FX_ROWS[i].category;
+    it.label = FX_ROWS[i].label;
+    it.value = carouselView->fxValue[i];
+    it.action = false;
+    return it;
+}
+
+void drawEffettiScreen(const SynthView &v, bool full) {
+    if (!full && v.fxCursor == prev.fxCursor &&
+        fabsf(v.fxFrac[v.fxCursor] - prev.fxFrac[v.fxCursor]) < 0.0005f &&
+        strcmp(v.fxValue[v.fxCursor], prev.fxValue[v.fxCursor]) == 0) {
+        return;
+    }
+    carouselView = &v;
+    drawCarousel(v.fxCursor, FX_ROW_COUNT, HUD_MAGENTA, v.fxFrac[v.fxCursor], fxItem);
+}
+
+// --------------------------------------------------------------------- MENU
+CarouselItem menuItem(int i) {
+    CarouselItem it;
+    it.category = Settings::ENTRIES[i].category;
+    it.label = Settings::ENTRIES[i].label;
+    it.action = Settings::isAction(i);
+    if (it.action) {
+        it.value = "TIENI";
+    } else {
+        it.value = Settings::valueLabel(i, carouselView->setIndex[i]);
+    }
+    return it;
+}
+
+void drawMenuScreen(const SynthView &v, bool full) {
+    if (!full && v.setCursor == prev.setCursor &&
+        v.setIndex[v.setCursor] == prev.setIndex[v.setCursor]) {
+        return;
+    }
+    carouselView = &v;
+    const uint8_t c = v.setCursor;
+    const float frac = Settings::isAction(c)
+                           ? 0.0f
+                           : ((Settings::valueCount(c) > 1)
+                                  ? (float)v.setIndex[c] / (float)(Settings::valueCount(c) - 1)
+                                  : 0.0f);
+    drawCarousel(c, SETTING_MENU_COUNT, HUD_LABEL, frac, menuItem);
+}
+
+// ------------------------------------------------------------------- RITMO
+//
+// La griglia 2x8 resta rettangolare, e va detto perche': sedici celle leggibili
+// su un anello non ci stanno, il fondo del vetro l'hanno gia' preso le manopole,
+// e la griglia com'e' e' la cosa migliore del firmware. Si e' spostata dove il
+// cerchio e' piu' largo, cosi' nessun morso e' piu' possibile, e la forma tonda
+// del giro la da' la testina che orbita nel telaio.
+//
+// Quello che e' sparito e' lo STEP EDIT come modalita': il cursore c'e' sempre,
+// la prima manopola lo muove e la seconda scrive. Non si entra piu' in niente, e
+// quindi non ci si puo' piu' restare dentro senza accorgersene.
+const char *const NOTE_LETTERS[NOTE_COUNT] = {"C", "c", "D", "d", "E", "F", "f",
+                                              "G", "g", "A", "a", "B", "C"};
+
 inline bool validNote(int8_t n) { return n >= 0 && n < NOTE_COUNT; }
 
-// Colore della cella in base all'ottava con cui lo step e' stato scritto
-// (indice = oct + 2): il registro si legge a colpo d'occhio. Sono tutti toni
-// abbastanza chiari da reggere l'iniziale nera scritta sopra — con l'indaco e il
-// viola di prima, in basso, la lettera spariva.
-const uint16_t OCT_COLORS[5] = {rgb565(150, 110, 255), rgb565(80, 170, 255), rgb565(0, 230, 230),
-                                rgb565(140, 240, 120), rgb565(255, 190, 70)};
-
-uint16_t octColor(int8_t oct) {
-    int i = oct + 2;
-    if (i < 0) i = 0;
-    if (i > 4) i = 4;
-    return OCT_COLORS[i];
-}
-
-// Geometria della griglia: 2 righe da 8 celle, centrate e dentro il cerchio.
 constexpr int GRID_X0 = 30;
-constexpr int GRID_Y0 = 86;
+constexpr int GRID_Y0 = 74;
 constexpr int GRID_CELL = 20;
 constexpr int GRID_GAP = 3;
 
@@ -567,7 +1025,6 @@ void gridCellPos(int i, int &x, int &y) {
     y = GRID_Y0 + (i / 8) * (GRID_CELL + GRID_GAP);
 }
 
-// Una cella: contenuto dello step, piu' gli indicatori di testina e cursore.
 void drawStepCell(const SynthView &v, int i) {
     int x, y;
     gridCellPos(i, x, y);
@@ -582,8 +1039,8 @@ void drawStepCell(const SynthView &v, int i) {
         gfx->drawRect(x, y, GRID_CELL, GRID_CELL, HUD_TRACK);
         gfx->fillRect(x + 3, y + GRID_CELL / 2 - 1, GRID_CELL - 6, 3, HUD_ICE);
     } else if (!validNote(s.note)) {
-        // Pausa: casella vuota con il solo contorno. Lasciandola piena, com'era
-        // prima, la griglia sembrava scritta anche dove non c'era niente.
+        // Pausa: casella vuota col solo contorno. Piena, com'era prima, la griglia
+        // sembrava scritta anche dove non c'era niente.
         gfx->fillRect(x, y, GRID_CELL, GRID_CELL, BLACK);
         gfx->drawRect(x, y, GRID_CELL, GRID_CELL, HUD_TRACK);
     } else {
@@ -600,78 +1057,59 @@ void drawStepCell(const SynthView &v, int i) {
 
     // La testina passa sopra al contenuto senza cancellarlo: cornice spessa.
     if (playhead) {
-        uint16_t c = (v.seqMode == Sequencer::SEQ_RECORDING) ? HUD_RED : HUD_LIME;
+        const uint16_t c = (v.seqMode == Sequencer::SEQ_RECORDING) ? HUD_RED : HUD_LIME;
         gfx->drawRect(x, y, GRID_CELL, GRID_CELL, c);
         gfx->drawRect(x + 1, y + 1, GRID_CELL - 2, GRID_CELL - 2, c);
     }
-    if (cursor) {
-        gfx->drawRect(x, y, GRID_CELL, GRID_CELL, WHITE);
+    if (cursor) gfx->drawRect(x, y, GRID_CELL, GRID_CELL, WHITE);
+}
+
+// La testina che orbita nel telaio: sedici posizioni su un giro completo, a
+// raggio 94. E' il giro visto come giro — un sequencer e' un anello, e su un
+// display tondo dirlo costa un pallino.
+int8_t orbitDrawn = -1;
+
+void drawOrbit(const SynthView &v, bool force) {
+    const bool running = (v.seqMode != Sequencer::SEQ_IDLE);
+    const int8_t want = running ? (int8_t)v.seqStep : (int8_t)-1;
+    if (!force && want == orbitDrawn) return;
+    if (orbitDrawn >= 0) {
+        int x, y;
+        polar((float)orbitDrawn * 22.5f, 94.0f, x, y);
+        gfx->fillCircle(x, y, 3, BLACK);
     }
+    if (want >= 0) {
+        int x, y;
+        polar((float)want * 22.5f, 94.0f, x, y);
+        gfx->fillCircle(x, y, 3,
+                        (v.seqMode == Sequencer::SEQ_RECORDING) ? HUD_RED : HUD_LIME);
+    }
+    orbitDrawn = want;
 }
 
 // Preconteggio: il pattern gira gia', ma qui conta solo sapere quando si parte.
-// Oltre alla cifra ci sono quattro pallini che si spengono: il conto alla
-// rovescia si segue con la coda dell'occhio, senza rileggere il numero.
 void drawCountIn(const SynthView &v, bool full) {
-    if (full) chrome("COUNT IN", HUD_RED);
     if (!full && v.countIn == prev.countIn) return;
-
+    contentFill(66, 90);
     char buf[4];
     snprintf(buf, sizeof(buf), "%d", (int)v.countIn);
-    gfx->fillRect(60, 76, 120, 84, BLACK);
-    textCentered(buf, 76, 10, HUD_RED);
-
-    constexpr int DOT_R = 8, DOT_GAP = 30;
-    const int x0 = CX - (3 * DOT_GAP) / 2;
-    for (int i = 0; i < 4; ++i) {
-        const int x = x0 + i * DOT_GAP;
-        if (i < v.countIn) {
-            gfx->fillCircle(x, 178, DOT_R, HUD_RED);
-        } else {
-            gfx->fillCircle(x, 178, DOT_R, BLACK);
-            gfx->drawCircle(x, 178, DOT_R, HUD_TRACK);
-        }
-    }
-
-    clearBand(200, 8);
-    textCentered("SUONA AL VIA", 200, 1, HUD_LABEL);
+    textCentered(buf, 74, 8, HUD_RED);
+    radialTicks(48, 56, 4, 150.0f, 210.0f, v.countIn, HUD_RED, HUD_TRACK);
+    textCentered("SUONA AL VIA", 144, 1, HUD_LABEL);
 }
 
-void drawSeqScreen(const SynthView &v, bool full) {
-    // Svuotare 16 step con una pressione lunga e' un'azione che non lascia
-    // traccia: senza una conferma esplicita si resta col dubbio di aver solo
-    // fermato il loop. Resta a schermo un secondo e mezzo.
-    const bool cleared = (v.clearedAgo > 0 && v.clearedAgo < 1500);
-    const bool wasCleared = (prev.clearedAgo > 0 && prev.clearedAgo < 1500);
-    if (cleared != wasCleared) full = true;
-
+void drawRitmoScreen(const SynthView &v, bool full) {
     if (v.countIn > 0) {
         drawCountIn(v, full || prev.countIn == 0);
+        drawOrbit(v, full);
         return;
     }
-    // Uscendo dal preconteggio la schermata va ricostruita da zero.
     if (prev.countIn > 0) full = true;
 
-    if (full) {
-        chrome(v.seqEditing ? "STEP EDIT" : "SEQUENCER", v.seqEditing ? HUD_ICE : HUD_MAGENTA);
-        // In step edit i tasti nota scrivono invece di suonare e la leva ARP
-        // diventa il legato: e' il momento in cui una legenda serve di piu'.
-        textCentered(v.seqEditing ? "TASTI SCRIVONO   ARP: LEGATO"
-                                  : "TIENI REC: EDIT   PLAY: SVUOTA",
-                     180, 1, HUD_LABEL);
-    }
-
-    if (cleared) {
-        clearBand(56, 22);
-        hudChipCentered(56, "PATTERN VUOTO", HUD_RED, 1);
-    }
-
-    const bool modeChanged =
-        (!cleared) && (full || v.seqMode != prev.seqMode || v.seqEditing != prev.seqEditing);
-    if (modeChanged) {
-        // Lo stato del trasporto e' una targhetta piena: il colore lo riconosci
-        // prima di aver letto la parola, che e' quello che serve mentre suoni.
-        clearBand(56, 22);
+    // Lo stato del trasporto e' una targhetta piena: il colore lo riconosci prima
+    // di aver letto la parola, che e' quello che serve mentre suoni.
+    if (full || v.seqMode != prev.seqMode || v.seqEditing != prev.seqEditing) {
+        gfx->fillRect(58, CHIP_Y, CHIP_X1 - 58, 14, BLACK);
         const char *label = "STOP";
         uint16_t col = HUD_LABEL;
         if (v.seqMode == Sequencer::SEQ_RECORDING) {
@@ -681,307 +1119,85 @@ void drawSeqScreen(const SynthView &v, bool full) {
             label = "PLAY";
             col = HUD_LIME;
         }
-        hudChipCentered(56, label, col, 2);
+        hudChip(62, CHIP_Y, label, col, 1);
+        // A giro fermo i tredici tasti scrivono invece di limitarsi a suonare:
+        // e' l'unico momento in cui una tastiera fa due cose, e va detto.
+        if (v.seqEditing) {
+            hudChip(CHIP_X1 - hudChipWidth("SCRIVI", 1), CHIP_Y, "SCRIVI", HUD_ICE, 1);
+        }
     }
 
-    const bool patternChanged = full || modeChanged || v.seqRev != prev.seqRev;
+    const bool patternChanged = full || v.seqRev != prev.seqRev || v.seqMode != prev.seqMode ||
+                                v.seqEditing != prev.seqEditing;
     const bool marksMoved = v.seqStep != prev.seqStep || v.seqCursor != prev.seqCursor;
 
     if (patternChanged) {
         for (int i = 0; i < SEQ_STEPS; ++i) drawStepCell(v, i);
     } else if (marksMoved) {
-        // A tempo alto la testina si sposta ogni 60 ms: ridisegnare tutte e 16
-        // le celle sprecherebbe SPI. Bastano quelle che ha lasciato e quelle
-        // che ha appena preso.
+        // A tempo alto la testina si sposta ogni 60 ms: ridisegnare tutte e sedici
+        // le celle sprecherebbe SPI. Bastano quelle che ha lasciato e quelle che
+        // ha appena preso.
         drawStepCell(v, prev.seqStep);
         drawStepCell(v, prev.seqCursor);
         drawStepCell(v, v.seqStep);
         drawStepCell(v, v.seqCursor);
     }
 
-    // Riga di dettaglio: in editing conta lo step sotto il cursore, altrimenti
-    // la posizione nella battuta.
-    if (patternChanged || marksMoved) {
+    // Il grande leggio: il passo sotto il cursore e cosa c'e' scritto dentro. E'
+    // il valore della manopola NOTA, che da sola sostituisce i tre gesti nascosti
+    // con cui prima si scriveva una pausa, un legato o una nota.
+    if (patternChanged || marksMoved ||
+        (v.seqNoteName != prev.seqNoteName && v.seqNoteName && prev.seqNoteName &&
+         strcmp(v.seqNoteName, prev.seqNoteName) != 0)) {
+        contentFill(126, 26);
         char buf[24];
-        if (v.seqEditing) {
-            const Sequencer::Step &s = Sequencer::stepAt(v.seqCursor);
-            if (s.note == SEQ_TIE) {
-                snprintf(buf, sizeof(buf), "%02d  LEGATO", v.seqCursor + 1);
-            } else if (!validNote(s.note)) {
-                snprintf(buf, sizeof(buf), "%02d  ---", v.seqCursor + 1);
-            } else {
-                snprintf(buf, sizeof(buf), "%02d  %s %+d", v.seqCursor + 1,
-                         NOTE_NAMES_IT[s.note], (int)s.oct);
-            }
-        } else {
-            snprintf(buf, sizeof(buf), "%02d/%d", v.seqStep + 1, SEQ_STEPS);
-        }
-        clearBand(140, 18);
-        textCentered(buf, 140, 2, v.seqEditing ? WHITE : HUD_ICE);
+        snprintf(buf, sizeof(buf), "%02d %s", v.seqCursor + 1,
+                 v.seqNoteName ? v.seqNoteName : "");
+        textCentered(buf, 128, 3, v.seqEditing ? WHITE : HUD_ICE);
     }
 
-    if (full || v.hold != prev.hold || v.arp != prev.arp || v.bpm != prev.bpm ||
-        v.poly != prev.poly) {
-        // Fascia stretta sul solo BPM: con i 18 px di prima la pulizia arrivava a
-        // toccare la legenda qui sotto e ne mangiava la prima riga ad ogni
-        // cambio di tempo.
-        clearBand(162, 16);
-        char buf[24];
-        snprintf(buf, sizeof(buf), "%d BPM", (int)v.bpm);
-        textCentered(buf, 162, 2, HUD_AMBER);
-
-        // Tre targhette invece di una riga di testo: acceso e spento si
-        // distinguono per pieno contro contorno, non per sfumatura di grigio.
-        clearBand(190, 15);
-        struct Flag {
-            const char *label;
-            bool on;
-            uint16_t color;
-        } flags[3] = {
-            {"HOLD", v.hold, HUD_NEON},
-            {"ARP", v.arp, HUD_MAGENTA},
-            {v.poly ? "POLI" : "MONO", v.poly, HUD_LIME},
-        };
-        int total = 0;
-        for (int i = 0; i < 3; ++i) total += hudChipWidth(flags[i].label, 1) + 6;
-        int x = CX - (total - 6) / 2;
-        for (int i = 0; i < 3; ++i) {
-            const int w = hudChipWidth(flags[i].label, 1);
-            if (flags[i].on) {
-                hudChip(x, 190, flags[i].label, flags[i].color, 1);
-            } else {
-                gfx->drawRect(x, 190, w, 14, HUD_TRACK);
-                textAt(flags[i].label, x + 5, 193, 1, HUD_LABEL);
-            }
-            x += w + 6;
-        }
-    }
+    drawOrbit(v, full);
 }
 
-void drawAdsrScreen(const SynthView &v, bool full) {
-    if (full) chrome("ADSR", HUD_RED);
-
-    struct Row {
-        const char *label;
-        float frac;
-        char value[12];
-        uint16_t color;
-    } rows[4];
-
-    // frazioni normalizzate sui range dichiarati, per le mini-barre
-    rows[0].label = "A";
-    rows[0].frac = logf(v.attackMs / 2.0f) / logf(250.0f);
-    snprintf(rows[0].value, sizeof(rows[0].value), "%d ms", (int)v.attackMs);
-    rows[0].color = HUD_RED;
-
-    rows[1].label = "D";
-    rows[1].frac = (v.decayMs - 5.0f) / 995.0f;
-    snprintf(rows[1].value, sizeof(rows[1].value), "%d ms", (int)v.decayMs);
-    rows[1].color = HUD_MAGENTA;
-
-    rows[2].label = "S";
-    rows[2].frac = v.sustain;
-    snprintf(rows[2].value, sizeof(rows[2].value), "%d %%", (int)(v.sustain * 100.0f + 0.5f));
-    rows[2].color = HUD_AMBER;
-
-    rows[3].label = "R";
-    rows[3].frac = logf(v.releaseMs / 10.0f) / logf(200.0f);
-    snprintf(rows[3].value, sizeof(rows[3].value), "%d ms", (int)v.releaseMs);
-    rows[3].color = HUD_LIME;
-
-    bool changed[4] = {
-        full || fabsf(v.attackMs - prev.attackMs) > 0.5f,
-        full || fabsf(v.decayMs - prev.decayMs) > 0.5f,
-        full || fabsf(v.sustain - prev.sustain) > 0.005f,
-        full || fabsf(v.releaseMs - prev.releaseMs) > 0.5f,
-    };
-
-    // Con quattro encoder la storia delle modalita' da ricordare finisce qui:
-    // un parametro per manopola, nello stesso ordine in cui sono scritti.
-    if (full) {
-        clearBand(196, 10);
-        textCentered("1=A  2=D  3=S  4=R", 196, 1, HUD_LABEL);
-    }
-
-    // Righe strette abbastanza da restare dentro l'area circolare anche in basso.
-    // La lettera del parametro sta su una targhetta piena: quattro barre uguali
-    // una sopra l'altra si confondono, il quadrato colorato le ancora.
-    const int y0 = 62, dy = 34;
-    for (int i = 0; i < 4; ++i) {
-        if (!changed[i]) continue;
-        const int y = y0 + i * dy;
-        gfx->fillRect(28, y, 186, 26, BLACK);
-        gfx->fillRect(30, y, 18, 18, rows[i].color);
-        textAt(rows[i].label, 33, y + 1, 2, BLACK);
-        // Il numero e' l'unica cosa che leggi mentre giri la manopola, e a size 1
-        // sul vetro da 1.28" e' alto un millimetro scarso. Va a size 2 come i
-        // valori di LEVELS e SETTINGS; lo spazio glielo cede la barra, che
-        // scende da 12 a 7 segmenti senza perdere niente — dice una frazione di
-        // corsa, non una misura. y+1 e non y+5 perche' il testo ora e' alto 16
-        // px dentro una targhetta di 18.
-        hudBar(54, y, 60, 18, rows[i].frac, dim565(rows[i].color, 1, 2), rows[i].color);
-        textRight(rows[i].value, 212, y + 1, 2, HUD_ICE);
-    }
-}
-
-// ------------------------------------------------------------- impostazioni
+// ----------------------------------------------------------------- LIVELLO
 //
-// Quattro righe, una selezionata. Encoder 1 sceglie la riga, encoder 2 cambia il
-// valore: i due encoder qui non fanno cutoff e volume, e va bene cosi' — sei
-// fermo su una schermata di regolazione, il suono puo' aspettare.
+// Il VU diventa concentrico al vetro invece di avere il perno sul fondo: su un
+// display tondo un quadrante che gira attorno al centro e' la forma che il vetro
+// chiede, e la corsa passa da 110 a 200 gradi.
 //
-// I valori sono scritti in **giri di manopola** e non in frazioni di corsa:
-// "2.4 giri" dice quello che ti interessa davvero, "1/48 di corsa per scatto" no.
-// Due stati. Fuori dal menu si leggono solo i valori, con l'invito a entrare;
-// dentro compare il cursore e i comandi cambiano significato: il tasto che
-// normalmente scorre le schermate qui scorre le voci, e tenendolo premuto si
-// esce. Le voci sono raggruppate per categoria perche' la rete e la sensibilita'
-// degli encoder non hanno niente a che vedere fra loro.
-constexpr int SET_TOP = 50;
-constexpr int SET_HEADER_H = 15;
-constexpr int SET_ROW_H = 22;
-// Le voci sono dieci e il vetro e' tondo: cinque per volta sono quante ne
-// stanno senza che la prima e l'ultima finiscano sotto la ghiera. La finestra
-// segue il cursore invece di paginare, cosi' scorrendo non si perde il contesto.
-constexpr int SET_VISIBLE = 5;
-
-int settingsFirst = 0;
-int settingsFirstDrawn = -1;
-
-// Prima voce della finestra, calcolata perche' il cursore ci stia dentro.
-int settingsWindowStart(int cursor) {
-    int first = settingsFirst;
-    if (cursor < first) first = cursor;
-    if (cursor > first + SET_VISIBLE - 1) first = cursor - SET_VISIBLE + 1;
-    if (first > SETTING_MENU_COUNT - SET_VISIBLE) first = SETTING_MENU_COUNT - SET_VISIBLE;
-    if (first < 0) first = 0;
-    return first;
-}
-
-// Quota della riga i-esima *dentro la finestra corrente*, contando le
-// intestazioni di categoria che la precedono.
-int settingsRowY(int which) {
-    int y = SET_TOP;
-    for (int i = settingsFirst; i <= which; ++i) {
-        if (Settings::ENTRIES[i].category) y += SET_HEADER_H;
-        if (i < which) y += SET_ROW_H;
-    }
-    return y;
-}
-
-void drawSettingsScreen(const SynthView &v, bool full) {
-    const bool editing = v.setEditing;
-
-    settingsFirst = settingsWindowStart(editing ? v.setCursor : 0);
-    const int last = settingsFirst + SET_VISIBLE - 1;
-
-    if (full || editing != prev.setEditing || settingsFirst != settingsFirstDrawn) {
-        chrome("SETTINGS", HUD_NEON);
-        for (int i = settingsFirst; i <= last; ++i) {
-            if (!Settings::ENTRIES[i].category) continue;
-            const int hy = settingsRowY(i) - SET_HEADER_H;
-            textAt(Settings::ENTRIES[i].category, 30, hy + 2, 1, HUD_LABEL);
-            const int lx = 30 + 6 * (int)strlen(Settings::ENTRIES[i].category) + 6;
-            gfx->drawFastHLine(lx, hy + 6, 200 - lx, dim565(HUD_NEON, 1, 4));
-        }
-        // Due frecce ai lati dicono che sopra o sotto c'e' dell'altro: senza,
-        // una finestra su dieci voci sembra il menu intero.
-        if (settingsFirst > 0) gfx->fillTriangle(212, 60, 206, 68, 218, 68, HUD_LABEL);
-        if (last < SETTING_MENU_COUNT - 1) {
-            gfx->fillTriangle(212, 186, 206, 178, 218, 178, HUD_LABEL);
-        }
-        settingsFirstDrawn = settingsFirst;
-        full = true;
-    }
-
-    for (int i = settingsFirst; i <= last; ++i) {
-        const bool sel = editing && (i == v.setCursor);
-        const bool wasSel = prev.setEditing && (i == prev.setCursor);
-        if (!full && v.setIndex[i] == prev.setIndex[i] && sel == wasSel) continue;
-
-        const int y = settingsRowY(i);
-        // L'ultima voce (MODALITA' WIFI) sta a y=174 e la sua riga arriva a
-        // y=193: li' il cerchio si e' gia' stretto e l'anello passa a x=29 e
-        // x=211. Il rettangolo di pulizia largo 26..215 se lo portava via, e la
-        // barretta del cursore a x=28 finiva a ridipingerne un pixel di
-        // magenta. Con 31..209 e la barretta a 32 restano due pixel di nero fra
-        // la riga e la cornice, e sulle righe alte non cambia niente perche'
-        // li' di spazio ce n'era d'avanzo.
-        gfx->fillRect(31, y, 179, SET_ROW_H - 2, BLACK);
-        if (sel) gfx->fillRect(32, y + 1, 4, SET_ROW_H - 4, HUD_MAGENTA);
-
-        textAt(Settings::ENTRIES[i].label, 42, y + 6, 1, sel ? HUD_ICE : HUD_LABEL);
-        if (Settings::isAction(i)) {
-            textRight("ATTIVA", 208, y + 3, 2, sel ? HUD_AMBER : dim565(HUD_AMBER, 1, 2));
-        } else {
-            textRight(Settings::valueLabel(i, v.setIndex[i]), 208, y + 3, 2,
-                      sel ? HUD_AMBER : HUD_LABEL);
-        }
-    }
-
-    // Riga di aiuto: dice sempre cosa fa il tasto adesso, perche' lo stesso
-    // pulsante ha tre significati diversi a seconda di dove sei.
-    //
-    // Nessuna di queste stringhe puo' superare i 24 caratteri. E' la quota che
-    // detta il limite: a y=208, l'ultima riga di pixel del glifo, il cerchio
-    // dell'area dei contenuti lascia solo 75 px per lato, e la fascia che
-    // ripulisce la riga si stringe di conseguenza. Con i 28 caratteri di prima
-    // il testo partiva da x=36, cioe' fuori dal vetro, e la prima e l'ultima
-    // lettera finivano sotto la ghiera.
-    const char *hint;
-    if (!editing) {
-        hint = "TIENI PREMUTO: MODIFICA";
-    } else if (Settings::isAction(v.setCursor)) {
-        hint = "PREMI: ESEGUI  ENC1: SU";
-    } else {
-        hint = "PREMI: GIU'  TIENI: ESCI";
-    }
-    static const char *lastHint = nullptr;
-    if (full || hint != lastHint) {
-        // Alta 8 e non 10: il glifo size 1 occupa y 202..208 e non serve altro.
-        // Due righe in meno vogliono dire una fascia piu' larga di 6 px, che e'
-        // esattamente quello che ci vuole per starci dentro con 24 caratteri.
-        clearBand(202, 8);
-        textCentered(hint, 202, 1, Settings::isAction(v.setCursor) && editing ? HUD_RED
-                                                                             : HUD_LABEL);
-        lastHint = hint;
-    }
-}
-
-// -------------------------------------------------------------- VU meter
+// La geometria resta a raggi separati, che era gia' la cosa giusta: niente si
+// sovrappone, quindi ogni elemento si cancella ridisegnandosi in nero senza
+// rovinare quello che ha accanto.
 //
-// Ago analogico con perno in basso: su un display tondo e' la forma che sfrutta
-// meglio lo spazio. La scala e' in dBFS da -40 a 0, lineare sull'angolo.
+//   r <= 44   ago
+//   r 46..52  indicatore di picco
+//   r 52..60  tacche
+//   r 60      arco della scala
+//   r 72      numeri della scala
 //
-// Geometria pensata perche' niente si sovrapponga, cosi' ogni elemento si puo'
-// cancellare ridisegnandosi in nero senza rovinare quello che ha accanto:
-//
-//   raggio  92        punta dell'ago
-//   raggio  93..97    indicatore di picco
-//   raggio  98..110   tacche
-//   raggio 110        arco della scala
-//   raggio 121        numeri della scala
-//
-constexpr int VU_PX = 120;  // perno
-constexpr int VU_PY = 194;
-constexpr float VU_SWEEP = 0.9599f;  // 55 gradi per lato, in radianti
-constexpr int VU_NEEDLE_R = 92;
-constexpr int VU_MARK_IN = 93;
-constexpr int VU_MARK_OUT = 97;
-constexpr int VU_TICK_R = 98;
-constexpr int VU_ARC_R = 110;
-constexpr int VU_LABEL_R = 121;
+// Tutto sta dentro il raggio 78, cioe' sotto le didascalie delle manopole: un
+// quadrante che si allargasse fino al bordo se le mangerebbe, e su questa
+// schermata la manopola viva e' proprio quella del volume.
+constexpr int VU_PX = 120;
+constexpr int VU_PY = 120;
+constexpr float VU_SWEEP = 100.0f;  // gradi per lato
+constexpr int VU_NEEDLE_R = 44;
+constexpr int VU_MARK_IN = 46;
+constexpr int VU_MARK_OUT = 52;
+constexpr int VU_TICK_R = 52;
+constexpr int VU_ARC_R = 60;
+constexpr int VU_LABEL_R = 72;
 constexpr float VU_DB_MIN = -40.0f;
 constexpr float VU_RED_ZONE = 0.8f;  // -8 dBFS: da qui in su si rischia il clip
 
 // Punto sulla corsa dell'ago: pos 0 = fondo scala sinistro, 1 = destro.
 void vuPoint(float pos, int r, int &x, int &y) {
-    const float a = (pos * 2.0f - 1.0f) * VU_SWEEP;
+    const float deg = (pos * 2.0f - 1.0f) * VU_SWEEP;
+    const float a = deg * (float)M_PI / 180.0f;
     x = VU_PX + (int)((float)r * sinf(a));
     y = VU_PY - (int)((float)r * cosf(a));
 }
 
-// Ampiezza lineare -> posizione sulla scala in dB.
 float vuPos(float lin) {
     if (lin <= 0.0001f) return 0.0f;
     const float db = 20.0f * log10f(lin);
@@ -990,8 +1206,8 @@ float vuPos(float lin) {
     return (db - VU_DB_MIN) / -VU_DB_MIN;
 }
 
-// Ago e indicatore di picco: la stessa funzione disegna e cancella (in nero), per
-// costruzione tocca esattamente gli stessi pixel.
+// Ago e picco: la stessa funzione disegna e cancella (in nero), per costruzione
+// tocca esattamente gli stessi pixel.
 void vuNeedle(float pos, uint16_t color) {
     int x, y;
     vuPoint(pos, VU_NEEDLE_R, x, y);
@@ -1012,8 +1228,8 @@ void vuScale() {
     gfx->startWrite();
     int px, py;
     vuPoint(0.0f, VU_ARC_R, px, py);
-    for (int i = 1; i <= 44; ++i) {
-        const float p = (float)i / 44.0f;
+    for (int i = 1; i <= 60; ++i) {
+        const float p = (float)i / 60.0f;
         int x, y;
         vuPoint(p, VU_ARC_R, x, y);
         const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_LIME;
@@ -1024,8 +1240,12 @@ void vuScale() {
     }
     gfx->endWrite();
 
-    for (int i = 0; i <= 4; ++i) {
-        const float p = (float)i / 4.0f;
+    // Sei valori marcati, e nessuno in cima: a 12 in punto il numero cadrebbe
+    // sulla riga di separazione. Restano -40, -32, -24 a sinistra e -16, -8, 0 a
+    // destra, con lo zero rosso al fondo scala, dove serve.
+    const float marks[6] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
+    for (int i = 0; i < 6; ++i) {
+        const float p = marks[i];
         const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_ICE;
         int x0, y0, x1, y1;
         vuPoint(p, VU_TICK_R, x0, y0);
@@ -1036,11 +1256,11 @@ void vuScale() {
         snprintf(lbl, sizeof(lbl), "%d", (int)(VU_DB_MIN * (1.0f - p)));
         int lx, ly;
         vuPoint(p, VU_LABEL_R, lx, ly);
-        textAt(lbl, lx - 3 * (int)strlen(lbl), ly - 4, 1, c);
+        textAtPoint(lbl, lx, ly, 1, c);
     }
 }
 
-void drawVuScreen(const SynthView &, bool full) {
+void drawLivelloScreen(const SynthView &, bool full) {
     static float lastNeedle = -1.0f;
     static float lastMark = -1.0f;
     static float peakHold = 0.0f;
@@ -1050,9 +1270,6 @@ void drawVuScreen(const SynthView &, bool full) {
     static char lastPk[20] = "";
 
     if (full) {
-        chrome("VU", HUD_LIME);
-        textAt("dBFS", 56, 58, 1, HUD_LABEL);
-        textAt("CLIP", 146, 58, 1, HUD_LABEL);
         vuScale();
         gfx->fillCircle(VU_PX, VU_PY, 5, HUD_ICE);
         lastNeedle = -1.0f;
@@ -1061,9 +1278,8 @@ void drawVuScreen(const SynthView &, bool full) {
         lastClip = true;  // forza il primo disegno della spia
         lastRms[0] = '\0';
         lastPk[0] = '\0';
-        // Il picco si e' accumulato per tutto il tempo in cui la schermata non
-        // era a video: si butta, altrimenti si entrerebbe sempre con la spia
-        // di clip accesa.
+        // Il picco si e' accumulato per tutto il tempo in cui la schermata non era
+        // a video: si butta, altrimenti si entrerebbe sempre col clip acceso.
         AudioEngine::peakLevel();
     }
 
@@ -1087,7 +1303,6 @@ void drawVuScreen(const SynthView &, bool full) {
     if (fabsf(pos - lastNeedle) > 0.002f) {
         if (lastNeedle >= 0.0f) vuNeedle(lastNeedle, BLACK);
         vuNeedle(pos, HUD_ICE);
-        gfx->fillCircle(VU_PX, VU_PY, 5, HUD_ICE);  // il perno copre la base
         lastNeedle = pos;
     }
     if (fabsf(peakHold - lastMark) > 0.002f) {
@@ -1096,9 +1311,10 @@ void drawVuScreen(const SynthView &, bool full) {
         lastMark = peakHold;
     }
 
+    // La spia di clip e' il perno stesso: e' il punto dove l'occhio guarda gia'.
     const bool clip = (peak >= 0.999f);
-    if (clip != lastClip) {
-        gfx->fillCircle(182, 62, 5, clip ? HUD_RED : HUD_TRACK);
+    if (clip != lastClip || fabsf(pos - lastNeedle) < 0.0001f) {
+        gfx->fillCircle(VU_PX, VU_PY, 5, clip ? HUD_RED : HUD_ICE);
         lastClip = clip;
     }
 
@@ -1109,13 +1325,13 @@ void drawVuScreen(const SynthView &, bool full) {
         snprintf(buf, sizeof(buf), "-inf dB");
     }
     if (strcmp(buf, lastRms) != 0) {
-        // 140 px di pulizia per 8 caratteri ("-66.0 dB" e' il piu' lungo, 96 px
-        // da x=72 a x=167) erano una fascia larga il doppio del necessario, e a
-        // y=217 arrivava a mangiarsi l'anello: li' il cerchio passa a x=53 e
-        // x=187, dentro il vecchio 50..189. Con 66..173 il testo e' coperto con
-        // sei pixel di margine per lato e la cornice resta intera.
-        gfx->fillRect(66, 202, 108, 16, BLACK);
-        textCentered(buf, 202, 2, HUD_ICE);
+        // A 136 e non a 132: i due numeri di fondo scala stanno a raggio 72 sui
+        // fianchi, cioe' sulle righe 128..135, e una gomma che partisse da li' se
+        // ne porterebbe via la meta' inferiore ad ogni cambio di livello — un
+        // difetto che poi non si richiude, perche' la scala si disegna una volta
+        // sola entrando nella schermata.
+        contentFill(136, 17);
+        textCentered(buf, 136, 2, HUD_ICE);
         strncpy(lastRms, buf, sizeof(lastRms) - 1);
     }
 
@@ -1126,153 +1342,14 @@ void drawVuScreen(const SynthView &, bool full) {
         snprintf(pk, sizeof(pk), "pk --");
     }
     if (strcmp(pk, lastPk) != 0) {
-        // Quota bassissima, a 109 px dal centro: qui il vetro lascia poco piu' di
-        // 80 px di corda. "pk -40 dB" sono 9 caratteri, 54 px da x=93 a x=146:
-        // basta e avanza una fascia da 88 a 159. Con la vecchia 72..167 si
-        // spegnevano i pixel di cornice del fondo, dove l'anello passa a x=77 e
-        // x=162.
-        gfx->fillRect(88, 222, 72, 8, BLACK);
-        textCentered(pk, 222, 1, HUD_LABEL);
+        // Fascia stretta e centrata a mano: a questa quota gli archi delle
+        // manopole passano gia' ai due fianchi, e una gomma sulla corda ne
+        // porterebbe via le punte.
+        gfx->fillRect(CX - 40, 155, 80, 8, BLACK);
+        textCentered(pk, 155, 1, HUD_LABEL);
         strncpy(lastPk, pk, sizeof(lastPk) - 1);
     }
 }
-
-// ---------------------------------------------------------- oscilloscopio
-//
-// Una colonna di pixel per campione: la finestra catturata dal motore audio e'
-// lunga esattamente quanto il riquadro e' largo. Ogni fotogramma si cancella solo
-// il segmento verticale che la traccia precedente occupava in quella colonna, si
-// rimette la griglia dove passava, e si disegna il segmento nuovo: nessuna
-// pulizia a tutto riquadro, quindi nessun lampeggio.
-constexpr int SC_X0 = 30;
-constexpr int SC_W = SCOPE_SAMPLES;  // 180
-constexpr int SC_CY = 130;
-constexpr int SC_H2 = 50;
-constexpr uint16_t SC_GRID = HUD_TRACK;
-const int SC_GRID_Y[4] = {SC_CY - SC_H2, SC_CY - SC_H2 / 2, SC_CY + SC_H2 / 2, SC_CY + SC_H2};
-
-void scopeGrid() {
-    for (int g = 0; g < 4; ++g) gfx->drawFastHLine(SC_X0, SC_GRID_Y[g], SC_W, SC_GRID);
-    // asse dello zero tratteggiato: si distingue dalle altre a colpo d'occhio
-    for (int i = 0; i < SC_W; i += 6) gfx->drawFastHLine(SC_X0 + i, SC_CY, 3, HUD_LABEL);
-}
-
-inline bool scopeIsDash(int i) { return (i % 6) < 3; }
-
-void drawScopeScreen(const SynthView &v, bool full) {
-    static int8_t samples[SCOPE_SAMPLES];
-    static int16_t colTop[SCOPE_SAMPLES];
-    static uint8_t colH[SCOPE_SAMPLES];
-    static bool traced = false;
-    static float zoom = 1.0f;
-    static char lastInfo[28] = "";
-
-    if (full) {
-        chrome("SCOPE", HUD_NEON);
-        scopeGrid();
-        traced = false;
-        zoom = 1.0f;
-        lastInfo[0] = '\0';
-    }
-
-    // Finestra nuova o niente: senza aggancio fresco si tiene a video l'ultima.
-    if (!AudioEngine::copyScope(samples)) return;
-
-    int peak = 1;
-    for (int i = 0; i < SCOPE_SAMPLES; ++i) {
-        const int a = (samples[i] < 0) ? -samples[i] : samples[i];
-        if (a > peak) peak = a;
-    }
-    // Zoom automatico: con il volume a meta' e la compensazione di polifonia la
-    // traccia a scala fissa sarebbe una riga quasi piatta. Il fattore insegue il
-    // valore giusto lentamente, altrimenti l'onda "respira" ad ogni fotogramma.
-    float target = 110.0f / (float)peak;
-    if (target > 8.0f) target = 8.0f;
-    if (target < 1.0f) target = 1.0f;
-    // Entrando nella schermata si parte gia' in scala; da li' in poi si insegue.
-    zoom = traced ? (zoom + (target - zoom) * 0.15f) : target;
-
-    const float scale = zoom * ((float)SC_H2 / 127.0f);
-
-    gfx->startWrite();
-    int prevY = SC_CY;
-    for (int i = 0; i < SCOPE_SAMPLES; ++i) {
-        int y = SC_CY - (int)((float)samples[i] * scale);
-        if (y < SC_CY - SC_H2) y = SC_CY - SC_H2;
-        if (y > SC_CY + SC_H2) y = SC_CY + SC_H2;
-        if (i == 0) prevY = y;
-
-        const int x = SC_X0 + i;
-
-        if (traced) {
-            gfx->writeFastVLine(x, colTop[i], colH[i], BLACK);
-            // La cancellazione porta via anche la griglia: si rimette solo dove
-            // passava davvero, un pixel alla volta.
-            for (int g = 0; g < 4; ++g) {
-                if (SC_GRID_Y[g] >= colTop[i] && SC_GRID_Y[g] < colTop[i] + colH[i]) {
-                    gfx->writePixel(x, SC_GRID_Y[g], SC_GRID);
-                }
-            }
-            if (scopeIsDash(i) && SC_CY >= colTop[i] && SC_CY < colTop[i] + colH[i]) {
-                gfx->writePixel(x, SC_CY, HUD_LABEL);
-            }
-        }
-
-        // Il segmento copre il salto rispetto alla colonna precedente: sui fronti
-        // ripidi (quadra, dente di sega) la traccia resta continua.
-        const int top = (y < prevY) ? y : prevY;
-        const int h = ((y < prevY) ? (prevY - y) : (y - prevY)) + 1;
-        gfx->writeFastVLine(x, top, h, HUD_LIME);
-
-        colTop[i] = (int16_t)top;
-        colH[i] = (uint8_t)h;
-        prevY = y;
-    }
-    gfx->endWrite();
-    traced = true;
-
-    char info[28];
-    snprintf(info, sizeof(info), "%s  zoom x%.1f", WAVEFORM_NAMES[v.waveform], zoom);
-    if (strcmp(info, lastInfo) != 0) {
-        // La riga piu' lunga possibile e' "TRIANGLE  zoom x8.0": 19 caratteri,
-        // 114 px da x=63 a x=176. I 200 px di prima erano quasi tutto il
-        // quadrato e a y=199 tagliavano l'anello di netto su tutti e due i
-        // fianchi, dove passa a x=33 e x=206. 128 px bastano con sette pixel di
-        // margine per lato.
-        gfx->fillRect(56, 192, 128, 8, BLACK);
-        textCentered(info, 192, 1, HUD_LABEL);
-        strncpy(lastInfo, info, sizeof(lastInfo) - 1);
-    }
-}
-
-// ------------------------------------------------------------ schermata rete
-
-// Anticamera: la radio e' ancora spenta. Serve un gesto deliberato per
-// accenderla, perche' da li' in poi il synth resta muto fino al riavvio.
-void drawNetworkIdleScreen(const SynthView &, bool full) {
-    if (!full) return;
-    chrome("NETWORK", HUD_NEON);
-    textCentered("AGGIORNAMENTO FIRMWARE", CONTENT_TOP, 1, HUD_LABEL);
-    textCentered("via WiFi", 70, 2, HUD_ICE);
-
-    // Il gesto e' il contenuto della schermata: sta su una targhetta, non in
-    // mezzo a una frase.
-    textCentered("tieni premuto", 104, 1, HUD_LABEL);
-    hudChipCentered(118, "SCORRI DISPLAY", HUD_NEON, 1);
-    textCentered("per 1 secondo", 140, 1, HUD_LABEL);
-
-    // Avvertenza in fondo, con la barra rossa a sinistra: e' l'unica cosa della
-    // schermata che vale la pena leggere due volte.
-    // Il blocco sale di 6 px per la stessa ragione del gemello su UPDATE: a x=34
-    // siamo a 86 px dal centro, e li' l'anello interno passa gia' a y=199. La
-    // barretta che finiva a 201 gli si appoggiava sopra per le ultime tre
-    // righe. Finendo a 195 resta a raggio 114, con il suo margine di nero.
-    gfx->fillRect(34, 162, 3, 34, HUD_RED);
-    textAt("DA QUI IN POI", 46, 164, 1, HUD_RED);
-    textAt("il synth resta muto", 46, 176, 1, HUD_LABEL);
-    textAt("fino al riavvio", 46, 188, 1, HUD_LABEL);
-}
-
 // ---------------------------------------------------------------- QR code
 //
 // Versione 3 fissa (29x29 moduli) piu' 2 moduli di margine chiaro per lato: con
@@ -1506,66 +1583,128 @@ void splash() {
     delay(PACE_HOLD_MS);
 }
 
+
 // ------------------------------------------- apprendimento dei LED dei tasti
 //
-// Venti tasti, venti LED, e nessun documento che dica in che ordine sono
-// collegati fra loro: la scheda accende un LED e chiede di premere il tasto che
-// si e' illuminato. Venti pressioni e la mappa e' fatta per sempre.
+// Fuori dall'anello: niente corona di posizione e niente corona di comandi, perche'
+// qui le manopole sono morte davvero — il synth e' muto e l'unica cosa da fare e'
+// premere il tasto che si e' acceso.
 void drawLedLearnScreen(const SynthView &v, bool full) {
     if (full) {
         chrome("LUCI", HUD_LIME);
-        textCentered("PREMI IL TASTO", 74, 2, HUD_ICE);
-        textCentered("CHE SI E' ACCESO", 96, 2, HUD_ICE);
-        textCentered("FN7 A LUNGO: ANNULLA", 194, 1, HUD_LABEL);
+        textCentered("PREMI IL TASTO ACCESO", CONTENT_TOP + 12, 1, HUD_LABEL);
+        hudChipCentered(190, "SINISTRA PER USCIRE", HUD_TRACK, 1);
     }
+    if (!full && v.ledLearnIndex == prev.ledLearnIndex) return;
 
-    if (full || v.ledLearnIndex != prev.ledLearnIndex) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d / %d", v.ledLearnIndex + 1, KEYLED_COUNT);
-        gfx->fillRect(50, 126, 140, 24, BLACK);
-        textCentered(buf, 126, 3, HUD_AMBER);
-        hudBar(50, 158, 140, 12, (float)v.ledLearnIndex / (float)KEYLED_COUNT, HUD_LIME,
-               HUD_NEON);
+    contentFill(84, 68);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)v.ledLearnIndex + 1);
+    textCentered(buf, 86, 7, HUD_ICE);
+    snprintf(buf, sizeof(buf), "di %d", KEYLED_COUNT);
+    textCentered(buf, 144, 1, HUD_LABEL);
+
+    // L'arco si riempie di venti segmenti, uno per LED assegnato: si vede quanto
+    // manca senza contare le pressioni. Sta sul ventaglio basso, che qui e' libero
+    // perche' le manopole non comandano niente.
+    for (int i = 0; i < KEYLED_COUNT; ++i) {
+        const float span = 120.0f / (float)KEYLED_COUNT;
+        arcSeg(120.0f + span * i + 0.4f, 120.0f + span * (i + 1) - 0.4f, KNOB_IN, KNOB_OUT,
+               (i < v.ledLearnIndex) ? HUD_LIME : HUD_TRACK);
     }
 }
 
-// --------------------------------------------------------------- messaggini
-// Una fascia in basso con dentro il nome di quello che e' appena cambiato.
-// Sta sopra qualunque schermata: quando premi un tasto vuoi sapere cosa hai
-// fatto, non cercare la pagina che te lo dice.
-// L'overlay: cosa e' appena cambiato, sopra qualunque schermata, per un paio di
-// secondi. E' il pezzo che tiene in piedi tutto il resto del redesign — se ogni
-// gesto si conferma da solo, nessuna manopola ha piu' bisogno che tu vada a
-// cercare la schermata giusta per sapere cosa hai fatto.
+// ----------------------------------------------------------------- overlay
 //
-// Sta al centro e non in un angolo apposta: e' un'informazione che dura un
-// istante e vuole essere letta senza cercarla, non una decorazione da bordo.
-void drawFlash(const char *label, const char *value, float frac) {
-    constexpr int PANEL_Y = 74, PANEL_H = 92;
-    gfx->fillRect(8, PANEL_Y, 224, PANEL_H, BLACK);
-    gfx->drawRect(8, PANEL_Y, 224, PANEL_H, HUD_MAGENTA);
-    gfx->drawRect(9, PANEL_Y + 1, 222, PANEL_H - 2, dim565(HUD_MAGENTA, 1, 3));
+// La banda che dice cosa e' appena successo. Vibrava, e le cause erano tre, tutte
+// vere insieme.
+//
+// (1) Si ridisegnava ad ogni fotogramma. La chiamata era `if (c'e' un messaggio)
+//     disegnalo`, senza memoria di cosa fosse gia' a video: per una sessantina di
+//     fotogrammi di fila il pannello veniva rifatto da zero, e la prima cosa che
+//     faceva era spegnere ventimila pixel. A 40 MHz sono circa 8 ms di nero su un
+//     fotogramma da 33, cioe' uno strobo a 30 Hz. Adesso c'e' un contatore di
+//     revisione e si disegna una volta sola. Il confronto fra puntatori non
+//     funzionerebbe: i valori numerici si compongono sempre nello stesso buffer,
+//     quindi l'indirizzo non cambia mai nemmeno quando il testo cambia del tutto.
+// (2) La schermata sotto combatteva per gli stessi pixel. Traccia, ago e celle
+//     ridisegnavano trenta volte al secondo proprio dove stava la banda. Adesso,
+//     finche' la banda e' a video, il contenuto sotto sta fermo.
+// (3) Si mangiava la ghiera. Il rettangolo andava da x=8 a x=231, cioe' sopra
+//     l'anello, e gli staccava quattro morsi che restavano li' per tutta la
+//     durata: la cornice "respirava" insieme alla banda. Adesso la pulizia e' per
+//     corda e gli angoli sono arrotondati, quindi non arriva mai a toccarla.
+//
+// E dura 900 ms invece di 2000. Due secondi sono un'eternita' quando hai le mani
+// sulle manopole, e la banda copre proprio la zona che vorresti guardare.
+// La banda: y 88..151, riquadro da x=22 a x=217 con gli angoli arrotondati.
+//
+// La larghezza non e' scelta a occhio, e' quella che la gomma riesce a
+// cancellare **su tutte** le sue righe. radiusFill lavora sulla corda, che si
+// stringe allontanandosi dal centro: sulla riga piu' estrema della banda —
+// trentadue pixel sopra il centro — la corda a raggio 104 vale 98,9 px per lato,
+// cioe' da x=21 a x=219. Un riquadro piu' largo di cosi' avrebbe i fianchi fuori
+// dall'area che viene ripulita, e alla scadenza resterebbero due barrette
+// colorate appese ai lati fino al cambio di schermata.
+//
+// Cosi' i quattro spigoli cadono a raggio 103: dentro la corona di posizione,
+// che sta a 113, e appena fuori dal ventaglio delle manopole, che comincia a 111
+// gradi mentre lo spigolo sta a 108. Quelli di prima cadevano a raggio 121, cioe'
+// fuori dal vetro — la cornice che sembrava rettangolare era gia' tagliata sui
+// quattro angoli, e il rettangolo pieno sotto staccava quattro morsi dalla ghiera.
+constexpr int FLASH_Y = 88;
+constexpr int FLASH_H = 64;
+constexpr int FLASH_X = 22;
+constexpr int FLASH_W = 196;
 
-    if (label) textCentered(label, PANEL_Y + 10, 1, HUD_LABEL);
+void drawFlash(const char *label, const char *value, float frac, uint16_t accent) {
+    radiusFill(FLASH_Y, FLASH_H, FLASH_R, BLACK);
+    gfx->drawRoundRect(FLASH_X, FLASH_Y, FLASH_W, FLASH_H, 10, accent);
+    gfx->drawRoundRect(FLASH_X + 1, FLASH_Y + 1, FLASH_W - 2, FLASH_H - 2, 9,
+                       dim565(accent, 1, 3));
+
+    if (label) textCentered(label, FLASH_Y + 7, 1, HUD_LABEL);
 
     if (value) {
-        // Il corpo si sceglie sulla lunghezza: "PIANOFORTE" a corpo 4 uscirebbe
-        // dal tondo, "+2" a corpo 2 sarebbe minuscolo in mezzo a tutto quel nero.
+        // Il corpo si sceglie sulla lunghezza: "SILENZIO" a corpo 4 uscirebbe dal
+        // tondo, "+2" a corpo 2 sarebbe minuscolo in mezzo a tutto quel nero.
         const size_t n = strlen(value);
-        const uint8_t size = (n <= 4) ? 5 : (n <= 8) ? 3 : 2;
-        const int h = 8 * size;
-        textCentered(value, PANEL_Y + 34 + (28 - h) / 2, size, HUD_ICE);
+        const uint8_t size = (n <= 4) ? 4 : (n <= 8) ? 3 : 2;
+        textCentered(value, FLASH_Y + 18 + (32 - 8 * size) / 2, size, HUD_ICE);
     }
 
-    // La barra c'e' solo per i parametri continui: su "SAW" o "HOLD ON" non
-    // vuol dire niente, e disegnarla vuota sembrerebbe un valore a zero.
+    // La barra c'e' solo per i parametri continui: su "SILENZIO" non vuol dire
+    // niente, e disegnarla vuota sembrerebbe un valore a zero.
     if (frac >= 0.0f) {
-        if (frac > 1.0f) frac = 1.0f;
-        constexpr int BAR_X = 30, BAR_W = 180, BAR_H = 8;
-        const int y = PANEL_Y + PANEL_H - 20;
-        gfx->fillRect(BAR_X, y, BAR_W, BAR_H, HUD_TRACK);
-        gfx->fillRect(BAR_X, y, (int)(BAR_W * frac + 0.5f), BAR_H, HUD_MAGENTA);
+        hudBar(CX - 60, FLASH_Y + 50, 120, 6, frac, ghost(accent), accent);
     }
+}
+
+// La ghiera che si riempie: e' la conferma dei gesti che non si tornano indietro
+// — svuotare il pattern, accendere la radio, rifare la mappa delle luci. Tenendo
+// premuto la vedi caricarsi, e mollando prima non e' successo niente.
+//
+// Sta sulla ghiera e non su una barra al centro per una ragione precisa: e' il
+// bordo stesso dello strumento che si riempie, non si puo' non vederlo, e non
+// copre niente di quello che stavi guardando.
+//
+// Si prende in prestito la **corona di posizione**, non l'anello esterno, e non
+// e' un dettaglio: la corona la disegna arcSeg, quindi riempirla e rimetterla a
+// posto tocca esattamente gli stessi pixel. L'anello esterno invece lo disegna
+// drawCircle, che segue la variante a ellisse della libreria: un arco radiale
+// sovrapposto non ne ricopre gli stessi punti, e alla fine sarebbero restati dei
+// puntini rossi appesi alla cornice che nessuno avrebbe piu' tolto.
+uint8_t holdDrawn = 0;
+
+void drawHoldRing(uint8_t fill, uint8_t currentScreenIdx) {
+    if (fill == holdDrawn) return;
+    if (fill == 0) {
+        drawPosRing(currentScreenIdx);  // stessa primitiva, stessi pixel
+    } else {
+        const float a = 360.0f * (float)fill / 255.0f;
+        arcSeg(0.0f, a, POSRING_IN, POSRING_OUT, HUD_RED);
+    }
+    holdDrawn = fill;
 }
 
 }  // namespace
@@ -1594,16 +1733,39 @@ void prevScreen() {
     forceFull = true;
 }
 
-void goHome() {
-    if (screen == SCREEN_HOME) return;
-    screen = SCREEN_HOME;
+void goTo(uint8_t s) {
+    if (s >= SCREEN_COUNT || s == screen) return;
+    screen = s;
     forceFull = true;
 }
 
 uint8_t currentScreen() { return screen; }
 
+// Il telaio: si ridisegna solo al cambio di pagina.
+static void drawFrame(const SynthView &v, uint8_t s) {
+    const uint16_t accent = SCREEN_ACCENT[s];
+    gfx->fillScreen(BLACK);
+    gfx->drawCircle(CX, CY, 118, dim565(accent, 1, 3));
+    gfx->drawCircle(CX, CY, 117, dim565(accent, 1, 6));
+    holdDrawn = 0;
+    orbitDrawn = -1;
+
+    drawPosRing(s);
+
+    textCentered(SCREEN_TITLE[s], 18, 2, accent);
+    gfx->drawFastHLine(40, 44, 160, dim565(accent, 1, 4));
+    gfx->drawFastHLine(CX - 30, 44, 60, accent);
+    gfx->drawFastHLine(CX - 30, 45, 60, dim565(accent, 1, 2));
+
+    drawOctaveChip(v.octave);
+
+    for (int i = 0; i < 4; ++i) drawKnobIndex(i);
+}
+
 void update(const SynthView &v) {
     if (!gfx) return;
+
+    const uint32_t now = millis();
 
     // L'apprendimento delle luci si prende lo schermo intero: mentre e' in corso
     // la tastiera non suona, quindi non c'e' niente altro da guardare.
@@ -1619,50 +1781,107 @@ void update(const SynthView &v) {
         return;
     }
 
-    // L'ADSR non scavalca piu' niente: e' una schermata dell'anello come le
-    // altre, e ci si arriva col joystick invece che tenendo premuto un tasto.
-    //
-    // Durante preconteggio, registrazione e step edit si guarda per forza la
-    // griglia: sono i momenti in cui serve vedere cosa sta finendo nel pattern.
-    const bool seqOverride =
-        v.seqEditing || v.countIn > 0 || v.seqMode == Sequencer::SEQ_RECORDING;
+    // Durante preconteggio e registrazione si guarda per forza la griglia: sono i
+    // momenti in cui serve vedere cosa sta finendo nel pattern. Lo step edit non
+    // scavalca piu' niente, perche' non e' piu' una modalita'.
+    const bool seqOverride = (v.countIn > 0 || v.seqMode == Sequencer::SEQ_RECORDING);
     if (seqOverride != inSeqOverride) {
         inSeqOverride = seqOverride;
         forceFull = true;
     }
+    const uint8_t s = inSeqOverride ? SCREEN_RITMO : screen;
+    const uint16_t accent = SCREEN_ACCENT[s];
 
-    bool full = forceFull || !prevValid;
+    const bool newFrame = forceFull || !prevValid;
     forceFull = false;
+    if (newFrame) drawFrame(v, s);
 
-    if (inSeqOverride) {
-        drawSeqScreen(v, full);
-    } else {
-        switch (screen) {
-            case SCREEN_HOME: drawWaveScreen(v, full); break;
+    bool full = newFrame;
+
+    const bool flashOn = (v.flashLabel != nullptr || v.flashValue != nullptr);
+    const bool flashNew = flashOn && (v.flashRev != prev.flashRev || newFrame);
+    const bool flashGone = (!flashOn) && (prev.flashLabel != nullptr || prev.flashValue != nullptr);
+
+    // Quando la banda se ne va si cancella solo lei e si rifa' il contenuto. Il
+    // telaio sta tutto fuori dalla banda e non l'ha mai sfiorato, quindi non c'e'
+    // niente da ricostruire: prima si rifaceva l'intera schermata con un
+    // fillScreen — cinquantasettemila pixel, un fotogramma intero saltato e la
+    // ghiera che riappariva di colpo, che era poi il lampo nero che si vedeva
+    // ogni volta che un messaggio scadeva.
+    if (flashGone) {
+        radiusFill(FLASH_Y, FLASH_H, FLASH_R, BLACK);
+        full = true;
+    }
+
+    // Finche' la banda e' a video il contenuto sta fermo: e' l'ultima sorgente di
+    // sfarfallio, quella per cui sotto si disegnava e sopra si cancellava trenta
+    // volte al secondo negli stessi pixel.
+    if (!flashOn || full) {
+        switch (s) {
+            case SCREEN_SUONA: drawSuonaScreen(v, full); break;
             case SCREEN_TIMBRI: drawTimbriScreen(v, full); break;
-            case SCREEN_LEVELS: drawLevelsScreen(v, full); break;
-            case SCREEN_ADSR: drawAdsrScreen(v, full); break;
-            case SCREEN_FX: drawFxScreen(v, full); break;
-            case SCREEN_SEQ: drawSeqScreen(v, full); break;
-            case SCREEN_VU: drawVuScreen(v, full); break;
-            case SCREEN_SCOPE: drawScopeScreen(v, full); break;
-            default: drawSettingsScreen(v, full); break;
+            case SCREEN_INVILUPPO: drawInviluppoScreen(v, full); break;
+            case SCREEN_EFFETTI: drawEffettiScreen(v, full); break;
+            case SCREEN_RITMO: drawRitmoScreen(v, full); break;
+            case SCREEN_LIVELLO: drawLivelloScreen(v, full); break;
+            default: drawMenuScreen(v, full); break;
+        }
+
+        if (full || v.octave != prev.octave) drawOctaveChip(v.octave);
+
+        // La corona dei comandi: gli archi si rifanno solo dove il valore e'
+        // cambiato davvero, le didascalie solo quando cambia il testo. Il
+        // confronto sul testo e' uno strcmp e non un confronto di puntatori,
+        // perche' i valori si compongono sempre nello stesso buffer.
+        for (int i = 0; i < 4; ++i) {
+            const bool showValue = (knobSlot[i].valueUntil != 0) && (now < knobSlot[i].valueUntil);
+            static bool wasShowing[4] = {false, false, false, false};
+            static char drawn[4][12] = {"", "", "", ""};
+            const char *want = showValue ? knobSlot[i].value : knobSlot[i].label;
+            if (full || showValue != wasShowing[i] || strncmp(drawn[i], want, 11) != 0) {
+                // Si cancella il piu' largo fra quello che c'era e quello che
+                // arriva: cancellare solo il nuovo lascerebbe la coda del vecchio.
+                const int a = (int)strlen(drawn[i]), b = (int)strlen(want);
+                clearCaption(i, (a > b) ? a : b);
+                drawCaption(i, now);
+                strncpy(drawn[i], want, 11);
+                drawn[i][11] = '\0';
+                wasShowing[i] = showValue;
+            }
+            static float drawnFrac[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+            if (full || fabsf(knobSlot[i].frac - drawnFrac[i]) > 0.004f) {
+                arcGauge(i, knobSlot[i].frac, ghost(accent), accent);
+                drawnFrac[i] = knobSlot[i].frac;
+            }
         }
     }
 
-    // L'overlay sta sopra a tutto e non chiede il permesso a nessuna schermata:
-    // quando sparisce, quella sotto si ridisegna intera, che e' l'unico modo per
-    // non lasciare un buco nero dove stava il riquadro.
-    if (v.flashLabel || v.flashValue) {
-        drawFlash(v.flashLabel, v.flashValue, v.flashFrac);
-    } else if (prev.flashLabel || prev.flashValue) {
-        forceFull = true;
-    }
+    // La banda sta sopra a tutto e non chiede il permesso a nessuna schermata, ma
+    // la disegna una volta sola: e' il senso di tutta la riparazione.
+    if (flashNew) drawFlash(v.flashLabel, v.flashValue, v.flashFrac, accent);
+
+    drawHoldRing(v.holdFill, s);
 
     prev = v;
     prevValid = true;
 }
 
+// La corona dei comandi la riempie main.cpp, che e' l'unico a sapere cosa comanda
+// cosa: il display si limita a scriverla.
+void setKnob(int slot, const char *label, const char *value, float frac, bool flashValue) {
+    if (slot < 0 || slot >= 4) return;
+    strncpy(knobSlot[slot].label, label ? label : "-", sizeof(knobSlot[slot].label) - 1);
+    knobSlot[slot].label[sizeof(knobSlot[slot].label) - 1] = '\0';
+    if (value) {
+        strncpy(knobSlot[slot].value, value, sizeof(knobSlot[slot].value) - 1);
+        knobSlot[slot].value[sizeof(knobSlot[slot].value) - 1] = '\0';
+    }
+    knobSlot[slot].frac = frac;
+    // Il valore si mostra per i novecento millisecondi dopo uno scatto e poi
+    // lascia il posto al nome: il nome insegna, il valore conferma, e nessuno dei
+    // due ruba spazio all'altro.
+    if (flashValue) knobSlot[slot].valueUntil = millis() + 900;
+}
 // ------------------------------------------------------------ modalita' rete
 
 void updateNetwork() {
@@ -1712,7 +1931,7 @@ void updateNetwork() {
         textCentered(msg, lungo ? 100 : 96, lungo ? 1 : 2, HUD_ICE);
         textCentered("il firmware attuale", 136, 1, HUD_LABEL);
         textCentered("e' rimasto intatto", 148, 1, HUD_LABEL);
-        hudChipCentered(180, "PLAY PER RIAVVIARE", HUD_NEON, 1);
+        hudChipCentered(180, "JOYSTICK A SINISTRA", HUD_NEON, 1);
         return;
     }
 
@@ -1749,7 +1968,12 @@ void updateNetwork() {
     }
     // La via d'uscita va scritta sulla schermata da cui si vuole uscire. Finora
     // stava solo nel manuale, e da qui il synth sembrava un vicolo cieco.
-    textCentered("PLAY per uscire", 216, 1, HUD_LIME);
+    // Quattordici caratteri: a y=216 il glifo arriva fino alla riga 223, e li'
+    // siamo a centotre pixel dal centro — la corda utile vale 106 px, cioe'
+    // diciassette caratteri a corpo 1. Con "JOYSTICK A SINISTRA: ESCI" la riga
+    // partiva da x=45 e le prime lettere finivano oltre il bordo del vetro, dove
+    // non esistono proprio.
+    textCentered("SINISTRA: ESCI", 216, 1, HUD_LIME);
 }
 
 void drawOtaProgress(int pct) {
