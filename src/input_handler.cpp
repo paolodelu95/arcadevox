@@ -272,7 +272,17 @@ Encoder encoders[4];
 // Contatore monotono + lastRead: consumare il delta non ha bisogno di sezioni
 // critiche e non puo' perdere scatti arrivati fra la lettura e l'azzeramento.
 void IRAM_ATTR encoderStep(Encoder &e) {
-    uint8_t pinState = (uint8_t)((digitalRead(e.pinB) << 1) | digitalRead(e.pinA));
+    // A nel bit alto e B nel basso, al contrario di come lo scrive Buxton. La
+    // tabella qui sopra non ha niente di sbagliato: e' il verso in cui gli EC11
+    // stanno sul PCB: girando in senso orario le due fasi arrivano invertite
+    // rispetto alla sua convenzione, e DIR_CW cadeva sulla rotazione antioraria.
+    // Il risultato era che ogni manopola, ovunque, toglieva girando in avanti.
+    //
+    // Scambiare i due bit qui equivale a scambiare i fili A e B di tutti e
+    // quattro gli encoder, ed e' l'unico punto che va toccato: da encDelta() in
+    // giu' il firmware assume "positivo = senso orario = il valore sale", e
+    // quell'assunzione adesso e' vera.
+    uint8_t pinState = (uint8_t)((digitalRead(e.pinA) << 1) | digitalRead(e.pinB));
     e.state = ENC_TABLE[e.state & 0x0f][pinState];
     const uint8_t dir = e.state & 0x30;
     if (dir == DIR_CW) {
