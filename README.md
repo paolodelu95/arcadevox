@@ -492,7 +492,7 @@ compatibile con quel core.
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.0.1**, 20 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI |
+| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.3**, 20 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI, con le schermate vere |
 | [`docs/ArcadeVox_Libretto.html`](docs/ArcadeVox_Libretto.html) | La sorgente del libretto, da cui si rigenera il PDF |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |
 | [`docs/pannello.svg`](docs/pannello.svg) | Blueprint del pannello, da solo |
