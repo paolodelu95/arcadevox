@@ -539,6 +539,9 @@ void scene_net_portale() {
     sceneNet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "apri il portale", "");
 }
 void scene_net_in_rete() {
+    // SSID lungo come glielo consente lo standard: e' il caso in cui il nome
+    // della rete, scritto per intero, uscirebbe dal vetro.
+    Sim::netSetSsid("ReteDiCasaMoltoLungaWiFi5G");
     sceneNet(NetPortal::NET_STA_OK, "http://192.168.178.123/", "gia' aggiornato",
              "192.168.178.123");
 }

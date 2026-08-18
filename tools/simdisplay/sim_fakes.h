@@ -37,5 +37,8 @@ void netSet(uint8_t stage, const char *qr, const char *msg, const char *staIp);
 // L'aggiornamento che il synth dice di aver trovato da solo: e' la schermata su
 // cui il telefono smette di servire, quindi va provata come le altre.
 void netSetUpdate(bool available, const char *version);
+// Il nome della rete a cui si e' agganciato: la sua lunghezza decide se la riga
+// sta dentro il cerchio.
+void netSetSsid(const char *ssid);
 
 }  // namespace Sim

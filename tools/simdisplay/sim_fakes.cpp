@@ -61,6 +61,7 @@ char gPass[16] = "arcade9F7C";
 char gQr[80] = "";
 char gMsg[48] = "";
 char gStaIp[20] = "";
+char gStaSsid[33] = "";
 bool gUpdAvail = false;
 char gUpdVer[16] = "";
 char gPortal[32] = "http://192.168.4.1/";
@@ -183,6 +184,7 @@ const char *password() { return gPass; }
 const char *qrPayload() { return gQr; }
 const char *portalUrl() { return gPortal; }
 const char *staIp() { return gStaIp; }
+const char *staSsid() { return gStaSsid; }
 const char *message() { return gMsg; }
 int progress() { return 0; }
 bool updateAvailable() { return gUpdAvail; }
@@ -237,7 +239,11 @@ void netSet(uint8_t stage, const char *qr, const char *msg, const char *staIp) {
     snprintf(gQr, sizeof(gQr), "%s", qr ? qr : "");
     snprintf(gMsg, sizeof(gMsg), "%s", msg ? msg : "");
     snprintf(gStaIp, sizeof(gStaIp), "%s", staIp ? staIp : "");
+    if (!gStaSsid[0] && staIp && staIp[0]) snprintf(gStaSsid, sizeof(gStaSsid), "CasaDiPaolo-5G");
+    if (!(staIp && staIp[0])) gStaSsid[0] = '\0';
 }
+
+void netSetSsid(const char *ssid) { snprintf(gStaSsid, sizeof(gStaSsid), "%s", ssid); }
 
 void netSetUpdate(bool available, const char *version) {
     gUpdAvail = available;

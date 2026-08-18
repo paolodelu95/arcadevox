@@ -127,10 +127,28 @@ void flush(const SynthState &s);  // scrittura immediata
 void saveLedMap(const uint8_t *map, size_t len);
 bool loadLedMap(uint8_t *map, size_t len);
 
-// --- credenziali della rete di casa (modalita' NETWORK) ---
-void saveWifi(const char *ssid, const char *pass);
-bool loadWifi(String &ssid, String &pass);
-void clearWifi();
+// --- le reti conosciute (modalita' NETWORK) ---
+//
+// Sono piu' di una perche' lo strumento si sposta. Una sola rete voleva dire che
+// portandolo altrove — a provare, a suonare da qualcun altro — l'aggiornamento
+// automatico smetteva di funzionare e bisognava rifare tutto il giro col
+// telefono; e tornando a casa bisognava rifarlo un'altra volta, perche' nel
+// frattempo l'unica casella era stata sovrascritta.
+//
+// Cinque bastano per casa, lavoro, il posto delle prove e l'hotspot del
+// telefono, che e' poi la rete che ci si porta dietro ovunque.
+#define WIFI_SLOTS 5
+
+// Le reti sono tenute in ordine di ultimo uso: la prima e' quella piu' recente.
+// Serve a due cose — decidere quale provare quando ce ne sono due in portata, e
+// sapere quale buttare quando le caselle finiscono.
+void wifiRemember(const char *ssid, const char *pass);
+uint8_t wifiCount();
+bool wifiAt(uint8_t i, String &ssid, String &pass);
+// Password di una rete gia' conosciuta, "" se non la conosce.
+bool wifiPasswordFor(const char *ssid, String &pass);
+void wifiForget(const char *ssid);
+void wifiForgetAll();
 
 // --- URL del manifest degli aggiornamenti ---
 void saveManifestUrl(const char *url);

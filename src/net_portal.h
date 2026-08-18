@@ -47,7 +47,11 @@ const char *password();
 // nessuno e' connesso, poi l'indirizzo del portale.
 const char *qrPayload();
 const char *portalUrl();
-const char *staIp();      // "" se non collegati alla rete di casa
+const char *staIp();      // "" se non collegati a una rete di casa
+// A quale rete: con piu' reti in memoria, "sono in rete" non basta piu' —
+// serve sapere su quale, perche' e' l'unico modo di accorgersi che si e'
+// agganciato all'hotspot del telefono invece che al wifi del posto.
+const char *staSsid();
 const char *message();    // riga di stato per il display
 int progress();           // 0..100 durante il trasferimento
 

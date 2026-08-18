@@ -517,6 +517,21 @@ void drawKnobIndex(int slot) {
 
 // ------------------------------------------------------- disco dei contenuti
 //
+// Nome di rete accorciato a `max` caratteri con un puntino di sospensione: gli
+// SSID arrivano a trentadue caratteri e la corda del vetro, in fondo, non ne
+// regge nemmeno la meta'. Tagliare e dirlo e' meglio che scrivere fuori dal
+// pannello, dove le lettere semplicemente non esistono.
+const char *shortSsid(const char *s, int max) {
+    static char buf[26];
+    if (max > (int)sizeof(buf) - 1) max = (int)sizeof(buf) - 1;
+    const int n = (int)strlen(s);
+    if (n <= max) return s;
+    strncpy(buf, s, max - 1);
+    buf[max - 1] = '~';
+    buf[max] = '\0';
+    return buf;
+}
+
 // La gomma del disco: come chordFill, ma sulla corda del disco invece che su
 // quella del vetro. Serve perche' dentro il disco si cancella spesso, e cancellare
 // sulla corda grande porterebbe via gli archi delle manopole che stanno appena
@@ -1996,9 +2011,10 @@ void updateNetwork() {
         // scrivessimo anche in questo ramo non comparirebbe mai, ed e' l'unica
         // strada per raggiungere il synth dal computer di casa.
         if (NetPortal::staIp()[0] != '\0') {
-            char ip[40];
-            snprintf(ip, sizeof(ip), "in rete: %s", NetPortal::staIp());
-            textCentered(ip, 204, 1, HUD_ICE);
+            // Solo il nome della rete: a questa quota ci stanno ventiquattro
+            // caratteri, e l'indirizzo lo si legge nell'altra faccia — qui la
+            // domanda a cui rispondere e' "a quale rete si e' agganciato".
+            textCentered(shortSsid(NetPortal::staSsid(), 22), 204, 1, HUD_ICE);
         } else {
             textCentered("inquadra per entrare", 204, 1, HUD_LABEL);
         }
@@ -2009,13 +2025,19 @@ void updateNetwork() {
         // cambiato.
         hudChipCentered(170, "INQUADRA DI NUOVO", HUD_LIME, 1);
         if (NetPortal::staIp()[0] != '\0') {
-            char ip[40];
-            snprintf(ip, sizeof(ip), "in rete: %s", NetPortal::staIp());
-            textCentered(ip, 190, 1, HUD_ICE);
-            // Dall'access point il portale si apre senza login. La finestra
-            // utente e password compare solo a chi arriva dall'indirizzo di
-            // casa, quindi la riga si scrive solo quando quell'indirizzo esiste.
-            textCentered("da casa, utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+            // Il nome della rete prima dell'indirizzo: con piu' reti in memoria
+            // "sono in rete" non basta, perche' l'aggancio potrebbe essere
+            // finito sull'hotspot del telefono invece che sul wifi del posto.
+            // A y=190 la corda utile vale 173 px, cioe' ventotto caratteri.
+            textCentered(shortSsid(NetPortal::staSsid(), 24), 190, 1, HUD_ICE);
+            // Utente e indirizzo su una riga sola, nella forma in cui si scrivono
+            // in un browser: ventidue caratteri, e a y=204 la corda ne regge
+            // ventiquattro. La finestra di login compare solo a chi arriva qui
+            // dalla rete di casa, ed e' l'unico posto in cui il nome utente si
+            // legge senza aprire il libretto.
+            char row[48];
+            snprintf(row, sizeof(row), NET_AUTH_USER "@%s", NetPortal::staIp());
+            textCentered(row, 204, 1, HUD_LABEL);
         } else {
             textCentered("apre la pagina del synth", 190, 1, HUD_LABEL);
             // La riga piu' utile di tutta la schermata, su Android: con i dati

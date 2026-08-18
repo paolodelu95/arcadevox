@@ -44,6 +44,13 @@ char apPass[16] = "arcadevox";
 char qrText[80] = "";
 char portal[32] = "http://192.168.4.1/";
 char staIpText[20] = "";
+char staSsidText[33] = "";  // a quale rete: con piu' reti in memoria, saperlo conta
+// Le credenziali appena scritte sul telefono, non ancora messe in memoria: ci
+// finiscono solo se l'aggancio riesce. Salvarle prima vorrebbe dire che uno SSID
+// scritto male butta fuori dall'elenco una rete che funzionava, e con le caselle
+// piene non c'e' modo di rimetterla.
+char pendingSsid[33] = "";
+char pendingPass[65] = "";
 char statusMsg[48] = "";
 int otaProgress = 0;
 
@@ -214,6 +221,74 @@ void harvestScan(int found) {
     scanFresh = true;
 }
 
+// ------------------------------------------------------- quale rete provare
+//
+// Qui la scansione fatta prima di accendere l'access point ripaga una seconda
+// volta: sapendo **cosa c'e' davvero in aria**, la rete a cui agganciarsi non si
+// tira a indovinare. Si scorre l'elenco di quello che si vede — che harvestScan
+// ha gia' ordinato dalla piu' forte alla piu' debole — e ci si ferma alla prima
+// che il synth conosce.
+//
+// E' la differenza fra uno strumento che sta su un tavolo e uno che gira: a casa
+// aggancia quella di casa, in sala prove quella della sala prove, e in mezzo
+// l'hotspot del telefono, senza che nessuno gli debba dire dove si trova.
+// La lista dei tentativi, in ordine: prima le conosciute che si vedono davvero,
+// dalla piu' forte alla piu' debole, poi — come ultima spiaggia — l'ultima usata
+// anche se non compare, perche' una rete nascosta in una scansione non c'e' per
+// definizione.
+//
+// Provarne una sola non basta: una rete puo' vedersi benissimo e rifiutare
+// l'aggancio — password cambiata, portale del posto, DHCP fermo — e arrendersi al
+// primo no vorrebbe dire tornare a chiedere il telefono proprio dove una
+// seconda rete buona c'era.
+bool staLateWatch = false;  // le conosciute sono finite, ma la radio insiste
+char staTryList[WIFI_SLOTS][33];
+uint8_t staTryCount = 0;
+uint8_t staTryAt = 0;
+
+void buildTryList() {
+    staTryCount = 0;
+    String pass;
+    for (int i = 0; i < scanCount && staTryCount < WIFI_SLOTS; ++i) {
+        if (!Storage::wifiPasswordFor(scanList[i].name, pass)) continue;
+        strncpy(staTryList[staTryCount], scanList[i].name, 32);
+        staTryList[staTryCount][32] = '\0';
+        ++staTryCount;
+    }
+    String s0, p0;
+    if (Storage::wifiAt(0, s0, p0)) {
+        bool already = false;
+        for (uint8_t i = 0; i < staTryCount; ++i) {
+            if (s0 == staTryList[i]) already = true;
+        }
+        if (!already && staTryCount < WIFI_SLOTS) {
+            strncpy(staTryList[staTryCount], s0.c_str(), 32);
+            staTryList[staTryCount][32] = '\0';
+            ++staTryCount;
+        }
+    }
+    staTryAt = 0;
+}
+
+// Attacca il tentativo `staTryAt`. False quando la lista e' finita.
+bool startNextTry() {
+    String pass;
+    while (staTryAt < staTryCount) {
+        const char *ssid = staTryList[staTryAt];
+        ++staTryAt;
+        if (!Storage::wifiPasswordFor(ssid, pass)) continue;
+        WiFi.disconnect();
+        WiFi.begin(ssid, pass.c_str());
+        strncpy(staSsidText, ssid, sizeof(staSsidText) - 1);
+        staDeadline = millis() + 15000;
+        Serial.printf("NETWORK: provo '%s' (%d di %d)\n", ssid, (int)staTryAt,
+                      (int)staTryCount);
+        return true;
+    }
+    staSsidText[0] = '\0';
+    return false;
+}
+
 // --------------------------------------------------------------- versioni
 // "1.2.3" -> 0x010203, per confrontare le release con un solo intero.
 uint32_t parseVersion(const char *s) {
@@ -280,14 +355,34 @@ String pageStatus() {
          "<small>Serve solo per gli aggiornamenti da internet. Le credenziali "
          "restano nel synth: alla prossima accensione della radio ci si "
          "ricollega da solo.</small>";
-    // Sapere quale rete e' memorizzata evita di ridigitarla per il dubbio.
+    // Le reti conosciute sono piu' di una: sapere quali evita di ridigitarne una
+    // per il dubbio, e permette di buttare quella del posto dove non si torna.
     String knownSsid, knownPass;
-    const bool known = Storage::loadWifi(knownSsid, knownPass);
-    if (known) {
-        s += "<small>In memoria: <span class=v>";
-        s += htmlEscape(knownSsid.c_str());
-        s += "</span></small>";
+    const uint8_t nKnown = Storage::wifiCount();
+    if (nKnown > 0) {
+        s += "<small>Gia' in memoria";
+        if (nKnown > 1) {
+            s += " (";
+            s += nKnown;
+            s += " di ";
+            s += WIFI_SLOTS;
+            s += ")";
+        }
+        s += ": ";
+        for (uint8_t i = 0; i < nKnown; ++i) {
+            String ss, pp;
+            if (!Storage::wifiAt(i, ss, pp)) break;
+            if (i == 0) knownSsid = ss;
+            if (i) s += " &middot; ";
+            s += "<span class=v>";
+            s += htmlEscape(ss.c_str());
+            s += "</span>";
+        }
+        s += "</small>";
     }
+    bool preselected = false;
+    String preferSsid = staSsidText;
+    if (preferSsid.length() == 0) preferSsid = knownSsid;  // knownSsid = l'ultima usata
     if (scanCount > 0) {
         s += "<select name=ssid>";
         for (int i = 0; i < scanCount; ++i) {
@@ -295,7 +390,15 @@ String pageStatus() {
             s += "<option value='";
             s += safe;
             s += "'";
-            if (known && knownSsid == scanList[i].name) s += " selected";
+            // Preselezionata quella su cui si e' gia' agganciati, o in mancanza
+            // l'ultima usata. Non la piu' forte fra le conosciute: con l'hotspot
+            // del telefono acceso accanto al synth, la piu' forte e' quasi sempre
+            // lui, e un solo click avrebbe spostato lo strumento li' senza che
+            // nessuno lo avesse chiesto.
+            if (!preselected && preferSsid.length() > 0 && preferSsid == scanList[i].name) {
+                s += " selected";
+                preselected = true;
+            }
             s += ">";
             s += safe;
             s += scanList[i].locked ? "  &#128274; " : "  ";
@@ -319,12 +422,25 @@ String pageStatus() {
     // Se la rete scelta e' quella gia' in memoria, lasciare vuota la password
     // vuol dire "usa quella di prima": e' la sola cosa che si e' costretti a
     // ridigitare, e non c'e' nessun motivo per cui debba succedere due volte.
-    s += known ? "<input name=pass type=password placeholder='password (vuoto: quella salvata)'>"
-               : "<input name=pass type=password placeholder=password>";
+    s += (nKnown > 0)
+             ? "<input name=pass type=password placeholder='password (vuoto: quella salvata)'>"
+             : "<input name=pass type=password placeholder=password>";
     s += "<button>Collega</button></form>";
-    if (known) {
+    if (nKnown > 0) {
         s += "<form method=POST action=/forget>"
-             "<button style='background:#622;color:#fdd'>Dimentica la rete</button></form>";
+             "<small>Dimentica una rete che non serve piu'. Il posto liberato torna "
+             "disponibile per la prossima.</small><select name=ssid>";
+        for (uint8_t i = 0; i < nKnown; ++i) {
+            String ss, pp;
+            if (!Storage::wifiAt(i, ss, pp)) break;
+            s += "<option value='";
+            s += htmlEscape(ss.c_str());
+            s += "'>";
+            s += htmlEscape(ss.c_str());
+            s += "</option>";
+        }
+        s += "<option value='*'>— tutte quante —</option></select>"
+             "<button style='background:#622;color:#fdd'>Dimentica</button></form>";
     }
 
     s += "<h2>Aggiorna da internet</h2><form method=GET action=/check>"
@@ -499,14 +615,36 @@ void handleRescan() {
 // che non esiste piu'.
 void handleForget() {
     if (!requireAuth()) return;
-    Storage::clearWifi();
-    forgetFoundUpdate();
-    staAuto = false;
-    WiFi.disconnect();
-    staIpText[0] = '\0';
+    const String which = server.arg("ssid");
+    if (which.length() == 0) {
+        // Una richiesta senza nome non vuol dire "tutte": vuol dire che qualcosa
+        // e' andato storto per strada, e cancellare l'elenco per un modulo vuoto
+        // sarebbe la peggiore delle interpretazioni.
+        server.send(200, "text/html",
+                    pageMessage("Quale rete?", "Scegli quale dimenticare.", false));
+        return;
+    }
+    const bool all = (which == "*");
+    if (all) {
+        Storage::wifiForgetAll();
+    } else {
+        Storage::wifiForget(which.c_str());
+    }
+
+    // Ci si scollega solo se si e' buttata proprio la rete su cui si e' agganciati:
+    // dimenticare quella dell'anno scorso non deve far cadere quella di adesso.
+    if (all || which == staSsidText) {
+        forgetFoundUpdate();
+        staAuto = false;
+        WiFi.disconnect();
+        staIpText[0] = '\0';
+        staSsidText[0] = '\0';
+    }
     server.send(200, "text/html",
-                pageMessage("Rete dimenticata",
-                            "Il synth non provera' piu' a ricollegarsi da solo.", true));
+                pageMessage(all ? "Reti dimenticate" : "Rete dimenticata",
+                            all ? "Il synth non provera' piu' a ricollegarsi da solo."
+                                : "Le altre restano in memoria.",
+                            true));
 }
 
 void handleWifi() {
@@ -518,6 +656,7 @@ void handleWifi() {
     ssid.trim();
     if (ssid.length() == 0) ssid = server.arg("ssid");
     String pass = server.arg("pass");
+    String oldPass;
     if (ssid.length() == 0) {
         server.send(200, "text/html",
                     pageMessage("Manca il nome", "Indica il nome della rete.", false));
@@ -532,8 +671,7 @@ void handleWifi() {
     // butterebbe via le credenziali buone in cambio di niente: meglio fermarsi e
     // chiederla, che e' anche cio' che l'utente si aspetta.
     if (pass.length() == 0) {
-        String oldSsid, oldPass;
-        const bool sameAsSaved = Storage::loadWifi(oldSsid, oldPass) && oldSsid == ssid;
+        const bool sameAsSaved = Storage::wifiPasswordFor(ssid.c_str(), oldPass);
         // Ci si ferma solo quando si *sa* che una password serve, cioe' quando
         // quella rete e' nell'elenco col lucchetto. Una rete aperta la password
         // non ce l'ha, e una rete nascosta scritta a mano non e' nell'elenco per
@@ -555,7 +693,12 @@ void handleWifi() {
         }
     }
 
-    Storage::saveWifi(ssid.c_str(), pass.c_str());
+    strncpy(pendingSsid, ssid.c_str(), sizeof(pendingSsid) - 1);
+    strncpy(pendingPass, pass.c_str(), sizeof(pendingPass) - 1);
+    strncpy(staSsidText, ssid.c_str(), sizeof(staSsidText) - 1);
+    // 2) l'indirizzo di prima non vale piu': stiamo lasciando quella rete, e
+    //    lasciarlo scritto accanto al nome nuovo direbbe una cosa falsa.
+    staIpText[0] = '\0';
     // Rete nuova: quello che si sapeva della versione disponibile non vale piu',
     // e il controllo automatico va rifatto una volta dall'altra parte.
     forgetFoundUpdate();
@@ -759,16 +902,11 @@ void begin() {
         Display::drawOtaProgress(otaProgress);
     });
 
-    // Le credenziali della rete di casa erano salvate in NVS da sempre, ma
-    // nessuno le rileggeva: si finiva per ridigitarle sul telefono ad ogni
-    // aggiornamento. Da qui in poi il synth ci riprova da solo.
-    String savedSsid, savedPass;
-    if (Storage::loadWifi(savedSsid, savedPass)) {
-        WiFi.begin(savedSsid.c_str(), savedPass.c_str());
-        staAuto = true;
-        staDeadline = millis() + 20000;
-        Serial.printf("NETWORK: riprovo la rete salvata '%s'\n", savedSsid.c_str());
-    }
+    // Le reti a cui riagganciarsi si scelgono sapendo cosa c'e' in aria, non a
+    // memoria: e' la scansione di due paragrafi fa che rende possibile portare lo
+    // strumento in giro senza rifare il giro col telefono ad ogni cambio di posto.
+    buildTryList();
+    staAuto = startNextTry();
 
     currentStage = NET_AP;
     setStatus(staAuto ? "mi ricollego alla rete" : "in attesa del telefono");
@@ -789,11 +927,32 @@ void update() {
         if (WiFi.status() == WL_CONNECTED) {
             strncpy(staIpText, WiFi.localIP().toString().c_str(), sizeof(staIpText) - 1);
             staAuto = false;
-            Serial.printf("NETWORK: in rete come %s\n", staIpText);
+            // Ultimo uso aggiornato: la prossima volta questa rete sara' la prima
+            // della lista, che e' quasi sempre quella giusta perche' gli strumenti
+            // tornano nei posti dove hanno gia' suonato.
+            String pass;
+            if (Storage::wifiPasswordFor(staSsidText, pass)) {
+                Storage::wifiRemember(staSsidText, pass.c_str());
+            }
+            Serial.printf("NETWORK: in rete su '%s' come %s\n", staSsidText, staIpText);
         } else if ((int32_t)(millis() - staDeadline) > 0) {
-            staAuto = false;  // pazienza: resta il portale dall'access point
-            Serial.println(F("NETWORK: rete salvata non raggiunta"));
+            // Questa non ha risposto: si passa alla prossima conosciuta che si
+            // vede. Se sono finite, resta il portale dall'access point.
+            staAuto = startNextTry();
+            if (!staAuto) {
+                // Finite le conosciute. L'ultima WiFi.begin() pero' continua a
+                // riprovare per conto suo, e puo' agganciare fra dieci secondi:
+                // senza questo, il synth sarebbe in rete e il display continuerebbe
+                // a dire di no — con l'indirizzo mai mostrato e il controllo
+                // automatico che intanto parte lo stesso.
+                staLateWatch = true;
+                Serial.println(F("NETWORK: nessuna rete conosciuta raggiunta"));
+            }
         }
+    } else if (staLateWatch && WiFi.status() == WL_CONNECTED) {
+        strncpy(staIpText, WiFi.localIP().toString().c_str(), sizeof(staIpText) - 1);
+        staLateWatch = false;
+        Serial.printf("NETWORK: agganciata in ritardo '%s' come %s\n", staSsidText, staIpText);
     }
 
     // Appena c'e' internet, il synth va a vedere da solo se esiste una versione
@@ -845,6 +1004,11 @@ void update() {
     if (currentStage == NET_STA_WAIT) {
         if (WiFi.status() == WL_CONNECTED) {
             strncpy(staIpText, WiFi.localIP().toString().c_str(), sizeof(staIpText) - 1);
+            // Adesso che si sa che funziona, la rete entra in memoria.
+            if (pendingSsid[0]) {
+                Storage::wifiRemember(pendingSsid, pendingPass);
+                pendingSsid[0] = pendingPass[0] = '\0';
+            }
             currentStage = NET_STA_OK;
             setStatus("collegato a internet");
         } else if ((int32_t)(millis() - staDeadline) > 0) {
@@ -874,6 +1038,7 @@ const char *password() { return apPass; }
 const char *qrPayload() { return qrText; }
 const char *portalUrl() { return portal; }
 const char *staIp() { return staIpText; }
+const char *staSsid() { return staSsidText; }
 const char *message() { return statusMsg; }
 int progress() { return otaProgress; }
 
