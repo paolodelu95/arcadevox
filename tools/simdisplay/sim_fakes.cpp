@@ -61,6 +61,8 @@ char gPass[16] = "arcade9F7C";
 char gQr[80] = "";
 char gMsg[48] = "";
 char gStaIp[20] = "";
+bool gUpdAvail = false;
+char gUpdVer[16] = "";
 char gPortal[32] = "http://192.168.4.1/";
 
 }  // namespace
@@ -183,6 +185,9 @@ const char *portalUrl() { return gPortal; }
 const char *staIp() { return gStaIp; }
 const char *message() { return gMsg; }
 int progress() { return 0; }
+bool updateAvailable() { return gUpdAvail; }
+const char *updateVersion() { return gUpdVer; }
+void installUpdate() {}
 
 }  // namespace NetPortal
 
@@ -232,6 +237,11 @@ void netSet(uint8_t stage, const char *qr, const char *msg, const char *staIp) {
     snprintf(gQr, sizeof(gQr), "%s", qr ? qr : "");
     snprintf(gMsg, sizeof(gMsg), "%s", msg ? msg : "");
     snprintf(gStaIp, sizeof(gStaIp), "%s", staIp ? staIp : "");
+}
+
+void netSetUpdate(bool available, const char *version) {
+    gUpdAvail = available;
+    strncpy(gUpdVer, version, sizeof(gUpdVer) - 1);
 }
 
 }  // namespace Sim

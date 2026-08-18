@@ -521,14 +521,26 @@ void sceneNet(uint8_t stage, const char *qr, const char *msg, const char *ip) {
     Sim::netSet(stage, qr, msg, ip);
     Display::updateNetwork();
 }
+void scene_net_scan() { sceneNet(NetPortal::NET_SCAN, "", "cerco le reti", ""); }
+// La schermata su cui il telefono smette di servire: il synth si e' ricollegato
+// da solo, ha letto il manifest e aspetta solo che qualcuno tenga premuto AVVIA.
+void scene_net_aggiornamento() {
+    boot();
+    Sim::netSetUpdate(true, "2.9.0");
+    Sim::netSet(NetPortal::NET_STA_OK, "http://192.168.178.123/", "aggiornamento pronto",
+                "192.168.178.123");
+    Display::updateNetwork();
+}
 void scene_net_attesa() {
-    sceneNet(NetPortal::NET_AP, "WIFI:T:WPA;S:ArcadeVox-3C4A;P:arcade3C4A;;", "", "");
+    sceneNet(NetPortal::NET_AP, "WIFI:T:WPA;S:ArcadeVox-3C4A;P:arcade3C4A;;",
+             "in attesa del telefono", "");
 }
 void scene_net_portale() {
-    sceneNet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "", "");
+    sceneNet(NetPortal::NET_CONNECTED, "http://192.168.4.1/", "apri il portale", "");
 }
 void scene_net_in_rete() {
-    sceneNet(NetPortal::NET_STA_OK, "http://192.168.178.123/", "", "192.168.178.123");
+    sceneNet(NetPortal::NET_STA_OK, "http://192.168.178.123/", "gia' aggiornato",
+             "192.168.178.123");
 }
 void scene_net_fallito() {
     sceneNet(NetPortal::NET_FAILED, "", "manifest non raggiungibile", "");
@@ -596,7 +608,9 @@ const Scene SCENES[] = {
     {"39-luci-impara-primo", scene_luci_impara_prima},
     {"40-luci-impara-ultimo", scene_luci_impara_ultima},
 
-    {"41-network-qr-rete", scene_net_attesa},
+    {"41-network-scan", scene_net_scan},
+    {"41c-network-qr-aggiornamento", scene_net_aggiornamento},
+    {"41b-network-qr-rete", scene_net_attesa},
     {"42-network-qr-indirizzo", scene_net_portale},
     {"43-network-in-rete-ip-lungo", scene_net_in_rete},
     {"44-network-ota-0", scene_ota_0},

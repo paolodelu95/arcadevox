@@ -50,6 +50,40 @@ int otaProgress = 0;
 uint32_t staDeadline = 0;
 bool uploadRejected = false;
 
+// --- l'aggiornamento che il synth ha trovato da solo ---
+//
+// Appena entra in rete va a leggere il manifest per conto suo. Non e' una
+// comodita' in piu': e' cio' che rende il telefono facoltativo. La prima volta
+// serve — bisogna pur dirgli qual e' la rete di casa — ma dalla seconda in poi
+// si accende la radio, il synth si ricollega, e sul display c'e' gia' scritto se
+// c'e' una versione nuova e quanto pesa premere un tasto per averla.
+char foundVer[16] = "";
+// Larghi quanto il manifest vero, non quanto sembrava ragionevole: le note della
+// release in firmware/manifest.json passano i trecento caratteri, e un indirizzo
+// tagliato a meta' fallirebbe come un generico "download fallito" senza che
+// nessuno possa capire perche'.
+char foundUrl[224] = "";
+char foundNotes[352] = "";
+bool updateReady = false;   // c'e' una versione piu' nuova, scaricabile
+bool autoChecked = false;   // il controllo automatico e' andato a buon fine
+uint32_t autoRetryAt = 0;   // ...oppure e' fallito, e si riprova da qui
+uint8_t autoTries = 0;      // e non all'infinito: dopo tre si smette
+
+// Quello che si sapeva della versione disponibile vale per la rete su cui lo si
+// e' saputo: cambiando rete — o dimenticandola — non vale piu' niente, e lasciare
+// a schermo un "tieni AVVIA per installare" senza piu' una strada per scaricare
+// vorrebbe dire mandare qualcuno dritto in un aggiornamento fallito.
+void forgetFoundUpdate() {
+    updateReady = false;
+    autoChecked = false;
+    autoRetryAt = 0;
+    // Anche il contatore dei tentativi: le credenziali nuove meritano tre
+    // tentativi nuovi, altrimenti tre fallimenti su una rete sbagliata
+    // spegnerebbero il controllo automatico per tutta l'accensione.
+    autoTries = 0;
+    foundVer[0] = foundUrl[0] = foundNotes[0] = '\0';
+}
+
 // Rientro automatico nella rete di casa, in corso. Corre in parallelo al
 // portale e non passa dalla macchina a stati: se la rete non c'e' — sei fuori
 // casa, o l'hai cambiata — il QR e la pagina devono restare utilizzabili.
@@ -92,21 +126,92 @@ void setQrForJoin() {
 void setQrForPortal() { strncpy(qrText, portal, sizeof(qrText) - 1); }
 
 // --------------------------------------------------------------- scansione
-// Setacciare i canali richiede qualche secondo. Farlo in modo sincrono dentro la
-// richiesta HTTP terrebbe fermo il server per tutto quel tempo e la pagina
-// sembrerebbe piantata: si lancia in asincrono e la si raccoglie quando e'
-// pronta, ricaricando.
-void startScanIfIdle() {
-    if (WiFi.scanComplete() == WIFI_SCAN_FAILED) WiFi.scanNetworks(true /* async */);
+//
+// Setacciare i canali significa saltare da un canale all'altro, e mentre lo fa
+// la radio non e' su quello dell'access point. Prima la scansione partiva quando
+// si apriva la pagina, cioe' **dopo** che il telefono si era agganciato: proprio
+// nel momento peggiore, perche' i tre secondi di salti li pagava il telefono che
+// serviva. Il risultato era che l'elenco non compariva mai — restava scritto
+// "scansione in corso, ricarica fra un istante" — e il nome della rete finiva per
+// doverlo scrivere a mano ogni volta.
+//
+// Adesso si guarda l'etere **prima** di accendere l'access point: li' non c'e'
+// ancora nessuno da disturbare, il display dice cosa sta succedendo, e quando il
+// telefono arriva l'elenco e' gia' li'.
+constexpr int SCAN_MAX = 24;
+
+struct Seen {
+    char name[33];
+    int8_t rssi;
+    bool locked;
+};
+
+Seen scanList[SCAN_MAX];
+int scanCount = 0;
+bool scanFresh = false;  // una scansione e' stata fatta almeno una volta
+
+// I nomi delle reti li scrive chi ha configurato il router, non noi: "Bob's
+// WiFi" dentro un value='...' chiude l'attributo a meta' e quello che arriva
+// indietro e' "Bob". Non e' un problema di sicurezza — chi e' agganciato
+// all'access point ha gia' la password — e' che la rete non si collega e non si
+// capisce perche'.
+String htmlEscape(const char *src) {
+    String out;
+    for (const char *p = src; *p; ++p) {
+        switch (*p) {
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;"; break;
+            case '>': out += "&gt;"; break;
+            case '"': out += "&quot;"; break;
+            case '\'': out += "&#39;"; break;
+            default: out += *p; break;
+        }
+    }
+    return out;
 }
 
 // Una rete con lo stesso nome puo' comparire piu' volte (due bande, o un
-// ripetitore): nell'elenco ne basta una.
-bool alreadyListed(int upTo, const String &name) {
-    for (int i = 0; i < upTo; ++i) {
-        if (WiFi.SSID(i) == name) return true;
+// ripetitore): nell'elenco ne basta una, la piu' forte.
+int indexOfName(const char *name) {
+    for (int i = 0; i < scanCount; ++i) {
+        if (strcmp(scanList[i].name, name) == 0) return i;
     }
-    return false;
+    return -1;
+}
+
+// Legge il risultato di WiFi.scanNetworks() nella nostra copia e lo butta: da
+// qui in poi la pagina si disegna dalla cache, e la radio puo' tornare a fare
+// solo l'access point.
+void harvestScan(int found) {
+    scanCount = 0;
+    for (int i = 0; i < found && scanCount < SCAN_MAX; ++i) {
+        const String name = WiFi.SSID(i);
+        if (name.length() == 0 || name.length() > 32) continue;
+        const int dup = indexOfName(name.c_str());
+        if (dup >= 0) {
+            // Stessa rete su due bande: si tiene il segnale migliore.
+            if (WiFi.RSSI(i) > scanList[dup].rssi) scanList[dup].rssi = (int8_t)WiFi.RSSI(i);
+            continue;
+        }
+        strncpy(scanList[scanCount].name, name.c_str(), sizeof(scanList[scanCount].name) - 1);
+        scanList[scanCount].name[sizeof(scanList[scanCount].name) - 1] = '\0';
+        scanList[scanCount].rssi = (int8_t)WiFi.RSSI(i);
+        scanList[scanCount].locked = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+        ++scanCount;
+    }
+    // Le piu' forti in cima: la tua rete di casa e' quasi sempre la prima, ed e'
+    // esattamente quello che uno si aspetta di trovare senza scorrere.
+    for (int i = 1; i < scanCount; ++i) {
+        const Seen key = scanList[i];
+        int j = i - 1;
+        while (j >= 0 && scanList[j].rssi < key.rssi) {
+            scanList[j + 1] = scanList[j];
+            --j;
+        }
+        scanList[j + 1] = key;
+    }
+    WiFi.scanDelete();
+    scanFresh = true;
 }
 
 // --------------------------------------------------------------- versioni
@@ -150,6 +255,10 @@ const char PAGE_HEAD[] PROGMEM =
 
 String pageStatus() {
     String s = FPSTR(PAGE_HEAD);
+    // Mentre il synth sta provando a entrare in rete la pagina si ricarica da
+    // sola: l'esito arriva dopo qualche secondo e nessuno deve stare li' a
+    // premere ricarica per sapere com'e' andata.
+    if (currentStage == NetPortal::NET_STA_WAIT) s += "<meta http-equiv=refresh content=3>";
     s += "<h1>ArcadeVox</h1><small>firmware <span class=v>" FW_VERSION "</span>";
     if (staIpText[0]) {
         s += " &middot; in rete come <span class=v>";
@@ -176,39 +285,43 @@ String pageStatus() {
     const bool known = Storage::loadWifi(knownSsid, knownPass);
     if (known) {
         s += "<small>In memoria: <span class=v>";
-        s += knownSsid;
+        s += htmlEscape(knownSsid.c_str());
         s += "</span></small>";
     }
-    startScanIfIdle();
-    const int found = WiFi.scanComplete();
-    if (found > 0) {
+    if (scanCount > 0) {
         s += "<select name=ssid>";
-        for (int i = 0; i < found; ++i) {
-            const String name = WiFi.SSID(i);
-            if (name.length() == 0 || alreadyListed(i, name)) continue;
+        for (int i = 0; i < scanCount; ++i) {
+            const String safe = htmlEscape(scanList[i].name);
             s += "<option value='";
-            s += name;
+            s += safe;
             s += "'";
-            if (known && name == knownSsid) s += " selected";
+            if (known && knownSsid == scanList[i].name) s += " selected";
             s += ">";
-            s += name;
-            s += "  (";
-            s += String(WiFi.RSSI(i));
-            s += " dBm)</option>";
+            s += safe;
+            s += scanList[i].locked ? "  &#128274; " : "  ";
+            // Le tacchette dicono la stessa cosa dei dBm senza chiedere a
+            // nessuno di sapere cosa sia un dBm.
+            const int8_t r = scanList[i].rssi;
+            s += (r > -55) ? "||||" : (r > -67) ? "|||" : (r > -78) ? "||" : "|";
+            s += "</option>";
         }
         s += "</select>";
         s += "<small>Non la vedi? Scrivila qui sotto, oppure ";
-        s += "<a style='color:#0aa' href='/rescan'>ripeti la scansione</a>.</small>";
+        s += "<a style='color:#0aa' href='/rescan'>cerca di nuovo</a>.</small>";
     } else {
-        s += "<small>Scansione delle reti in corso: ";
-        s += "<a style='color:#0aa' href='/'>ricarica</a> fra un istante. ";
-        s += "Nel frattempo puoi scrivere il nome a mano.</small>";
+        s += "<small>Nessuna rete trovata. ";
+        s += "<a style='color:#0aa' href='/rescan'>Cerca di nuovo</a>, "
+             "oppure scrivi il nome a mano.</small>";
     }
     // Resta un campo libero: le reti nascoste non compaiono in nessuna scansione,
     // e se e' pieno ha la precedenza sulla tendina.
-    s += "<input name=ssid_manual placeholder='oppure scrivi il nome' value=''>"
-         "<input name=pass type=password placeholder=password>"
-         "<button>Collega</button></form>";
+    s += "<input name=ssid_manual placeholder='oppure scrivi il nome' value=''>";
+    // Se la rete scelta e' quella gia' in memoria, lasciare vuota la password
+    // vuol dire "usa quella di prima": e' la sola cosa che si e' costretti a
+    // ridigitare, e non c'e' nessun motivo per cui debba succedere due volte.
+    s += known ? "<input name=pass type=password placeholder='password (vuoto: quella salvata)'>"
+               : "<input name=pass type=password placeholder=password>";
+    s += "<button>Collega</button></form>";
     if (known) {
         s += "<form method=POST action=/forget>"
              "<button style='background:#622;color:#fdd'>Dimentica la rete</button></form>";
@@ -217,11 +330,11 @@ String pageStatus() {
     s += "<h2>Aggiorna da internet</h2><form method=GET action=/check>"
          "<small>Indirizzo del manifest delle release.</small>"
          "<input name=url value='";
-    s += Storage::loadManifestUrl(FW_MANIFEST_URL);
+    s += htmlEscape(Storage::loadManifestUrl(FW_MANIFEST_URL).c_str());
     s += "'><button>Cerca aggiornamenti</button></form>";
 
-    s += "<small>Per uscire dalla modalita' rete premi PLAY sul synth: si "
-         "riavvia e torna suonabile.</small>";
+    s += "<small>Per uscire dalla modalita' rete spingi il joystick a sinistra: "
+         "il synth si riavvia e torna suonabile.</small>";
     return s;
 }
 
@@ -276,9 +389,25 @@ void handleRoot() {
 
 // Le sonde con cui iOS e Android capiscono di essere dietro un captive portal:
 // rispondendo con un redirect si guadagna l'apertura automatica della pagina.
+// La risposta alle sonde con cui il telefono decide se la rete "ha internet".
+//
+// Android ne manda una in chiaro verso generate_204 e si aspetta un 204 vuoto:
+// qualunque altra cosa vuol dire "c'e' un portale", e a quel punto apre la
+// pagina da solo. Il 302 con l'indirizzo del synth e' la risposta canonica.
+//
+// Le tre righe di intestazione contro la cache non sono decorative. Il telefono
+// ripete le sonde di continuo — al risveglio dello schermo, al cambio di rete,
+// ogni pochi minuti — e se una risposta gli resta in cache si convince che il
+// portale sia gia' stato superato e smette di proporlo. E' il caso in cui uno
+// finisce a digitare l'indirizzo a mano senza capire perche'.
 void handleCaptive() {
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    server.sendHeader("Pragma", "no-cache");
+    server.sendHeader("Expires", "0");
     server.sendHeader("Location", portal, true);
-    server.send(302, "text/plain", "");
+    server.send(302, "text/html",
+                "<!doctype html><meta http-equiv=refresh content='0;url=" + String(portal) +
+                    "'><a href='" + String(portal) + "'>ArcadeVox</a>");
 }
 
 void handleUploadEnd() {
@@ -342,10 +471,28 @@ void handleUploadData() {
 
 void handleRescan() {
     if (!requireAuth()) return;
-    WiFi.scanDelete();      // butta il risultato vecchio...
-    WiFi.scanNetworks(true);  // ...e ne chiede uno nuovo
-    server.sendHeader("Location", "/");
-    server.send(303);
+
+    // Ordine invertito di proposito: prima si risponde, poi si cerca.
+    //
+    // Cercare le reti vuol dire saltare da un canale all'altro, e mentre lo fa la
+    // radio non e' su quello dell'access point: il telefono resta scollegato per
+    // qualche secondo. Se la risposta partisse dopo, se ne andrebbe proprio nel
+    // buco — la pagina resterebbe a caricare e poi darebbe errore, mentre la
+    // scansione era andata benissimo.
+    //
+    // Cosi' invece il telefono ha gia' in mano una pagina che si ricarica da sola
+    // fra sei secondi: il buco lo passa guardando una scritta che glielo spiega, e
+    // quando torna l'elenco e' pronto.
+    server.send(200, "text/html",
+                pageMessage("Sto cercando le reti",
+                            "Ci vogliono cinque secondi, e durante la ricerca il "
+                            "collegamento col synth si interrompe: e' normale. "
+                            "Questa pagina si aggiorna da sola.<meta "
+                            "http-equiv=refresh content='6;url=/'>",
+                            true));
+    server.client().stop();
+
+    harvestScan(WiFi.scanNetworks(false, false));
 }
 
 // Cambiare casa, o rete, senza dover rientrare a mano ogni volta in una rete
@@ -353,6 +500,7 @@ void handleRescan() {
 void handleForget() {
     if (!requireAuth()) return;
     Storage::clearWifi();
+    forgetFoundUpdate();
     staAuto = false;
     WiFi.disconnect();
     staIpText[0] = '\0';
@@ -376,7 +524,41 @@ void handleWifi() {
         return;
     }
 
+    // Password lasciata vuota su una rete che il synth conosce gia': vuol dire
+    // "quella di prima". E' l'unica cosa che questo portale costringa a scrivere,
+    // e non c'e' nessun motivo per cui debba succedere due volte.
+    //
+    // Su una rete *diversa*, pero', vuota vuol dire vuota, e salvarla cosi'
+    // butterebbe via le credenziali buone in cambio di niente: meglio fermarsi e
+    // chiederla, che e' anche cio' che l'utente si aspetta.
+    if (pass.length() == 0) {
+        String oldSsid, oldPass;
+        const bool sameAsSaved = Storage::loadWifi(oldSsid, oldPass) && oldSsid == ssid;
+        // Ci si ferma solo quando si *sa* che una password serve, cioe' quando
+        // quella rete e' nell'elenco col lucchetto. Una rete aperta la password
+        // non ce l'ha, e una rete nascosta scritta a mano non e' nell'elenco per
+        // definizione: in tutti e due i casi rifiutare vorrebbe dire chiedere
+        // qualcosa che non esiste, e lasciare senza uscita chi ha appena scritto
+        // il nome giusto.
+        const int idx = indexOfName(ssid.c_str());
+        const bool knownLocked = (idx >= 0) && scanList[idx].locked;
+        if (sameAsSaved) {
+            pass = oldPass;
+        } else if (knownLocked) {
+            server.send(200, "text/html",
+                        pageMessage("Manca la password",
+                                    "Questa rete e' protetta e il synth non l'ha in "
+                                    "memoria: la password serve. Quella salvata vale "
+                                    "solo per la rete che c'e' gia' dentro.",
+                                    false));
+            return;
+        }
+    }
+
     Storage::saveWifi(ssid.c_str(), pass.c_str());
+    // Rete nuova: quello che si sapeva della versione disponibile non vale piu',
+    // e il controllo automatico va rifatto una volta dall'altra parte.
+    forgetFoundUpdate();
     staAuto = false;  // da qui comanda la macchina a stati, non il rientro in sordina
     WiFi.disconnect();
     WiFi.begin(ssid.c_str(), pass.c_str());
@@ -392,20 +574,15 @@ void handleWifi() {
                             true));
 }
 
-void handleCheck() {
-    if (!requireAuth()) return;
-
-    String url = server.arg("url");
-    if (url.length() == 0) url = Storage::loadManifestUrl(FW_MANIFEST_URL);
-    Storage::saveManifestUrl(url.c_str());
+// Legge il manifest e dice se c'e' di meglio. Non scarica niente: si limita a
+// guardare, e quello che trova finisce sul display.
+bool lookForUpdate(const String &url, String &err, uint16_t timeoutMs = 10000) {
+    updateReady = false;
+    foundVer[0] = foundUrl[0] = foundNotes[0] = '\0';
 
     if (WiFi.status() != WL_CONNECTED) {
-        server.send(200, "text/html",
-                    pageMessage("Nessuna connessione",
-                                "Il synth non e' collegato a internet: dagli "
-                                "prima le credenziali della rete di casa.",
-                                false));
-        return;
+        err = "non collegato a internet";
+        return false;
     }
 
     WiFiClientSecure client;
@@ -416,39 +593,89 @@ void handleCheck() {
 
     HTTPClient http;
     if (!http.begin(client, url)) {
-        server.send(200, "text/html", pageMessage("Indirizzo non valido", url, false));
-        return;
+        err = "indirizzo non valido";
+        return false;
     }
-    http.setTimeout(10000);
+    http.setTimeout(timeoutMs);
     const int code = http.GET();
     if (code != HTTP_CODE_OK) {
         http.end();
-        server.send(200, "text/html",
-                    pageMessage("Manifest non raggiungibile",
-                                String("Il server ha risposto ") + code, false));
-        return;
+        err = String("il server ha risposto ") + code;
+        return false;
     }
     const String body = http.getString();
     http.end();
 
-    const String remoteVer = jsonField(body, "version");
-    const String binUrl = jsonField(body, "url");
-    const String notes = jsonField(body, "notes");
+    const String ver = jsonField(body, "version");
+    const String bin = jsonField(body, "url");
+    if (ver.length() == 0 || bin.length() == 0) {
+        err = "manifest illeggibile";
+        return false;
+    }
+    strncpy(foundVer, ver.c_str(), sizeof(foundVer) - 1);
+    strncpy(foundUrl, bin.c_str(), sizeof(foundUrl) - 1);
+    strncpy(foundNotes, jsonField(body, "notes").c_str(), sizeof(foundNotes) - 1);
+    updateReady = parseVersion(foundVer) > parseVersion(FW_VERSION);
+    return true;
+}
 
-    if (remoteVer.length() == 0 || binUrl.length() == 0) {
-        server.send(200, "text/html",
-                    pageMessage("Manifest illeggibile",
-                                "Servono i campi \"version\" e \"url\".", false));
+// Scarica e installa quello che lookForUpdate() ha trovato. Al termine la
+// scheda si riavvia da sola: non c'e' niente da confermare dopo.
+void installFound() {
+    if (!updateReady || foundUrl[0] == '\0') return;
+    // Senza uplink non si scarica niente, e provarci porta dritti in NET_FAILED —
+    // che e' uno stato terminale: da li' si esce solo riavviando. Meglio non
+    // partire affatto.
+    if (WiFi.status() != WL_CONNECTED) {
+        setStatus("nessuna connessione");
         return;
     }
-    if (parseVersion(remoteVer.c_str()) <= parseVersion(FW_VERSION)) {
+    currentStage = NetPortal::NET_UPDATING;
+    otaProgress = 0;
+    setStatus("scarico dalla rete");
+
+    WiFiClientSecure dl;
+    dl.setInsecure();
+    httpUpdate.rebootOnUpdate(true);
+    const t_httpUpdate_return res = httpUpdate.update(dl, foundUrl);
+    if (res != HTTP_UPDATE_OK) {
+        currentStage = NetPortal::NET_FAILED;
+        setStatus("download fallito");
+        // L'offerta si ritira: la schermata del fallimento non deve continuare a
+        // proporre un tasto che non porta piu' da nessuna parte.
+        updateReady = false;
+        Serial.printf("httpUpdate: %d %s\n", (int)httpUpdate.getLastError(),
+                      httpUpdate.getLastErrorString().c_str());
+    }
+}
+
+void handleCheck() {
+    if (!requireAuth()) return;
+
+    String url = server.arg("url");
+    if (url.length() == 0) url = Storage::loadManifestUrl(FW_MANIFEST_URL);
+    Storage::saveManifestUrl(url.c_str());
+
+    String err;
+    if (!lookForUpdate(url, err)) {
+        server.send(200, "text/html", pageMessage("Controllo non riuscito", err, false));
+        return;
+    }
+    if (!updateReady) {
         server.send(200, "text/html",
                     pageMessage("Gia' aggiornato",
                                 String("Installata la ") + FW_VERSION + ", disponibile la " +
-                                    remoteVer + ".",
+                                    foundVer + ".",
                                 true));
         return;
     }
+    // Il controllo l'ha appena fatto una persona: quello automatico non ha piu'
+    // niente da aggiungere, e lasciarlo partire piu' tardi vorrebbe dire che un
+    // solo tentativo storto cancella un aggiornamento gia' confermato — perche'
+    // lookForUpdate azzera l'esito all'ingresso.
+    autoChecked = true;
+    const String remoteVer = foundVer;
+    const String notes = foundNotes;
 
     // Da qui in poi la risposta parte prima del download: il trasferimento dura
     // decine di secondi e la pagina andrebbe in timeout.
@@ -459,21 +686,7 @@ void handleCheck() {
                                 "si riavvia da solo.",
                             true));
     server.client().stop();
-
-    currentStage = NetPortal::NET_UPDATING;
-    otaProgress = 0;
-    setStatus("scarico dalla rete");
-
-    WiFiClientSecure dl;
-    dl.setInsecure();
-    httpUpdate.rebootOnUpdate(true);
-    const t_httpUpdate_return res = httpUpdate.update(dl, binUrl);
-    if (res != HTTP_UPDATE_OK) {
-        currentStage = NetPortal::NET_FAILED;
-        setStatus("download fallito");
-        Serial.printf("httpUpdate: %d %s\n", (int)httpUpdate.getLastError(),
-                      httpUpdate.getLastErrorString().c_str());
-    }
+    installFound();
 }
 
 }  // namespace
@@ -496,6 +709,20 @@ void begin() {
     snprintf(apPass, sizeof(apPass), "arcade%02X%02X", mac[3], mac[4]);
 
     WiFi.persistent(false);
+
+    // --- prima l'ascolto, poi la voce ---
+    // La scansione si fa adesso, da sola sulla radio, con l'access point ancora
+    // spento: e' l'unico momento in cui saltare da un canale all'altro non costa
+    // niente a nessuno. Dura due o tre secondi, il display lo dice, e in cambio
+    // quando il telefono arriva l'elenco delle reti e' gia' pronto — invece di
+    // cominciare a formarsi proprio mentre il telefono ne avrebbe bisogno.
+    WiFi.mode(WIFI_STA);
+    currentStage = NET_SCAN;
+    setStatus("cerco le reti");
+    Display::updateNetwork();  // il loop non gira ancora: si disegna a mano
+    harvestScan(WiFi.scanNetworks(false /* bloccante */, false /* niente nascoste */));
+    Serial.printf("NETWORK: %d reti trovate\n", scanCount);
+
     WiFi.mode(WIFI_AP_STA);  // l'AP resta su anche dopo essere entrati in rete
     WiFi.softAP(apSsid, apPass);
     delay(100);
@@ -504,6 +731,11 @@ void begin() {
     setQrForJoin();
 
     dns.setErrorReplyCode(DNSReplyCode::NoError);
+    // Vita zero nelle risposte: il telefono non deve tenersi in cache l'esito di
+    // una sonda vecchia. Android ne manda parecchie di fila, e una sola risposta
+    // ricordata piu' del dovuto basta a fargli decidere che la rete va bene cosi'
+    // — e a non aprire piu' il portale.
+    dns.setTTL(0);
     dns.start(DNS_PORT, "*", WiFi.softAPIP());  // qualunque nome porta al portale
 
     server.on("/", HTTP_GET, handleRoot);
@@ -564,6 +796,51 @@ void update() {
         }
     }
 
+    // Appena c'e' internet, il synth va a vedere da solo se esiste una versione
+    // piu' nuova. Una volta sola per accensione: il manifest non cambia mentre
+    // sei li' a guardarlo, e ogni lettura sono un paio di secondi di attesa.
+    // Il controllo automatico serve al flusso *senza telefono*: la radio si
+    // accende, il synth ritrova la rete di casa e dice da solo se c'e' una
+    // versione nuova. Se invece un telefono e' agganciato all'access point non si
+    // fa: leggere il manifest e' una richiesta bloccante da qualche secondo, e
+    // quei secondi il portale li passerebbe muto — senza rispondere ne' al DNS ne'
+    // alle richieste della pagina, che nel frattempo si sta ricaricando da sola.
+    // Chi ha il telefono in mano ha gia' il suo pulsante "Cerca aggiornamenti".
+    const bool phoneAttached = WiFi.softAPgetStationNum() > 0;
+    if (!autoChecked && autoTries < 3 && !phoneAttached && WiFi.status() == WL_CONNECTED &&
+        (autoRetryAt == 0 || (int32_t)(millis() - autoRetryAt) > 0)) {
+        ++autoTries;
+        String err;
+        // Leggere il manifest e' bloccante: qualche secondo in cui il loop non
+        // gira e il display resterebbe fermo sull'ultima cosa scritta. Si dice
+        // prima cosa sta succedendo, e lo si disegna a mano — altrimenti quei
+        // secondi si leggono come una scheda piantata. Sei e non dieci: e' il
+        // tempo in cui il portale resta muto, e va tenuto corto.
+        setStatus("cerco aggiornamenti");
+        Display::updateNetwork();
+        if (lookForUpdate(Storage::loadManifestUrl(FW_MANIFEST_URL), err, 6000)) {
+            // Solo adesso si smette di riprovare: marcare il tentativo *prima*
+            // voleva dire che un singolo momento storto — il DNS ancora freddo,
+            // il router lento a dare la rotta — spegneva il controllo per tutta
+            // l'accensione.
+            autoChecked = true;
+            if (updateReady) {
+                Serial.printf("NETWORK: disponibile la %s\n", foundVer);
+                setStatus("aggiornamento pronto");
+            } else {
+                setStatus("gia' aggiornato");
+            }
+        } else {
+            // Tre tentativi e poi basta: un manifest irraggiungibile non
+            // diventa raggiungibile a furia di riprovare, e ogni tentativo sono
+            // sei secondi in cui il portale non risponde a nessuno.
+            Serial.printf("NETWORK: controllo fallito (%s), tentativo %d di 3\n", err.c_str(),
+                          (int)autoTries);
+            setStatus(autoTries < 3 ? "riprovo fra poco" : "controllo non riuscito");
+            autoRetryAt = millis() + 20000;
+        }
+    }
+
     // Attesa del collegamento alla rete di casa.
     if (currentStage == NET_STA_WAIT) {
         if (WiFi.status() == WL_CONNECTED) {
@@ -599,5 +876,9 @@ const char *portalUrl() { return portal; }
 const char *staIp() { return staIpText; }
 const char *message() { return statusMsg; }
 int progress() { return otaProgress; }
+
+const char *updateVersion() { return updateReady ? foundVer : ""; }
+bool updateAvailable() { return updateReady; }
+void installUpdate() { installFound(); }
 
 }  // namespace NetPortal

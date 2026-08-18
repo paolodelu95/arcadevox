@@ -1894,6 +1894,10 @@ void updateNetwork() {
     static char lastMsg[64] = "";
     static char lastIp[20] = "";
     static bool everDrawn = false;
+    // L'aggiornamento lo trova il synth mentre la schermata e' gia' a video: se
+    // non entrasse nel confronto, la notizia piu' importante di tutta la
+    // modalita' rete non comparirebbe mai.
+    static bool lastUpd = false;
 
     const NetPortal::Stage st = NetPortal::stage();
     const char *qr = NetPortal::qrPayload();
@@ -1901,10 +1905,12 @@ void updateNetwork() {
 
     // L'indirizzo entra nel confronto: arriva quando il rientro automatico va a
     // buon fine, senza che ne' lo stato ne' il messaggio cambino.
-    if (everDrawn && st == lastStage && strcmp(qr, lastQr) == 0 && strcmp(msg, lastMsg) == 0 &&
-        strcmp(NetPortal::staIp(), lastIp) == 0) {
+    const bool upd = NetPortal::updateAvailable();
+    if (everDrawn && st == lastStage && upd == lastUpd && strcmp(qr, lastQr) == 0 &&
+        strcmp(msg, lastMsg) == 0 && strcmp(NetPortal::staIp(), lastIp) == 0) {
         return;
     }
+    lastUpd = upd;
     strncpy(lastIp, NetPortal::staIp(), sizeof(lastIp) - 1);
     const bool qrChanged = !everDrawn || strcmp(qr, lastQr) != 0;
 
@@ -1912,6 +1918,15 @@ void updateNetwork() {
     strncpy(lastQr, qr, sizeof(lastQr) - 1);
     strncpy(lastMsg, msg, sizeof(lastMsg) - 1);
     everDrawn = true;
+
+    // Setacciare l'etere prende due o tre secondi, e sono i due o tre secondi in
+    // cui uno si chiede se la scheda si e' piantata. Dirlo costa una schermata.
+    if (st == NetPortal::NET_SCAN) {
+        chrome("RETE", HUD_NEON);
+        textCentered("CERCO LE RETI", 92, 2, HUD_ICE);
+        textCentered("un attimo solo", 120, 1, HUD_LABEL);
+        return;
+    }
 
     if (st == NetPortal::NET_UPDATING) {
         // Da qui in avanti comanda drawOtaProgress().
@@ -1950,30 +1965,96 @@ void updateNetwork() {
     // una scorciatoia per il portale. Le credenziali dell'access point restano
     // comunque a video: sono l'unica via d'ingresso se il telefono non e' sulla
     // stessa rete di casa.
-    char head[40];
-    if (NetPortal::staIp()[0] != '\0') {
-        snprintf(head, sizeof(head), "in rete: %s", NetPortal::staIp());
+    // La riga di stato dice sempre cosa sta facendo il synth. Prima portava
+    // l'indirizzo di rete quando c'era, e cosi' i messaggi che contano davvero —
+    // "cerco aggiornamenti", che tiene fermo il loop per qualche secondo —
+    // restavano invisibili proprio nel momento in cui servivano.
+    textCentered(msg, 158, 1, HUD_NEON);
+
+    // L'ordine dei tre casi non e' indifferente, ed e' qui che stava il difetto
+    // piu' grosso di tutta la modalita' rete: quando il synth si ricollega da
+    // solo, senza telefono, nessuno si aggancia mai all'access point e lo stato
+    // resta NET_AP per sempre. Con il controllo sull'access point per primo, la
+    // schermata continuava a proporre le credenziali del wifi mentre la notizia
+    // — c'e' una versione nuova, tienila premuta — non compariva mai.
+    if (NetPortal::updateAvailable()) {
+        // Il synth ha fatto tutto da solo: si e' ricollegato alla rete di casa e
+        // ha letto il manifest. Da qui il telefono non serve piu', e infatti la
+        // schermata smette di parlarne — resta un tasto da tenere premuto.
+        char buf[24];
+        snprintf(buf, sizeof(buf), "NUOVA: %s", NetPortal::updateVersion());
+        hudChipCentered(166, buf, HUD_AMBER, 1);
+        textCentered("TIENI AVVIA", 184, 2, HUD_ICE);
+        textCentered("per installarla", 204, 1, HUD_LABEL);
+    } else if (st == NetPortal::NET_AP) {
+        // Ancora nessuno agganciato: il codice e' la rete, e le credenziali
+        // servono a chi il QR non riesce a inquadrarlo.
+        textCentered(NetPortal::ssid(), 170, 1, HUD_ICE);
+        textCentered(NetPortal::password(), 182, 2, HUD_AMBER);
+        // Nel flusso senza telefono nessuno si aggancia mai all'access point,
+        // quindi lo stato resta qui per sempre: se l'indirizzo di rete non lo
+        // scrivessimo anche in questo ramo non comparirebbe mai, ed e' l'unica
+        // strada per raggiungere il synth dal computer di casa.
+        if (NetPortal::staIp()[0] != '\0') {
+            char ip[40];
+            snprintf(ip, sizeof(ip), "in rete: %s", NetPortal::staIp());
+            textCentered(ip, 204, 1, HUD_ICE);
+        } else {
+            textCentered("inquadra per entrare", 204, 1, HUD_LABEL);
+        }
     } else {
-        snprintf(head, sizeof(head), "%s", msg);
-    }
-    textCentered(head, 160, 1, HUD_NEON);
-    textCentered(NetPortal::ssid(), 172, 1, HUD_ICE);
-    textCentered(NetPortal::password(), 184, 2, HUD_AMBER);
-    // Dall'access point il portale si apre senza login. La finestra utente e
-    // password compare solo a chi arriva dall'indirizzo di casa, quindi la
-    // riga si scrive solo quando quell'indirizzo esiste: altrimenti annuncia
-    // un ostacolo che sulla strada del QR non c'e'.
-    if (NetPortal::staIp()[0] != '\0') {
-        textCentered("da casa, utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+        // Telefono agganciato e niente da annunciare: adesso il codice e' la
+        // pagina, e va detto — altrimenti si continua a guardare le credenziali
+        // dell'access point, gia' usate, senza accorgersi che il codice sopra e'
+        // cambiato.
+        hudChipCentered(170, "INQUADRA DI NUOVO", HUD_LIME, 1);
+        if (NetPortal::staIp()[0] != '\0') {
+            char ip[40];
+            snprintf(ip, sizeof(ip), "in rete: %s", NetPortal::staIp());
+            textCentered(ip, 190, 1, HUD_ICE);
+            // Dall'access point il portale si apre senza login. La finestra
+            // utente e password compare solo a chi arriva dall'indirizzo di
+            // casa, quindi la riga si scrive solo quando quell'indirizzo esiste.
+            textCentered("da casa, utente: " NET_AUTH_USER, 204, 1, HUD_LABEL);
+        } else {
+            textCentered("apre la pagina del synth", 190, 1, HUD_LABEL);
+            // La riga piu' utile di tutta la schermata, su Android: con i dati
+            // mobili accesi il telefono considera valida quella rete e non
+            // questa, e la pagina del synth non la va a cercare nemmeno se
+            // gliela chiedi. Spegnerli per un attimo e' quasi sempre tutto cio'
+            // che serve.
+            //
+            // Ventidue caratteri: a y=204 il glifo arriva alla riga 211, e li'
+            // la corda utile vale 144 px.
+            textCentered("o spegni i dati mobili", 204, 1, HUD_AMBER);
+        }
     }
     // La via d'uscita va scritta sulla schermata da cui si vuole uscire. Finora
     // stava solo nel manuale, e da qui il synth sembrava un vicolo cieco.
     // Quattordici caratteri: a y=216 il glifo arriva fino alla riga 223, e li'
     // siamo a centotre pixel dal centro — la corda utile vale 106 px, cioe'
-    // diciassette caratteri a corpo 1. Con "JOYSTICK A SINISTRA: ESCI" la riga
-    // partiva da x=45 e le prime lettere finivano oltre il bordo del vetro, dove
-    // non esistono proprio.
+    // diciassette caratteri a corpo 1.
     textCentered("SINISTRA: ESCI", 216, 1, HUD_LIME);
+}
+
+// Il caricamento della conferma mentre si tiene premuto AVVIA per installare.
+//
+// Qui si puo' disegnare sul bordo senza precauzioni: la schermata del QR non ha
+// ghiera — e' un fillScreen(BLACK) e via — quindi l'arco si accende e si spegne
+// senza avere niente sotto da rovinare. E' lo stesso patto delle altre azioni che
+// non si tornano indietro: tenere vuol dire "lo sto facendo apposta".
+void drawNetHold(uint8_t fill) {
+    if (!gfx) return;
+    static uint8_t drawn = 255;
+    if (fill == drawn) return;
+    // Da 110 a 116, cioe' sotto l'anello che chrome() disegna a 117 e 118: la
+    // schermata del QR non ce l'ha, ma quella del fallimento si', e una gomma
+    // nera che arrivasse fin li' gliene staccherebbe un pezzo — proprio nel
+    // momento in cui si sta mollando il tasto perche' e' andata male.
+    const float a = 360.0f * (float)fill / 255.0f;
+    if (a > 0.5f) arcSeg(0.0f, a, 110, 116, HUD_AMBER);
+    if (a < 359.5f) arcSeg(a, 360.0f, 110, 116, BLACK);
+    drawn = fill;
 }
 
 void drawOtaProgress(int pct) {

@@ -1438,6 +1438,23 @@ void loop() {
     // Esclusiva: il motore audio e' spento e il core 0 e' tutto dello stack
     // WiFi. Si esce solo riavviando.
     if (NetPortal::active()) {
+        // Gli eventi di AVVIA si leggono **prima** di NetPortal::update(), e la
+        // riga sotto e' la ragione per cui questo ordine conta.
+        //
+        // Sono eventi a fronte: se non li si consuma restano in coda per sempre.
+        // E update() e' proprio la funzione che puo' fermarsi qualche secondo a
+        // leggere il manifest — ed e' quella che, tornando, arma l'offerta di
+        // aggiornamento. Leggendoli dopo, una pressione lunga fatta *prima* che
+        // ci fosse qualcosa da installare, e gia' rilasciata da un pezzo, si
+        // sarebbe applicata all'offerta appena comparsa: una riprogrammazione del
+        // firmware partita da sola, senza nessun dito sul tasto.
+        //
+        // E' la stessa famiglia di difetto del joystick che scendeva soltanto: un
+        // fronte letto due volte, o letto nel momento sbagliato, non e' mai
+        // innocuo.
+        const bool playHeldLong = Input::fnLongPress(FN_PLAY);
+        Input::fnShortPress(FN_PLAY);  // il breve qui non vuol dire niente
+
         NetPortal::update();
         // Si esce col joystick a sinistra, che e' il "torna indietro" di tutto
         // lo strumento. Ed e' anche l'unica uscita che funziona sempre: il
@@ -1446,6 +1463,29 @@ void loop() {
         if (Input::joyLeft()) {
             Serial.println(F("Uscita dalla modalita' NETWORK: riavvio."));
             ESP.restart();
+        }
+
+        // Se il synth ha gia' trovato una versione nuova da solo, il telefono non
+        // serve piu' a niente: si tiene premuto AVVIA e si installa da qui. Stessa
+        // conferma dello svuotamento del pattern — l'anello che si riempie mentre
+        // tieni — perche' e' la stessa categoria di gesto: dopo, il firmware non
+        // e' piu' quello di prima.
+        if (NetPortal::updateAvailable()) {
+            uint8_t fill = 0;
+            if (Input::fnIsDown(FN_PLAY)) {
+                const uint32_t held = Input::fnHeldMs(FN_PLAY);
+                fill = (held >= FN_LONG_PRESS_SLOW_MS)
+                           ? 255
+                           : (uint8_t)(held * 255u / FN_LONG_PRESS_SLOW_MS);
+            }
+            Display::drawNetHold(fill);
+            // Il dito dev'esserci ancora: la soglia scatta col tasto premuto, e
+            // pretenderlo qui chiude anche l'ultima fessura per cui un fronte
+            // vecchio possa far partire da solo una riprogrammazione.
+            if (playHeldLong && Input::fnIsDown(FN_PLAY)) {
+                Serial.println(F("NETWORK: installo l'aggiornamento dal synth."));
+                NetPortal::installUpdate();
+            }
         }
         if (now - lastDisplayAt >= NETWORK_REFRESH_MS) {
             lastDisplayAt = now;

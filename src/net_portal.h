@@ -8,7 +8,9 @@
 //
 // Due strade per aggiornare, entrambe dallo smartphone:
 //   1. carichi il .bin direttamente dal telefono (nessuna rete esterna serve);
-//   2. dai al synth le credenziali di casa e lui si scarica il firmware da solo.
+//   2. scegli la tua rete da un elenco e scrivi la password, e lui si scarica il
+//      firmware da solo. La rete resta in memoria: dalla seconda volta in poi si
+//      ricollega senza che nessuno tocchi niente.
 #pragma once
 
 // Nome utente del portale. Sta qui e non dentro net_portal.cpp perche' il
@@ -22,6 +24,7 @@ namespace NetPortal {
 
 enum Stage : uint8_t {
     NET_OFF = 0,
+    NET_SCAN,        // setaccio l'etere: sto guardando che reti ci sono
     NET_AP,          // access point attivo, in attesa dello smartphone
     NET_CONNECTED,   // almeno un client agganciato all'AP
     NET_STA_WAIT,    // tentativo di collegamento alla rete di casa
@@ -47,5 +50,14 @@ const char *portalUrl();
 const char *staIp();      // "" se non collegati alla rete di casa
 const char *message();    // riga di stato per il display
 int progress();           // 0..100 durante il trasferimento
+
+// --- l'aggiornamento trovato da solo ---
+// Appena il synth entra in rete legge il manifest per conto suo. E' cio' che
+// rende il telefono facoltativo: la prima volta bisogna pur dirgli qual e' la
+// rete di casa, ma dalla seconda in poi si accende la radio e sul display c'e'
+// gia' scritto se esiste una versione nuova.
+bool updateAvailable();
+const char *updateVersion();  // "" se non ce n'e' una
+void installUpdate();         // scarica e riavvia: dal synth, senza telefono
 
 }  // namespace NetPortal

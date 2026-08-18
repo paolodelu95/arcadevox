@@ -34,5 +34,8 @@ void seqSetStep(int index, int8_t note, int8_t oct);  // note = SEQ_REST / SEQ_T
 // ssid e password hanno il formato che genera net_portal.cpp dal MAC:
 // "ArcadeVox-%02X%02X" e "arcade%02X%02X". Lunghezze reali, non abbreviate.
 void netSet(uint8_t stage, const char *qr, const char *msg, const char *staIp);
+// L'aggiornamento che il synth dice di aver trovato da solo: e' la schermata su
+// cui il telefono smette di servire, quindi va provata come le altre.
+void netSetUpdate(bool available, const char *version);
 
 }  // namespace Sim
