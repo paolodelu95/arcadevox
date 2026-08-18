@@ -27,6 +27,7 @@
 #include "net_portal.h"
 #include "pinout.h"
 #include "presets.h"
+#include "samples.h"
 #include "sequencer.h"
 #include "settings.h"
 #include "status_led.h"
@@ -294,6 +295,13 @@ static uint8_t settingsCursor = 0;
 // Riga selezionata nell'elenco dei timbri. Segue il preset caricato, perche' su
 // questa schermata scorrere *e'* caricare.
 static uint8_t timbroCursor = 0;
+// --- schermata SUONI ---
+// L'ultimo suono partito, per la schermata, e la velocita' di lettura, che e' la
+// manopola che rende questi tredici suoni una cosa con cui si gioca invece di
+// tredici pulsanti che fanno sempre uguale.
+static int8_t memeLast = -1;
+static float memeSpeedPos = 1.0f / 3.0f;  // 0..1 sulla corsa 0,5x .. 2,0x
+static float memeSpeed = 1.0f;
 
 // L'overlay: cosa e' appena cambiato, sopra la schermata che stai guardando, per
 // un paio di secondi. E' il perno del sistema — se ogni gesto si conferma da
@@ -313,7 +321,7 @@ static uint16_t flashRev = 0;
 // mentre agisci.
 static const uint32_t FLASH_MS = 900;
 
-// Maschera di bit sulle sette schermate: la banda tace su quelle in cui l'effetto
+// Maschera di bit sulle schermate: la banda tace su quelle in cui l'effetto
 // del gesto e' gia' sotto gli occhi.
 //
 // E' la regola che l'utente ha chiesto per nome — "nei menu non mettermi la banda
@@ -751,7 +759,7 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
     for (int e = 0; e < 4; ++e) buf[e][0] = '\0';
 
     // --- manopola 3: il volume, il punto fermo dello strumento ---
-    // Vale su sei schermate su sette. L'unica eccezione e' l'inviluppo, dove le
+    // Vale su sette schermate su otto. L'unica eccezione e' l'inviluppo, dove le
     // lettere da regolare sono quattro e la terza e' il SOSTEGNO: era l'unico
     // parametro del synth che nessun comando poteva toccare, mentre la schermata
     // prometteva "3=S" da sempre.
@@ -829,6 +837,27 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
             label[3] = "ACCORDO";
             frac[3] = (float)chordMode / (float)(CHORD_COUNT - 1);
             snprintf(buf[3], sizeof(buf[3]), "%s", CHORDS[chordMode].label);
+            break;
+
+        case SCREEN_SUONI:
+            // La prima manopola scorre i nomi senza far partire niente: serve a
+            // sapere cosa c'e' prima di premere, e a ritrovare quello che
+            // cercavi. La quarta e' la velocita', ed e' meta' del divertimento.
+            if (enc[0] != 0) {
+                memeLast = (int8_t)nudgeIndex((memeLast < 0) ? 0 : memeLast, enc[0], MEME_COUNT);
+            }
+            if (enc[3] != 0) {
+                memeSpeedPos = clamp01(memeSpeedPos + enc[3] * stepFor(SETTING_ADSR, fine[3]));
+                memeSpeed = 0.5f + memeSpeedPos * 1.5f;
+                AudioEngine::setSampleSpeed(memeSpeed);
+            }
+            label[0] = "SUONO";
+            frac[0] = (memeLast < 0) ? 0.0f : (float)memeLast / (float)(MEME_COUNT - 1);
+            snprintf(buf[0], sizeof(buf[0]), "%s",
+                     (memeLast < 0) ? "-" : MEME_SAMPLES[memeLast].name);
+            label[3] = "VELOC.";
+            frac[3] = memeSpeedPos;
+            snprintf(buf[3], sizeof(buf[3]), "x%.2f", memeSpeed);
             break;
 
         case SCREEN_INVILUPPO:
@@ -1017,6 +1046,11 @@ static void resetKnob(uint8_t scr, int e) {
         setIndex[settingsCursor] = Settings::ENTRIES[settingsCursor].byDefault;
         if (settingsCursor == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[settingsCursor]);
         what = Settings::ENTRIES[settingsCursor].label;
+    } else if (scr == SCREEN_SUONI && e == 3) {
+        memeSpeedPos = 1.0f / 3.0f;
+        memeSpeed = 1.0f;
+        AudioEngine::setSampleSpeed(memeSpeed);
+        what = "VELOCITA'";
     } else if (scr == SCREEN_TIMBRI && e == 0) {
         // Ricarica il timbro da capo, buttando via le modifiche fatte a mano: e'
         // la scialuppa di chi ha girato troppe manopole e vuole ricominciare.
@@ -1675,6 +1709,10 @@ void loop() {
     // niente ne' di aspettare seicento millisecondi.
     if (Input::fnShortPress(FN_SILENCE)) {
         AudioEngine::allNotesOff();
+        // Anche i campioni: SILENZIO vuol dire silenzio, e un boom da un secondo
+        // e mezzo partito per sbaglio e' esattamente il genere di cosa per cui
+        // questo tasto esiste.
+        AudioEngine::stopSamples();
         for (int i = 0; i < MAX_VOICES; ++i) voiceSounding[i] = false;
         for (int n = 0; n < NOTE_COUNT; ++n) latchedChord[n] = false;
         latchedNote = -1;
@@ -1807,12 +1845,27 @@ void loop() {
         resetKnob(uiScreen, e);
     }
 
+    // ------------------------------------------------ i tredici suoni
+    // Sulla schermata SUONI i tasti smettono di essere note: ognuno fa partire il
+    // suo campione, e basta. Non si accende nessuna voce del motore, quindi non
+    // c'e' niente da rilasciare e non resta niente appeso — un campione ha un
+    // inizio e una fine e se le gestisce da solo.
+    //
+    // La riga sta qui e non piu' in basso perche' la nota viva si decide subito
+    // dopo: senza, premendo un tasto sarebbero partiti tutti e due, il suono e la
+    // nota, e il latch avrebbe lasciato quest'ultima a suonare per sempre sotto.
+    const bool memeMode = (uiScreen == SCREEN_SUONI);
+
     // ----------------------------------------- nota live (priorita' + arp)
     const int rawNote = Input::currentNote();
     const int heldCount = Input::heldCount();
     if (heldCount > 0) touched(now);
     const bool anyHeld = heldCount > 0;
-    if (rawNote >= 0) latchedNote = (int8_t)rawNote;
+    // Fra i suoni il tasto premuto non e' una nota, quindi non deve nemmeno
+    // diventare "l'ultima nota tenuta": con TIENI inserito, uscendo dalla
+    // schermata SUONI il synth avrebbe ripreso a suonare da solo un tasto che
+    // nessuno aveva premuto come nota.
+    if (rawNote >= 0 && !memeMode) latchedNote = (int8_t)rawNote;
 
     bool arpRetrigger = false;
     int liveNote = -1;
@@ -1838,12 +1891,19 @@ void loop() {
     } else if (holdActive) {
         liveNote = latchedNote;  // nota tenuta anche a tasti rilasciati
     }
+    if (memeMode) liveNote = -1;  // qui i tasti fanno i suoni, non le note
     prevAnyHeld = anyHeld;
 
     // -------------------------------- scrittura sul pattern (edit e record)
     int pressed;
     while ((pressed = Input::consumeNoteOn()) >= 0) {
-        if (stepWrite) {
+        if (memeMode) {
+            if (pressed < MEME_COUNT) {
+                const MemeSample &m = MEME_SAMPLES[pressed];
+                AudioEngine::playSample(m.data, m.len, MEME_RATE);
+                memeLast = (int8_t)pressed;
+            }
+        } else if (stepWrite) {
             // A giro fermo, sulla schermata RITMO, il tasto premuto suona **e**
             // scrive: il cursore avanza da solo, quindi una melodia si compone
             // premendo un tasto dopo l'altro e basta.
@@ -1874,7 +1934,17 @@ void loop() {
     float wantVel[MAX_VOICES];
     for (int i = 0; i < MAX_VOICES; ++i) wantVel[i] = 1.0f;
 
-    if (!polyMode) {
+    if (memeMode) {
+        // Sulla schermata SUONI i tasti fanno partire i campioni e nient'altro.
+        // Zittire la sola nota "viva" non bastava: in polifonico ogni tasto ha una
+        // voce sua, che non passa da liveNote — quindi premendo si sentivano
+        // insieme il suono e la nota, e con TIENI inserito quest'ultima restava
+        // agganciata all'accordo tenuto e non si spegneva piu'.
+        //
+        // Anche la sequenza tace: qui non c'e' niente da accompagnare.
+        lastTarget = -1;
+        lastWasLive = false;
+    } else if (!polyMode) {
         // MONO: una voce sola, la nota dal vivo ha priorita' sulla sequenza.
         const bool useLive = (liveNote >= 0);
         const int target = useLive ? liveNote : seqNote;
@@ -2092,6 +2162,7 @@ void loop() {
         // movimento, quindi la mezza fase e' meta' di quello.
         const uint32_t halfBeatMs = 30000u / (uint32_t)Sequencer::bpm();
         lv.tempoPulse = (halfBeatMs > 0) && ((now / halfBeatMs) % 2 == 0);
+        lv.memeMode = memeMode;
         lv.crush = crushOn;
         lv.brightness = setIndex[SETTING_LED];
         lv.scaleRoot = (setIndex[SETTING_SCALE] == 0) ? -1 : (int8_t)setIndex[SETTING_ROOT];
@@ -2159,6 +2230,8 @@ void loop() {
         view.holdFill = holdFill;
         view.timbro = setIndex[SETTING_TIMBRO];
         view.timbroCursor = timbroCursor;
+        view.memeLast = memeLast;
+        view.memePlaying = AudioEngine::samplesPlaying();
         view.ledLearn = false;
         view.ledLearnIndex = 0;
 

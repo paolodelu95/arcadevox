@@ -29,9 +29,12 @@ clang++ $CXXFLAGS -c "$ROOT/src/presets.cpp"     -o "$BUILD/presets.o"
 # La tabella delle righe della schermata EFFETTI: la leggono sia display.cpp sia
 # le scene, esattamente come sul chip.
 clang++ $CXXFLAGS -c "$ROOT/src/fx_rows.cpp"     -o "$BUILD/fx_rows.o"
+# I tredici suoni: al display servono solo i nomi, ma il file e' quello vero —
+# se un nome cresce di due lettere, la scena lo mostra sbordare.
+clang++ $CXXFLAGS -c "$ROOT/src/samples.cpp"     -o "$BUILD/samples.o"
 clang   -std=c99 -O1 -w -I"$HERE/vendor" -c "$HERE/vendor/qrcode.c" -o "$BUILD/qrcode.o"
 
-clang++ -o "$BUILD/simdisplay" "$BUILD/sim_main.o" "$BUILD/sim_fakes.o" "$BUILD/settings.o" "$BUILD/presets.o" "$BUILD/fx_rows.o" \
+clang++ -o "$BUILD/simdisplay" "$BUILD/sim_main.o" "$BUILD/sim_fakes.o" "$BUILD/settings.o" "$BUILD/presets.o" "$BUILD/fx_rows.o" "$BUILD/samples.o" \
         "$BUILD/qrcode.o" -lm
 
 rm -f "$OUT"/*.ppm "$OUT"/*.png

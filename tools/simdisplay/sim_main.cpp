@@ -144,6 +144,8 @@ SynthView baseView() {
     v.ledLearn = false;
     v.ledLearnIndex = 0;
     v.holdFill = 0;
+    v.memeLast = -1;
+    v.memePlaying = 0;
     v.flashLabel = nullptr;
     v.flashValue = nullptr;
     v.flashFrac = -1.0f;
@@ -251,6 +253,7 @@ void sceneTimbri(uint8_t cursor, uint8_t loaded) {
     SynthView v = baseView();
     v.timbroCursor = cursor;
     v.timbro = loaded;
+    v.memeLast = -1;
     knobs("TIMBRO", "SCALA", "VOL", "ACCORDO");
     tick(v);
 }
@@ -269,6 +272,34 @@ void scene_timbri_dopo_uso() {
     for (int i = 0; i < (int)PRESET_COUNT; ++i) {
         v.timbroCursor = (uint8_t)i;
         v.timbro = (uint8_t)i;
+        tick(v);
+    }
+}
+
+// --- SUONI ------------------------------------------------------------------
+void sceneSuoni(int8_t last) {
+    boot();
+    gotoScreen(SCREEN_SUONI);
+    SynthView v = baseView();
+    v.memeLast = last;
+    v.memePlaying = (last >= 0) ? 1 : 0;
+    knobs("SUONO", "-", "VOL", "VELOC.");
+    tick(v);
+}
+void scene_suoni_vuoto() { sceneSuoni(-1); }
+// TROMBETTA e' il nome piu' lungo dei tredici: se uno sborda, sborda lui.
+void scene_suoni_nome_lungo() { sceneSuoni(0); }
+void scene_suoni_corto() { sceneSuoni(1); }
+
+void scene_suoni_dopo_uso() {
+    boot();
+    gotoScreen(SCREEN_SUONI);
+    SynthView v = baseView();
+    knobs("SUONO", "-", "VOL", "VELOC.");
+    tick(v);
+    for (int i = 0; i < MEME_COUNT; ++i) {
+        v.memeLast = (int8_t)i;
+        v.memePlaying = (uint8_t)(1 + (i % 3));
         tick(v);
     }
 }
@@ -573,6 +604,11 @@ const Scene SCENES[] = {
     {"08-timbri-nome-lungo", scene_timbri_nome_lungo},
     {"09-timbri-ultimo", scene_timbri_ultimo},
     {"10-timbri-dopo-uso", scene_timbri_dopo_uso},
+
+    {"10b-suoni-vuoto", scene_suoni_vuoto},
+    {"10c-suoni-nome-lungo", scene_suoni_nome_lungo},
+    {"10d-suoni-corto", scene_suoni_corto},
+    {"10e-suoni-dopo-uso", scene_suoni_dopo_uso},
 
     {"11-inviluppo-min", scene_inviluppo_min},
     {"12-inviluppo-max", scene_inviluppo_max},

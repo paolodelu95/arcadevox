@@ -49,6 +49,11 @@ struct LightView {
     // sequencer capisce cos'e' il tempo guardando un tasto battere, e girando la
     // manopola TEMPO lo vede cambiare prima ancora di premere qualcosa.
     bool tempoPulse;
+    // Sulla schermata SUONI i tredici tasti non sono piu' una tastiera: sono
+    // tredici cose diverse, e disegnarli come bianchi e neri direbbe una cosa
+    // falsa. Prendono tredici tinte in fila, cosi' si vede a colpo d'occhio che
+    // qui ogni tasto e' per conto suo.
+    bool memeMode;
 };
 
 namespace Keylight {

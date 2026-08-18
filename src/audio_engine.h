@@ -77,6 +77,29 @@ void begin();
 // sottoscorrere il DMA. Dopo questa chiamata il synth e' muto fino al reboot.
 void shutdown();
 
+// --- campioni (la schermata SUONI) ---
+//
+// Un canale a parte, che non passa dalle voci: un campione non ha un'altezza da
+// intonare ne' un inviluppo da applicare, ha solo un inizio e una fine. Entra
+// nella catena finale insieme alla somma delle voci, quindi eco e 8 BIT lo
+// prendono come prendono tutto il resto — ed e' proprio la' che diventa
+// divertente.
+//
+// Quattro slot: premere due tasti di fila non deve tagliare il suono di prima,
+// che e' esattamente cio' che uno fa con dei suoni cosi'.
+#define SAMPLE_SLOTS 4
+
+// `data` sono byte a 8 bit senza segno (128 = silenzio) alla frequenza `rate`.
+// Il puntatore deve restare valido: in pratica punta sempre in flash.
+void playSample(const uint8_t *data, uint32_t len, uint32_t rate);
+void stopSamples();
+// Quanti stanno suonando adesso: serve al display e alle luci.
+uint8_t samplesPlaying();
+// Velocita' di lettura, 0.5..2.0. Sotto l'uno il suono si abbassa e si allunga,
+// sopra si alza e si accorcia: e' la manopola che rende questi tredici suoni
+// una cosa con cui si gioca invece di tredici pulsanti che fanno sempre uguale.
+void setSampleSpeed(float mul);
+
 // --- controllo delle voci (chiamati dal core 1) ---
 // Gli eventi passano da una coda FreeRTOS: i due core non toccano mai lo stesso
 // stato, e il task audio li consuma all'inizio di ogni blocco.

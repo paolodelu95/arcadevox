@@ -12,7 +12,7 @@
 // uguale su tutte le schermate:
 //
 //   r 117/118   anello esterno, nell'accento della schermata
-//   r 112..115  corona di posizione: sette settori, uno per schermata
+//   r 112..115  corona di posizione: un settore per schermata
 //   r 100..110  corona dei comandi: i quattro archi delle manopole
 //   r 84        didascalie: cosa fa ogni manopola, e per un attimo quanto vale
 //   r <= 54     disco dei contenuti, centro (120,122): cio' di cui parla la
@@ -41,6 +41,7 @@
 #include "net_portal.h"
 #include "pinout.h"
 #include "presets.h"
+#include "samples.h"
 #include "sequencer.h"
 #include "settings.h"
 #include "version.h"
@@ -87,7 +88,7 @@ constexpr int CONTENT_TOP = 54;
 //
 //   FLASH_R   104  la banda dell'overlay: sotto la corona di posizione, e i suoi
 //                  quattro angoli cadono appena fuori dal ventaglio dei comandi
-//   CONTENT_R  96  tutto cio' che disegnano le sette schermate dell'anello
+//   CONTENT_R  96  tutto cio' che disegnano le schermate dell'anello
 //
 // Le pagine fuori dall'anello — avvio, rete, aggiornamento — non hanno corone e
 // si ridisegnano tutte: li' vale ancora la vecchia regola del solo cerchio.
@@ -183,6 +184,7 @@ uint16_t octColor(int8_t oct) {
 const uint16_t SCREEN_ACCENT[SCREEN_COUNT] = {
     HUD_NEON,    // SUONA
     HUD_VIOLET,  // TIMBRI
+    HUD_ORANGE,  // SUONI: l'unico arancione della ruota, e si vede da lontano
     HUD_AMBER,   // INVILUPPO
     HUD_MAGENTA, // EFFETTI
     HUD_LIME,    // RITMO
@@ -190,8 +192,8 @@ const uint16_t SCREEN_ACCENT[SCREEN_COUNT] = {
     HUD_LABEL,   // MENU: il piu' silenzioso della ruota, qui non si suona
 };
 
-const char *const SCREEN_TITLE[SCREEN_COUNT] = {"SUONA", "TIMBRI", "INVIL.",  "EFFETTI",
-                                                "RITMO", "LIVELLO", "MENU"};
+const char *const SCREEN_TITLE[SCREEN_COUNT] = {"SUONA", "TIMBRI",  "SUONI", "INVIL.",
+                                                "EFFETTI", "RITMO", "LIVELLO", "MENU"};
 
 // ------------------------------------------------------------------- helper
 void textAt(const char *s, int x, int y, uint8_t size, uint16_t color) {
@@ -241,7 +243,7 @@ void radiusFill(int y, int h, int r, uint16_t color) {
     gfx->endWrite();
 }
 
-// La gomma delle sette schermate dell'anello: si ferma prima di ogni corona.
+// La gomma delle schermate dell'anello: si ferma prima di ogni corona.
 void contentFill(int y, int h, uint16_t color = BLACK) {
     if (y + h > CONTENT_BOTTOM + 1) h = CONTENT_BOTTOM + 1 - y;
     radiusFill(y, h, CONTENT_R, color);
@@ -412,13 +414,13 @@ void chrome(const char *title, uint16_t accent) {
     gfx->drawFastHLine(CX - 30, 47, 60, dim565(accent, 1, 2));
 }
 
-// La corona di posizione: sette settori, uno per schermata, ognuno del proprio
+// La corona di posizione: un settore per schermata, ognuno del proprio
 // accento. Quello dove sei e' acceso pieno, gli altri sei sono il loro fantasma.
 //
 // Serve a rispondere alla domanda che l'anello di schermate poneva e non
 // risolveva: con nove pagine percorribili nei due sensi, l'unico segnale di dove
 // ti trovassi era il titolo, e per sapere quanto mancava alla prossima bisognava
-// ricordarsi l'ordine. Sette settori colorati si contano con la coda dell'occhio,
+// ricordarsi l'ordine. Otto settori colorati si contano con la coda dell'occhio,
 // e siccome ogni settore ha il colore della sua pagina, dopo due giri la ghiera
 // e' una mappa: il viola e' i timbri, il lime e' il ritmo.
 void drawPosRing(uint8_t current) {
@@ -879,6 +881,61 @@ void drawTimbriScreen(const SynthView &v, bool full) {
     drawEnvelope(CX - 48, 130, 96, 14, p.attackMs, p.decayMs, p.sustain, p.releaseMs, false);
 
     drawListArc(sel, PRESET_COUNT, HUD_VIOLET);
+}
+
+// ------------------------------------------------------------------- SUONI
+//
+// Tredici tasti, tredici suoni. La schermata deve rispondere a una domanda sola —
+// «cosa fa questo tasto?» — e la risposta migliore non e' un elenco di tredici
+// nomi scritti piccoli: e' il nome di quello che hai appena premuto, grande, con
+// sotto la mezzaluna dei tredici a dire dove sei fra loro.
+//
+// Cosi' i nomi si imparano premendo, che e' l'unico modo in cui qualcuno impara
+// davvero tredici suoni, e non c'e' niente da leggere prima di cominciare.
+void drawSuoniScreen(const SynthView &v, bool full) {
+    static int8_t drawnLast = -2;
+    static uint8_t drawnPlaying = 255;
+
+    if (!full && v.memeLast == drawnLast && v.memePlaying == drawnPlaying) return;
+    const bool nameChanged = full || v.memeLast != drawnLast;
+    drawnLast = v.memeLast;
+    drawnPlaying = v.memePlaying;
+
+    if (nameChanged) {
+        contentFill(70, 78);
+        if (v.memeLast < 0) {
+            textCentered("PREMI UN TASTO", 96, 2, HUD_ICE);
+            textCentered("ogni tasto un suono", 122, 1, HUD_LABEL);
+        } else {
+            const MemeSample &m = MEME_SAMPLES[v.memeLast];
+            // Il corpo si sceglie sulla lunghezza: "TROMBETTA" a corpo 3 uscirebbe
+            // dal tondo, e a corpo 2 "FAAA" sarebbe perso in mezzo al nero.
+            const size_t n = strlen(m.name);
+            textCentered(m.name, 92, (n <= 6) ? 3 : 2, HUD_ICE);
+            textCentered(m.hint, 124, 1, HUD_LABEL);
+        }
+    }
+
+    // La mezzaluna dei tredici: acceso solo quello scelto, gli altri spenti.
+    // Non una barra che si riempie fino a li' — questi tredici non sono una
+    // corsa da zero a tredici, sono tredici cose diverse, e accenderne cinque
+    // per dire "il quinto" direbbe la cosa sbagliata.
+    radialTicks(60, 70, MEME_COUNT, 128.0f, 232.0f, 0, HUD_ORANGE, HUD_TRACK);
+    if (v.memeLast >= 0 && v.memeLast < MEME_COUNT) {
+        // Stessi due raggi e stesso spessore delle tacche spente: e' l'unico modo
+        // perche' la passata di sopra lo cancelli davvero al cambio di suono.
+        // Con un tratto piu' lungo o piu' spesso restavano dei monconi accesi, e
+        // dopo tredici pressioni la mezzaluna era tutta arancione.
+        const float a =
+            128.0f + (232.0f - 128.0f) * (float)v.memeLast / (float)(MEME_COUNT - 1);
+        int x0, y0, x1, y1;
+        polar(a, 60.0f, x0, y0);
+        polar(a, 70.0f, x1, y1);
+        gfx->drawLine(x0, y0, x1, y1, HUD_ORANGE);
+    }
+    // Un pallino mentre qualcosa sta suonando: e' l'unico modo di distinguere
+    // "l'ho scelto con la manopola" da "l'ho appena fatto partire".
+    gfx->fillCircle(CX, 148, 4, (v.memePlaying > 0) ? HUD_ORANGE : BLACK);
 }
 
 // --------------------------------------------------------------- INVILUPPO
@@ -1835,6 +1892,7 @@ void update(const SynthView &v) {
         switch (s) {
             case SCREEN_SUONA: drawSuonaScreen(v, full); break;
             case SCREEN_TIMBRI: drawTimbriScreen(v, full); break;
+            case SCREEN_SUONI: drawSuoniScreen(v, full); break;
             case SCREEN_INVILUPPO: drawInviluppoScreen(v, full); break;
             case SCREEN_EFFETTI: drawEffettiScreen(v, full); break;
             case SCREEN_RITMO: drawRitmoScreen(v, full); break;

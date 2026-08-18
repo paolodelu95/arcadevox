@@ -6,7 +6,7 @@
 #include "fx_rows.h"
 #include "settings.h"
 
-// Un solo anello di sette schermate, percorso col joystick sinistra/destra.
+// Un solo anello di otto schermate, percorso col joystick sinistra/destra.
 //
 // Nove erano troppe, e tre di quelle nove esistevano solo perche' un parametro
 // non aveva trovato posto altrove. LEVELS spariva dentro SUONA — cutoff,
@@ -15,18 +15,22 @@
 // SUONA, cosi' la forma d'onda che scegli la vedi davvero invece di vederne il
 // ritratto disegnato a formule; FX si allarga in un elenco vero e cambia nome.
 //
-// Sette schermate hanno anche un vantaggio che si legge a colpo d'occhio: i
-// sette puntini sotto la ghiera dicono sempre dove sei, e con nove non ci
-// stavano. Il ritorno a casa con la pressione lunga non serve piu': da qualunque
-// punto dell'anello, casa e' al massimo tre passi in una delle due direzioni.
+// La corona di posizione dice sempre dove sei — un settore colorato per pagina —
+// e il ritorno a casa con la pressione lunga non serve piu': da qualunque punto
+// dell'anello, casa e' al massimo quattro passi in una delle due direzioni.
 #define SCREEN_SUONA 0      // onda vera, taglio, volume, risonanza: si suona qui
 #define SCREEN_TIMBRI 1     // i quindici timbri, la scala e l'accordo
-#define SCREEN_INVILUPPO 2  // attacco, decadimento, sostegno, rilascio
-#define SCREEN_EFFETTI 3    // elenco: grana, eco, LFO, arpeggio, corpo, filtro
-#define SCREEN_RITMO 4      // sequencer: il cursore c'e' sempre, non si "entra"
-#define SCREEN_LIVELLO 5    // VU meter ad ago
-#define SCREEN_MENU 6       // impostazioni
-#define SCREEN_COUNT 7
+// I tredici tasti smettono di essere note e diventano tredici suoni. Sta subito
+// dopo i timbri perche' risponde alla stessa domanda — "cosa succede quando premo
+// un tasto" — e perche' e' la prima cosa che chiunque prova a far fare a uno
+// strumento con venti tasti illuminati davanti a se'.
+#define SCREEN_SUONI 2
+#define SCREEN_INVILUPPO 3  // attacco, decadimento, sostegno, rilascio
+#define SCREEN_EFFETTI 4    // elenco: grana, eco, LFO, arpeggio, corpo, filtro
+#define SCREEN_RITMO 5      // sequencer: il cursore c'e' sempre, non si "entra"
+#define SCREEN_LIVELLO 6    // VU meter ad ago
+#define SCREEN_MENU 7       // impostazioni
+#define SCREEN_COUNT 8
 
 // Le schermate "a elenco" sono l'unica eccezione alla regola delle quattro
 // manopole: la 1 sceglie la riga, la 2 ne cambia il valore. Su tutte le altre le
@@ -111,6 +115,10 @@ struct SynthView {
 
     uint8_t timbro;       // timbro di fabbrica corrente, per la schermata TIMBRI
     uint8_t timbroCursor; // riga selezionata nell'elenco dei timbri
+
+    // --- schermata SUONI ---
+    int8_t memeLast;      // suono scelto (0..12), -1 se non se n'e' ancora scelto
+    uint8_t memePlaying;  // quanti ne stanno suonando adesso
 
     // --- overlay ---
     // Quello che e' appena cambiato, mostrato sopra la schermata corrente per un

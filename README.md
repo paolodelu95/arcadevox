@@ -38,8 +38,10 @@ con un inviluppo vero e un filtro risonante.
   preconteggio e metronomo
 - **20 LED RGB sotto i tasti**: la tastiera si disegna da sola, le funzioni attive si
   accendono, l'ordine della catena la scheda **se lo impara** da sola
-- **Display GC9A01** tondo con un'interfaccia **radiale**: sette schermate, la ghiera che dice
+- **Display GC9A01** tondo con un'interfaccia **radiale**: otto schermate, la ghiera che dice
   dove sei, e sotto ogni manopola scritto cosa fa in quel momento
+- **Tredici suoni campionati** su una schermata sua: i tasti smettono di essere note e
+  diventano tredici suoni, con la velocità di lettura su una manopola
 - **MIDI IN** dalla porta USB nativa: il synth compare al computer come strumento,
   con dinamica vera, pitch bend, pedale di risonanza e i CC che tutti i DAW danno per scontati
 - **15 timbri di fabbrica** — pianoforte, chitarra, organo, archi, campane, acido, arcade… —
@@ -119,6 +121,7 @@ corsa sei. Girando, il nome lascia il posto al valore per un secondo e poi torna
 |---|---|---|---|---|
 | **SUONA** | onda | taglio | volume | risonanza |
 | **TIMBRI** | timbro | scala | volume | accordo |
+| **SUONI** | scegli il suono | — | volume | velocità |
 | **INVILUPPO** | attacco | decadimento | **sostegno** | rilascio |
 | **EFFETTI** | scegli la riga | cambia il valore | volume | — |
 | **RITMO** | passo | nota | volume | tempo |
@@ -163,14 +166,15 @@ targhetta del colore dell'ottava — lo stesso che prendono le celle del sequenc
 
 ### Le sette schermate
 
-Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in sette settori
+Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in otto settori
 colorati, uno per schermata: quello dove sei è acceso pieno, gli altri sono spenti. Dopo due
-giri diventa una mappa — il viola sono i timbri, il lime è il ritmo.
+giri diventa una mappa — il viola sono i timbri, l'arancione i suoni, il lime il ritmo.
 
 | Schermata | Cosa mostra |
 |---|---|
 | **SUONA** | la forma d'onda vera che esce, con la curva del filtro dietro come orizzonte |
 | **TIMBRI** | i quindici timbri di fabbrica, con il ritratto di quello scelto |
+| **SUONI** | tredici suoni campionati, uno per tasto |
 | **INVILUPPO** | il profilo A/D/S/R disegnato, che si deforma mentre giri |
 | **EFFETTI** | quattordici righe: grana, eco, LFO, arpeggio, corpo, inviluppo di filtro |
 | **RITMO** | la griglia a 16 passi, con la testina che orbita sul bordo |
@@ -183,6 +187,26 @@ La banda al centro compare solo per dire quello che **non è già sotto i tuoi o
 funzione quando la loro targhetta non è a schermo, il ripristino di una manopola, gli allarmi.
 Non compare mai per una manopola — quella ha già il suo arco e la sua didascalia — né per
 l'ottava, che sta nel telaio. Dura novecento millisecondi e si disegna una volta sola.
+
+## I tredici suoni
+
+La schermata **SUONI**: ogni tasto nota fa partire un suono suo e nient'altro — nessuna voce
+del motore si accende, quindi non resta niente appeso. La quarta manopola è la **velocità di
+lettura**, da metà al doppio, ed è quella che li rende una cosa con cui si gioca invece di
+tredici pulsanti che fanno sempre uguale. Passano dall'eco e dall'8 BIT come tutto il resto,
+e i tredici LED prendono tredici tinte diverse, perché lì ogni tasto è per conto suo.
+
+I tredici di serie sono **sintetizzati**, non registrati: una trombetta da stadio sono tre
+lame scordate che calano mentre suonano, un boom è una sinusoide che scende sotto i quaranta
+hertz con davanti un colpo di rumore, una vocale urlata sono tre risonanze su un treno di
+impulsi glottali. Li genera [`tools/make_samples.py`](tools/make_samples.py) e costano 180 kB
+di flash in tutto.
+
+**Per metterci i tuoi**: butta i file audio in `tools/samples/` chiamandoli `01 nome.wav`,
+`02 altro.mp3` e via — il numero decide il tasto — poi `python3 tools/make_samples.py` e
+`pio run -t upload`. Vale qualunque formato, lo script converte, normalizza, taglia il
+silenzio e sfuma le code. Quella cartella è esclusa da git apposta: vedi
+[`tools/samples/README.md`](tools/samples/README.md).
 
 ## Mono e polifonico
 
@@ -527,6 +551,7 @@ src/
   keylight.*          catena di 20 SK6812: driver RMT, colori, apprendimento della mappa
   sequencer.*         16 passi, scrittura col cursore, record quantizzato, preconteggio
   fx_rows.*           l'elenco della schermata EFFETTI, condiviso fra logica e display
+  samples.h/.cpp      i tredici suoni (samples.cpp e' generato, non si edita)
   display.*           GC9A01, interfaccia radiale: 7 schermate, corone, overlay, QR
   logo.h              wordmark della schermata di avvio (generato, non editare)
   storage.*           persistenza NVS con scrittura ritardata
@@ -535,6 +560,9 @@ src/
 
 tools/
   make_logo.py        rigenera src/logo.h dal font Handel Gothic
+  make_samples.py     rigenera src/samples.cpp: sintetizza i tredici suoni, oppure
+                      prende i tuoi file da tools/samples/
+  samples/            i tuoi campioni (fuori da git: vedi il README li' dentro)
   simdisplay/         renderizza le schermate sul computer e controlla il cerchio
 
 firmware/

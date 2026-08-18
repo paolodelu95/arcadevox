@@ -86,13 +86,21 @@ volatile bool pStopped = false;
 bool driverInstalled = false;
 
 // ------------------------------------------------------- eventi di nota
-enum : uint8_t { EV_ON = 0, EV_OFF, EV_RETUNE, EV_ALL_OFF };
+enum : uint8_t { EV_ON = 0, EV_OFF, EV_RETUNE, EV_ALL_OFF, EV_SAMPLE, EV_SAMPLE_STOP };
 
 struct NoteEvent {
     uint8_t type;
     uint8_t id;
     float freq;
     float velocity;
+    // Il campione viaggia sulla stessa coda delle note, e non e' pigrizia: il
+    // task audio gira sull'altro core e legge questi campi ad ogni giro. Scritti
+    // direttamente da fuori, un puntatore nuovo poteva accoppiarsi a una
+    // lunghezza vecchia — e leggere oltre la fine di un array in flash e' il
+    // genere di guasto che non si manifesta subito e non si trova mai.
+    const uint8_t *data;
+    uint32_t len;
+    uint32_t rate;
 };
 
 QueueHandle_t eventQueue = nullptr;
@@ -150,6 +158,31 @@ enum : uint8_t {
     SCOPE_READY       // finestra completa; il buffer e' del core 1
 };
 volatile uint8_t scopeState = SCOPE_ARMED;
+// ------------------------------------------------------------- campioni
+//
+// La posizione di lettura e' in virgola fissa 16.16: un campione a 16 kHz letto
+// a 44100 avanza di 0,3628 posizioni per giro, e con un intero non si potrebbe
+// nemmeno esprimere. La parte frazionaria serve anche per interpolare fra due
+// byte, che a questa differenza di frequenza e' cio' che separa un suono da un
+// suono con la sabbia dentro.
+struct SamplePlay {
+    const uint8_t *data;
+    uint32_t len;
+    // Indice intero e frazione a 16 bit, invece di un solo 16.16: con la virgola
+    // fissa dentro un intero a 32 bit la parte intera si ferma a 65535, cioe' a
+    // quattro secondi di suono, e il primo campione piu' lungo avrebbe ricominciato
+    // da capo all'infinito senza che nulla lo segnalasse.
+    uint32_t idx;
+    uint16_t frac;
+    uint32_t stepInt;
+    uint16_t stepFrac;
+    uint32_t rate;  // frequenza originale, per ricalcolare il passo al volo
+    bool active;    // solo core 0: nessuno lo tocca da fuori
+};
+
+SamplePlay smp[SAMPLE_SLOTS];
+volatile float pSampleSpeed = 1.0f;
+
 int8_t scopeBuf[SCOPE_SAMPLES];
 int scopeIdx = 0;
 float scopePrev = 0.0f;
@@ -268,11 +301,61 @@ void releaseVoice(Voice &v) {
     v.stage = ENV_RELEASE;
 }
 
+void applySampleStep(SamplePlay &sp, uint32_t rate) {
+    float mul = pSampleSpeed;
+    if (mul < 0.5f) mul = 0.5f;
+    if (mul > 2.0f) mul = 2.0f;
+    const float ratio = (float)rate * mul / (float)SAMPLE_RATE;
+    uint32_t fixed = (uint32_t)(ratio * 65536.0f + 0.5f);
+    if (fixed == 0) fixed = 1;
+    sp.stepInt = fixed >> 16;
+    sp.stepFrac = (uint16_t)(fixed & 0xFFFF);
+}
+
+// Fa partire un campione. Gira **sul core 0**, dentro drainEvents: da fuori non
+// si tocca niente.
+void startSample(const uint8_t *data, uint32_t len, uint32_t rate) {
+    if (!data || len < 2) return;
+    int pick = -1;
+    uint32_t bestLeft = 0xFFFFFFFFu;
+    for (int k = 0; k < SAMPLE_SLOTS; ++k) {
+        if (!smp[k].active) {
+            pick = k;
+            break;
+        }
+        // Se sono tutti occupati si ruba quello che ha meno da dire, non il
+        // primo che capita.
+        const uint32_t left = smp[k].len - smp[k].idx;
+        if (left < bestLeft) {
+            bestLeft = left;
+            pick = k;
+        }
+    }
+    if (pick < 0) return;
+
+    SamplePlay &sp = smp[pick];
+    sp.data = data;
+    sp.len = len;
+    sp.idx = 0;
+    sp.frac = 0;
+    sp.rate = rate;
+    applySampleStep(sp, rate);
+    sp.active = true;
+}
+
 void drainEvents() {
     NoteEvent ev;
     while (eventQueue && xQueueReceive(eventQueue, &ev, 0) == pdTRUE) {
         if (ev.type == EV_ALL_OFF) {
             for (int i = 0; i < MAX_VOICES; ++i) releaseVoice(voices[i]);
+            continue;
+        }
+        if (ev.type == EV_SAMPLE) {
+            startSample(ev.data, ev.len, ev.rate);
+            continue;
+        }
+        if (ev.type == EV_SAMPLE_STOP) {
+            for (int k = 0; k < SAMPLE_SLOTS; ++k) smp[k].active = false;
             continue;
         }
         if (ev.id >= MAX_VOICES) continue;
@@ -442,6 +525,12 @@ void renderBlock(int16_t *out, size_t frames) {
         }
     }
 
+    // Il passo di lettura dei campioni segue la manopola della velocita': si
+    // riallinea qui, una volta per blocco, e sempre sul core 0.
+    for (int k = 0; k < SAMPLE_SLOTS; ++k) {
+        if (smp[k].active) applySampleStep(smp[k], smp[k].rate);
+    }
+
     // Compensazione sull'energia, non sul numero di voci: una nota in coda di
     // rilascio pesa quanto vale davvero, invece di abbassare le altre come se
     // stesse ancora suonando a piena ampiezza.
@@ -510,6 +599,31 @@ void renderBlock(int16_t *out, size_t frames) {
             s += v.svfLow * v.envLevel;
         }
         s *= gainSmooth;
+
+        // I campioni entrano qui: dopo la compensazione delle voci — che non li
+        // riguarda, non sono voci — e prima di drive, eco e 8 BIT, che invece li
+        // prendono come prendono tutto.
+        float smpSum = 0.0f;
+        for (int k = 0; k < SAMPLE_SLOTS; ++k) {
+            SamplePlay &sp = smp[k];
+            if (!sp.active) continue;
+            if (sp.idx + 1 >= sp.len) {
+                sp.active = false;
+                continue;
+            }
+            const float f = (float)sp.frac * (1.0f / 65536.0f);
+            const float a = (float)sp.data[sp.idx] - 128.0f;
+            const float b = (float)sp.data[sp.idx + 1] - 128.0f;
+            smpSum += (a + (b - a) * f) * (1.0f / 220.0f);
+            const uint32_t nf = (uint32_t)sp.frac + sp.stepFrac;
+            sp.frac = (uint16_t)nf;
+            sp.idx += sp.stepInt + (nf >> 16);
+        }
+        // Quattro suoni sovrapposti sommati di netto arriverebbero al doppio del
+        // fondo scala, e il limitatore finale li taglierebbe di netto: due colpi
+        // insieme suonerebbero peggio di uno. La curva morbida li comprime invece
+        // di tosarli, ed e' proprio il caso per cui i quattro slot esistono.
+        if (smpSum != 0.0f) s += softClip(smpSum);
 
         if (driveSmooth > 0.001f) s = softClip(s * (1.0f + driveSmooth * 5.0f));
 
@@ -657,7 +771,7 @@ void i2sInit() {
 // coda piena si riferisce il fallimento al chiamante invece di fermare il loop.
 bool post(uint8_t type, uint8_t id, float freq, float velocity = 1.0f) {
     if (!eventQueue) return false;
-    NoteEvent ev = {type, id, freq, velocity};
+    NoteEvent ev = {type, id, freq, velocity, nullptr, 0, 0};
     return xQueueSend(eventQueue, &ev, 0) == pdTRUE;
 }
 
@@ -860,6 +974,38 @@ bool copyScope(int8_t *dst) {
     memcpy(dst, scopeBuf, sizeof(scopeBuf));
     scopeState = SCOPE_ARMED;  // riarmata: la prossima finestra si riaggancia
     return true;
+}
+
+// ---------------------------------------------------------------- campioni
+
+void playSample(const uint8_t *data, uint32_t len, uint32_t rate) {
+    if (!eventQueue || !data || len < 2) return;
+    NoteEvent ev = {EV_SAMPLE, 0, 0.0f, 0.0f, data, len, rate};
+    xQueueSend(eventQueue, &ev, 0);
+}
+
+void stopSamples() {
+    if (!eventQueue) return;
+    NoteEvent ev = {EV_SAMPLE_STOP, 0, 0.0f, 0.0f, nullptr, 0, 0};
+    xQueueSend(eventQueue, &ev, 0);
+}
+
+uint8_t samplesPlaying() {
+    uint8_t n = 0;
+    for (int k = 0; k < SAMPLE_SLOTS; ++k) {
+        if (smp[k].active) ++n;
+    }
+    return n;
+}
+
+void setSampleSpeed(float mul) {
+    if (mul < 0.5f) mul = 0.5f;
+    if (mul > 2.0f) mul = 2.0f;
+    // Solo il parametro, da qui: il passo di cio' che sta gia' suonando lo
+    // ricalcola il core 0 ad ogni blocco, cosi' girare la manopola mentre il
+    // suono e' in corso si sente subito senza che due core scrivano nello stesso
+    // posto.
+    pSampleSpeed = mul;
 }
 
 }  // namespace AudioEngine

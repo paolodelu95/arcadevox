@@ -173,18 +173,47 @@ void update(uint32_t now, const LightView &v) {
         // --- riposo: le note disegnano la tastiera, spente ma leggibili ---
         for (int n = 0; n < NOTE_COUNT; ++n) {
             const uint8_t slot = NOTE_SLOT[n];
-            const bool inScale = (v.scaleRoot < 0) || (v.scaleMask & (1u << n));
-            Rgb base = IS_SHARP[n] ? Rgb{40, 0, 60} : Rgb{0, 30, 40};
-            if (!inScale) base = {6, 0, 0};  // fuori scala: quasi spento, rossastro
-            if (v.crush) base = IS_SHARP[n] ? Rgb{50, 20, 0} : Rgb{40, 30, 0};
+            Rgb base;
+            if (v.memeMode) {
+                // Tredici tinte lungo la ruota dei colori, una per tasto. Qui la
+                // scala non vuol dire niente — nessuno di questi tasti suona una
+                // nota — e nemmeno l'8 BIT, che sui campioni si sente ma non
+                // riguarda la tastiera: percio' questo ramo e' esclusivo e non si
+                // fa sovrascrivere da nessuno dei due, com'e' successo finche' era
+                // solo il primo di una fila di if.
+                //
+                // Il giro si fa a mano con tre rampe invece che con una
+                // conversione HSV: per tredici valori fissi non vale la pena, e
+                // cosi' resta tutto in aritmetica intera. Il canale spento va a
+                // zero e non a un fondo fisso, o le tinte agli innesti delle rampe
+                // finirebbero a due gradi l'una dall'altra, cioe' uguali.
+                const int h = (n * 255) / NOTE_COUNT;
+                const int k = (h % 85) * 60 / 85;
+                if (h < 85) base = {(uint8_t)(60 - k), (uint8_t)k, 0};
+                else if (h < 170) base = {0, (uint8_t)(60 - k), (uint8_t)k};
+                else base = {(uint8_t)k, 0, (uint8_t)(60 - k)};
+            } else {
+                const bool inScale = (v.scaleRoot < 0) || (v.scaleMask & (1u << n));
+                base = IS_SHARP[n] ? Rgb{40, 0, 60} : Rgb{0, 30, 40};
+                if (!inScale) base = {6, 0, 0};  // fuori scala: quasi spento, rossastro
+                if (v.crush) base = IS_SHARP[n] ? Rgb{50, 20, 0} : Rgb{40, 30, 0};
+            }
 
             Rgb c = base;
-            if (v.noteSound & (1u << n)) {
+            if (v.memeMode) {
+                // Premuto: la stessa tinta, ma piena. Non un colore diverso —
+                // qui il colore *e'* il nome del suono, e cambiarlo mentre suona
+                // vorrebbe dire cambiargli nome sotto il dito.
+                if (v.noteHeld & (1u << n)) c = scale(base, 4, 1);
+            } else if (v.noteSound & (1u << n)) {
                 c = IS_SHARP[n] ? Rgb{255, 60, 255} : Rgb{80, 255, 255};
             } else if (v.noteHeld & (1u << n)) {
                 c = IS_SHARP[n] ? Rgb{160, 30, 200} : Rgb{40, 180, 200};
             }
-            if (v.seqNote == n) {
+            // La sequenza e l'invito non hanno niente da dire fra i suoni: li'
+            // nessun tasto suona una nota, e il respiro coprirebbe le tredici
+            // tinte che sono l'unica cosa da guardare.
+            if (!v.memeMode && v.seqNote == n) {
                 // La nota della sequenza si distingue da quella suonata a mano:
                 // verde, il colore del trasporto.
                 c = {0, 255, 120};
@@ -199,7 +228,7 @@ void update(uint32_t now, const LightView &v) {
             // non si vede, e una moltiplicazione intera costa molto meno.
             const bool busy = (v.noteSound & (1u << n)) || (v.noteHeld & (1u << n)) ||
                               (v.seqNote == n);
-            if (v.invite && !busy) {
+            if (v.invite && !busy && !v.memeMode) {
                 const uint32_t t = now % 3000;
                 const uint16_t k = (t < 1500) ? (uint16_t)(t / 6) : (uint16_t)((3000 - t) / 6);
                 const Rgb glow = IS_SHARP[n] ? Rgb{120, 40, 200} : Rgb{40, 200, 220};
