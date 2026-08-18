@@ -394,14 +394,14 @@ compatibile con quel core.
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.0**, 16 pagine A4: blueprint, connettori pin per pin, montaggio, uso |
+| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.0.1**, 20 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI |
 | [`docs/ArcadeVox_Libretto.html`](docs/ArcadeVox_Libretto.html) | La sorgente del libretto, da cui si rigenera il PDF |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |
 | [`docs/pannello.svg`](docs/pannello.svg) | Blueprint del pannello, da solo |
 | [`PROGRESS.md`](PROGRESS.md) | Stato dei milestone e differenze rispetto al brief iniziale |
 | [`CLAUDE_2.md`](CLAUDE_2.md) | Il brief di progetto originale (scheda 1.x) |
 
-Il PDF è già pronto da stampare — 16 pagine, cioè quattro fogli esatti a libretto. Se ritocchi
+Il PDF è già pronto da stampare — 20 pagine, cioè cinque fogli esatti a libretto. Se ritocchi
 l'HTML lo rigeneri così:
 
 ```bash
@@ -409,6 +409,10 @@ l'HTML lo rigeneri così:
   --no-pdf-header-footer --run-all-compositor-stages-before-draw --virtual-time-budget=6000 \
   --print-to-pdf=docs/ArcadeVox_Libretto.pdf "file://$PWD/docs/ArcadeVox_Libretto.html"
 ```
+
+Su Windows l'eseguibile sta in `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
+e vuole `--headless=new`: con il vecchio `--headless` il file non viene scritto e il comando
+esce lo stesso senza dire niente.
 
 Va bene qualunque browser Chromium. Attenzione a non far crescere le sezioni: ognuna deve
 stare in **269 mm** di altezza utile, o si porta dietro una pagina in più.

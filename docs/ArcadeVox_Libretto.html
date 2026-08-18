@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<title>ArcadeVox 2.0 — Libretto di montaggio e uso</title>
+<title>ArcadeVox 2.0.1 — Libretto di montaggio e uso</title>
 <style>
   @page { size: A4 portrait; margin: 14mm 15mm; }
 
@@ -80,7 +80,12 @@
   }
   .warn { border-left-color: var(--red); background: #fdf3f2; }
   .tip  { border-left-color: var(--green); background: #f2faf4; }
-  .note b, .warn b, .tip b { display: block; margin-bottom: 0.6mm; }
+  /* Solo il grassetto d'apertura fa da titolo del riquadro e va a capo: senza il
+     :first-child anche un "100 kHz" in mezzo a una frase diventava un blocco, e
+     spezzava la riga in due. */
+  .note > b:first-child, .warn > b:first-child, .tip > b:first-child {
+    display: block; margin-bottom: 0.6mm;
+  }
 
   .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6mm; }
   .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 5mm; }
@@ -113,9 +118,9 @@
 <section class="page cover">
   <div>
     <h1>ArcadeVox</h1>
-    <div class="ver">FIRMWARE 2.0</div>
+    <div class="ver">FIRMWARE 2.0.1</div>
     <div class="tag">Sintetizzatore digitale su ESP32-S3<br>
-      13 tasti cromatici · 7 funzioni · 4 encoder · 20 LED RGB</div>
+      13 tasti cromatici · 7 funzioni · 4 encoder · 20 LED RGB · MIDI USB</div>
   </div>
 
   <div class="toc">
@@ -128,11 +133,14 @@
     <div><span><b>7</b> &nbsp;Gli effetti</span><span>11</span></div>
     <div><span><b>8</b> &nbsp;Inviluppo ADSR</span><span>11</span></div>
     <div><span><b>9</b> &nbsp;Il sequencer</span><span>12</span></div>
-    <div><span><b>10</b> Le schermate</span><span>13</span></div>
-    <div><span><b>11</b> Le luci sotto i tasti</span><span>13</span></div>
-    <div><span><b>12</b> Impostazioni e WiFi</span><span>14</span></div>
-    <div><span><b>13</b> Se qualcosa non va</span><span>15</span></div>
-    <div><span><b>14</b> Tutti i comandi in una pagina</span><span>16</span></div>
+    <div><span><b>10</b> Dinamica e i quindici timbri</span><span>13</span></div>
+    <div><span><b>11</b> MIDI IN: suonarlo dal computer</span><span>14</span></div>
+    <div><span><b>12</b> MIDI OUT: registrarlo sul computer</span><span>16</span></div>
+    <div><span><b>13</b> Le schermate</span><span>17</span></div>
+    <div><span><b>14</b> Le luci sotto i tasti</span><span>17</span></div>
+    <div><span><b>15</b> Impostazioni e WiFi</span><span>18</span></div>
+    <div><span><b>16</b> Se qualcosa non va</span><span>19</span></div>
+    <div><span><b>17</b> Tutti i comandi in una pagina</span><span>20</span></div>
   </div>
 </section>
 
@@ -867,14 +875,183 @@
   <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>9 · Sequencer</span></div>
 </section>
 
-<!-- ══════════════════════════════════ 10-12 ══════════════════════════════════ -->
+<!-- ══════════════════════════════════ 10. DINAMICA E TIMBRI ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
-    <div><h1>Schermate, luci, impostazioni</h1><div class="sub">Cosa guardare e cosa regolare</div></div>
+    <div><h1>Dinamica e timbri</h1><div class="sub">Quindici punti di partenza, e il filtro che si muove da solo</div></div>
     <div class="meta">ArcadeVox 2.0<br>libretto · pag. 13</div>
   </div>
 
-  <h2><span class="n">10</span>Le otto schermate</h2>
+  <h2><span class="n">10</span>Dinamica e inviluppo di filtro</h2>
+  <p>Fino alla 2.0 ogni nota usciva con la stessa forza. Adesso la <b>dinamica</b> scala due
+  cose insieme: il picco dell'inviluppo <i>e</i> quanto si apre il filtro. Sono le due
+  insieme a fare la differenza — è così che si riconosce un pianoforte suonato piano da uno
+  suonato forte, non dal solo volume.</p>
+  <div class="note"><b>I tasti del pannello suonano sempre a forza piena</b>
+    Sotto ci sono interruttori, non sensori di pressione: non hanno modo di sapere quanto
+    forte hai premuto. La dinamica vera arriva dalle note <b>MIDI</b> (sezione 11), dove la
+    velocity è un numero che il mittente decide.</div>
+
+  <p>L'altra novità è l'<b>inviluppo di filtro</b>: all'attacco il filtro si spalanca e poi si
+  richiude da solo mentre la nota vive. È l'ingrediente che rende possibili i timbri qui
+  sotto — senza, un "pianoforte" resta un organo con l'attacco veloce.</p>
+
+  <h3>I quindici timbri di fabbrica</h3>
+  <p>Un synth sottrattivo non <i>riproduce</i> un pianoforte: quello lo fa un campionatore.
+  Riproduce il suo <b>comportamento</b> — attacco secco, suono che si spegne da solo mentre
+  tieni il tasto, timbro che si scurisce mentre la nota muore — e con quelle tre cose insieme
+  l'orecchio dice "pianoforte".</p>
+  <table>
+    <tr><th>Timbro</th><th>Com'è</th><th>Timbro</th><th>Com'è</th></tr>
+    <tr><td><b>BASE</b></td><td>il suono di sempre</td><td><b>CLAVICEMBALO</b></td><td>pizzicato metallico</td></tr>
+    <tr class="alt"><td><b>PIANOFORTE</b></td><td>attacco secco, coda che muore</td><td><b>VIBRAFONO</b></td><td>morbido, ondeggia</td></tr>
+    <tr><td><b>CHITARRA</b></td><td>pizzicata, un po' sporca</td><td><b>ACIDO</b></td><td>il basso che squittisce</td></tr>
+    <tr class="alt"><td><b>ORGANO</b></td><td>parte e finisce col tasto</td><td><b>ARCADE</b></td><td>sala giochi, 8 bit</td></tr>
+    <tr><td><b>BASSO</b></td><td>corto e profondo</td><td><b>PAD SPAZIALE</b></td><td>arriva da lontano</td></tr>
+    <tr class="alt"><td><b>ARCHI</b></td><td>entra piano, riempie</td><td><b>TAMBURO</b></td><td>rumore percosso</td></tr>
+    <tr><td><b>FLAUTO</b></td><td>sinusoide con un filo di vibrato</td><td><b>LASER</b></td><td>scende e sparisce</td></tr>
+    <tr class="alt"><td><b>CAMPANE</b></td><td>colpo lungo, si spegne da solo</td><td></td><td></td></tr>
+  </table>
+  <p>Si scelgono da <b>SETTINGS → TASTIERA → TIMBRO</b>, e si sentono <i>mentre</i> giri la
+  manopola: il timbro è una di quelle tre voci che hanno effetto immediato, perché si sceglie
+  suonando e non leggendo.</p>
+  <div class="tip"><b>Un preset è un punto di partenza, non una gabbia</b>
+    Caricarne uno sovrascrive i parametri correnti — forma d'onda, filtro, ADSR, effetti — e
+    da lì in poi si ritocca liberamente. Se avevi un suono che ti piaceva, annotatelo prima:
+    non c'è modo di tornare indietro.</div>
+
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>10 · Dinamica e timbri</span></div>
+</section>
+
+<!-- ══════════════════════════════════ 11. MIDI IN ══════════════════════════════════ -->
+<section class="page">
+  <div class="masthead">
+    <div><h1>MIDI IN</h1><div class="sub">Suonare ArcadeVox dal computer</div></div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 14</div>
+  </div>
+
+  <h2><span class="n">11</span>Collegarlo al computer</h2>
+  <p>Si collega alla <b>porta USB nativa</b> della DevKit — la stessa da cui si carica il
+  firmware — e compare come <b>strumento MIDI</b> di nome <b>ArcadeVox</b>. È un dispositivo
+  composito: porta seriale <i>e</i> MIDI sulla stessa presa, un cavo solo.</p>
+  <p>Non serve installare niente: è uno strumento <i>class compliant</i>, quello che sistemi
+  operativi e programmi musicali riconoscono da soli.</p>
+
+  <div class="note"><b>Perché la porta cambia identità</b>
+    L'ESP32-S3 ha due periferiche USB sugli stessi due piedini. Quella integrata sa fare solo
+    la porta seriale; ArcadeVox usa l'altra, che sa presentarsi come qualunque cosa ed è
+    l'unica delle due capace di parlare MIDI. Conseguenza pratica: la porta cambia identità a
+    ogni avvio del firmware. Se un caricamento non dovesse agganciarla, ci sono due strade che
+    funzionano sempre — la presa <b>UART</b> della DevKit, che ha un convertitore suo, oppure
+    tenere premuto <b>BOOT</b> mentre si preme <b>RESET</b>.</div>
+
+  <h3>Le note in arrivo hanno dinamica vera</h3>
+  <p>La velocity di ogni nota scala il picco dell'inviluppo e l'apertura del filtro, come
+  spiegato nella sezione 10. È la differenza che si sente suonando lo stesso timbro da una
+  tastiera pesata invece che dai tasti del pannello.</p>
+
+  <h3>Chi ha la precedenza</h3>
+  <p>Le voci sono <b>sedici</b> e la tastiera ne occupa una per tasto premuto.</p>
+  <ul>
+    <li><b>Il tasto fisico vince sempre.</b> Se una voce serve a un dito, la nota MIDI che ci
+      stava sopra tace finché il dito non si alza.</li>
+    <li>Quando le voci finiscono si <b>ruba la più vecchia</b>.</li>
+  </ul>
+  <p>L'alternativa — zittire le dita per far posto al cavo — renderebbe lo strumento
+  inservibile proprio quando un sequencer lo sta pilotando e ci vuoi suonare sopra.</p>
+
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>11 · MIDI IN</span></div>
+</section>
+
+<section class="page">
+  <div class="masthead">
+    <div><h1>MIDI IN</h1><div class="sub">Cosa risponde a cosa</div></div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 15</div>
+  </div>
+
+  <h2><span class="n">11b</span>I controlli riconosciuti</h2>
+  <table>
+    <tr><th>Messaggio</th><th>Cosa fa</th></tr>
+    <tr><td><b>Note on / off</b></td><td>suona, con dinamica; una velocity di 0 vale come note-off</td></tr>
+    <tr class="alt"><td><b>CC 1</b> — modulazione</td><td>profondità dell'LFO, e lo accende sul vibrato se era spento</td></tr>
+    <tr><td><b>CC 7</b></td><td>volume</td></tr>
+    <tr class="alt"><td><b>CC 64</b></td><td>pedale di risonanza: tiene le note rilasciate</td></tr>
+    <tr><td><b>CC 71</b></td><td>risonanza del filtro</td></tr>
+    <tr class="alt"><td><b>CC 74</b></td><td>cutoff</td></tr>
+    <tr><td><b>CC 91</b></td><td>mix dell'eco</td></tr>
+    <tr class="alt"><td><b>CC 94</b></td><td>detune</td></tr>
+    <tr><td><b>Program change</b></td><td>sceglie il timbro di fabbrica (sezione 10)</td></tr>
+    <tr class="alt"><td><b>Pitch bend</b></td><td>±2 semitoni</td></tr>
+    <tr><td><b>CC 120 / 123</b></td><td>spegne tutto: è il pulsante di panico</td></tr>
+  </table>
+  <p>I numeri non sono scelti a caso: 74 per il cutoff, 71 per la risonanza, 1 per la
+  modulazione e 64 per il pedale sono le assegnazioni standard, quelle che quasi ogni
+  tastiera e ogni programma musicale mandano già senza dover configurare niente.</p>
+
+  <div class="tip"><b>Se qualcosa non risponde, guarda la seriale</b>
+    Sulla stessa presa c'è anche la porta seriale, a 115200. Il firmware ci scrive quando un
+    host si collega, quali endpoint USB ha ottenuto e quante note stanno suonando per via del
+    MIDI. <b>Zero endpoint</b> significa che l'allocatore li aveva già finiti: è il sintomo da
+    riconoscere quando il dispositivo compare ma resta muto.</div>
+
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>11 · MIDI IN</span></div>
+</section>
+
+<!-- ══════════════════════════════════ 12. MIDI OUT ══════════════════════════════════ -->
+<section class="page">
+  <div class="masthead">
+    <div><h1>MIDI OUT</h1><div class="sub">Quello che suoni finisce sul computer</div></div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 16</div>
+  </div>
+
+  <h2><span class="n">12</span>Il verso opposto</h2>
+  <p>Tasti, arpeggiator, sequencer e note aggiunte dagli accordi escono sulla stessa presa.
+  Partono <b>dallo stesso elenco che pilota il motore audio</b>, quindi non c'è modo che
+  quello che senti e quello che registri vadano fuori sincrono.</p>
+  <p>Escono anche i controlli delle manopole e il cambio di timbro:</p>
+  <table>
+    <tr><th>Cosa muovi</th><th>Cosa esce</th></tr>
+    <tr><td>encoder 1 — cutoff</td><td>CC 74</td></tr>
+    <tr class="alt"><td>encoder 2 — risonanza</td><td>CC 71</td></tr>
+    <tr><td>encoder 3 — volume</td><td>CC 7</td></tr>
+    <tr class="alt"><td>SETTINGS → TASTIERA → TIMBRO</td><td>program change</td></tr>
+    <tr><td>play / stop del sequencer</td><td>start / stop, e il clock se abilitato</td></tr>
+  </table>
+
+  <h3>Come si accende</h3>
+  <p>Da <b>SETTINGS → AUDIO → MIDI OUT</b>, tre posizioni:</p>
+  <table>
+    <tr><th>Valore</th><th>Cosa manda</th></tr>
+    <tr><td><b>SPENTO</b></td><td>niente</td></tr>
+    <tr class="alt"><td><b>NOTE</b></td><td>note e controlli — è il valore di fabbrica</td></tr>
+    <tr><td><b>NOTE+CLOCK</b></td><td>in più start/stop e il clock a 24 impulsi per movimento</td></tr>
+  </table>
+  <div class="warn"><b>Il clock è separato apposta</b>
+    Un programma musicale che riceve impulsi di sincronismo senza aspettarseli comincia a
+    seguire il tempo del synth, e chi non lo sapeva si ritrova il progetto che accelera da
+    solo. Accendilo solo quando vuoi davvero che il computer vada a tempo con il sequencer.</div>
+
+  <h3>Due cose che evitano guai</h3>
+  <ul>
+    <li><b>Le note ricevute non tornano indietro.</b> Con un programma che rimanda in eco
+      quello che riceve si innescherebbe un anello e ogni nota si moltiplicherebbe da sola: le
+      voci che stanno suonando perché arrivano dal cavo sono escluse dall'uscita.</li>
+    <li><b>Il clock non è da studio di registrazione.</b> Nasce dal loop che gira ogni
+      millisecondo scarso, e il tremolio è di quell'ordine. Abbastanza per accompagnare, non
+      per accordarci sopra un disco.</li>
+  </ul>
+
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>12 · MIDI OUT</span></div>
+</section>
+
+<!-- ══════════════════════════════════ 13-15 ══════════════════════════════════ -->
+<section class="page">
+  <div class="masthead">
+    <div><h1>Schermate, luci, impostazioni</h1><div class="sub">Cosa guardare e cosa regolare</div></div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 17</div>
+  </div>
+
+  <h2><span class="n">13</span>Le otto schermate</h2>
   <p><span class="key">FN7</span> le scorre in ordine.</p>
   <table>
     <tr><th>#</th><th>Schermata</th><th>Cosa mostra</th></tr>
@@ -892,7 +1069,7 @@
   qualcosa con un tasto — 8 BIT, modo dell'arpeggiator, accordo — il nome compare per un
   attimo in sovrimpressione: non devi cercare la pagina che te lo conferma.</p>
 
-  <h2><span class="n">11</span>Le luci</h2>
+  <h2><span class="n">14</span>Le luci</h2>
   <p>Sotto i tasti, la tastiera si disegna da sola:</p>
   <table>
     <tr><th>Colore</th><th>Cosa vuol dire</th></tr>
@@ -907,20 +1084,20 @@
   <p>La <b>luminosità</b> si regola in <b>SETTINGS → LUCI</b>, da spente a otto. Se
   l'alimentatore è al limite, abbassarla è la prima cosa da provare.</p>
 
-  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>10–11 · Schermate e luci</span></div>
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>13–14 · Schermate e luci</span></div>
 </section>
 
 <section class="page">
   <div class="masthead">
     <div><h1>Impostazioni</h1><div class="sub">Il menu, voce per voce</div></div>
-    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 14</div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 18</div>
   </div>
 
-  <h2><span class="n">12</span>Impostazioni</h2>
+  <h2><span class="n">15</span>Impostazioni</h2>
   <p>Dalla schermata SETTINGS, <b>tieni premuto</b> <span class="key">FN7</span> per entrare
   nel menu. Da dentro: pressione breve dello stesso tasto per scendere di una voce, encoder 1
   per scorrere avanti e indietro, encoder 2 per cambiare il valore, pressione lunga per
-  uscire. Le voci sono dieci e se ne vedono cinque per volta: le frecce ai lati dicono che
+  uscire. Le voci sono dodici e se ne vedono cinque per volta: le frecce ai lati dicono che
   sopra o sotto c'è dell'altro.</p>
   <table>
     <tr><th>Categoria</th><th>Voce</th><th>Cosa fa</th></tr>
@@ -928,27 +1105,29 @@
     <tr class="alt"><td>CUTOFF</td><td>idem per cutoff e risonanza</td></tr>
     <tr><td>ADSR</td><td>idem per ADSR e quarto encoder</td></tr>
     <tr class="alt"><td>PASSO FINE</td><td>di quanto divide il click dell'albero</td></tr>
-    <tr><td rowspan="2">TASTIERA</td><td>SCALA</td><td>cromatica, maggiore, minore, pentatonica, blues, dorica, araba</td></tr>
-    <tr class="alt"><td>TONICA</td><td>da che nota parte la scala</td></tr>
+    <tr><td rowspan="3">TASTIERA</td><td>TIMBRO</td><td>i quindici timbri di fabbrica, si sentono mentre giri</td></tr>
+    <tr class="alt"><td>SCALA</td><td>cromatica, maggiore, minore, pentatonica, blues, dorica, araba</td></tr>
+    <tr><td>TONICA</td><td>da che nota parte la scala</td></tr>
     <tr><td rowspan="2">LUCI</td><td>LUMINOSITÀ</td><td>da spente a 8</td></tr>
     <tr class="alt"><td>IMPARA LUCI</td><td>insegna alla scheda l'ordine della catena</td></tr>
-    <tr><td>AUDIO</td><td>USCITA</td><td>quale filo è BCK, LRC e DIN</td></tr>
-    <tr class="alt"><td>RETE</td><td>MODALITÀ WIFI</td><td>accende la radio e mostra il QR</td></tr>
+    <tr><td rowspan="2">AUDIO</td><td>USCITA</td><td>quale filo è BCK, LRC e DIN</td></tr>
+    <tr class="alt"><td>MIDI OUT</td><td>SPENTO, NOTE, NOTE+CLOCK (sezione 12)</td></tr>
+    <tr><td>RETE</td><td>MODALITÀ WIFI</td><td>accende la radio e mostra il QR</td></tr>
   </table>
   <p>I valori della sensibilità sono scritti in <b>giri di manopola</b> e non in frazioni di
   corsa, perché è la grandezza che senti sotto le dita.</p>
 
-  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>10–12 · Interfaccia</span></div>
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>13–15 · Interfaccia</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 13. WIFI + DIAGNOSTICA ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>WiFi e diagnostica</h1><div class="sub">Aggiornare, e cosa fare se</div></div>
-    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 15</div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 19</div>
   </div>
 
-  <h2><span class="n">12b</span>Aggiornare via WiFi</h2>
+  <h2><span class="n">15b</span>Aggiornare via WiFi</h2>
   <p>Dal menu impostazioni, scendi a <b>RETE → MODALITÀ WIFI</b> e premi
   <span class="key">FN7</span>. Il synth <b>ammutolisce</b> — lo stack WiFi occupa lo stesso
   core del motore audio, quindi la modalità è esclusiva — e sul display compare un QR.</p>
@@ -963,7 +1142,7 @@
   <p>Si esce con <span class="key">FN4</span>, che riavvia. Le credenziali di casa restano in
   memoria: la volta dopo si ricollega da solo.</p>
 
-  <h2><span class="n">13</span>Se qualcosa non va</h2>
+  <h2><span class="n">16</span>Se qualcosa non va</h2>
   <table>
     <tr><th>Sintomo</th><th>Cosa succede davvero</th><th>Cosa fare</th></tr>
     <tr><td>Nessun suono</td><td>i tre fili audio non sono nell'ordine che il firmware si aspetta</td><td>SETTINGS → AUDIO → USCITA, prova le sei combinazioni</td></tr>
@@ -992,17 +1171,17 @@
   <code>pio run -t upload</code> dopo aver cancellato la memoria
   (<code>pio run -t erase</code>): la mappa delle luci va rifatta.</p>
 
-  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>13 · Diagnostica</span></div>
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>16 · Diagnostica</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 14. QUICK REFERENCE ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Tutti i comandi</h1><div class="sub">Una pagina sola, da tenere accanto</div></div>
-    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 16</div>
+    <div class="meta">ArcadeVox 2.0<br>libretto · pag. 20</div>
   </div>
 
-  <h2><span class="n">14</span>I sette tasti funzione</h2>
+  <h2><span class="n">17</span>I sette tasti funzione</h2>
   <table>
     <tr><th>Tasto</th><th>Pressione breve</th><th>Tenuto premuto</th></tr>
     <tr><td><span class="key">FN1</span></td><td>arpeggiator on/off</td><td>modo: su, giù, su/giù, casuale, ordine</td></tr>
@@ -1051,7 +1230,7 @@
     <code>docs/HARDWARE.md</code>; il funzionamento interno del firmware è commentato nel
     codice, file per file.</div>
 
-  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>14 · Comandi</span></div>
+  <div class="runner"><span>ArcadeVox 2.0 — libretto</span><span>17 · Comandi</span></div>
 </section>
 
 </body>
