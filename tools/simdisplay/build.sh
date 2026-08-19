@@ -32,10 +32,15 @@ clang++ $CXXFLAGS -c "$ROOT/src/fx_rows.cpp"     -o "$BUILD/fx_rows.o"
 # I tredici suoni: al display servono solo i nomi, ma il file e' quello vero —
 # se un nome cresce di due lettere, la scena lo mostra sbordare.
 clang++ $CXXFLAGS -c "$ROOT/src/samples.cpp"     -o "$BUILD/samples.o"
+# Il piano e la batteria: la schermata TIMBRI ne disegna il profilo vero, quindi
+# al simulatore servono i blob e non due nomi finti. E' un file grosso e lento da
+# compilare, ed e' il prezzo per vedere sullo schermo quello che si vedra' sul
+# vetro.
+clang++ $CXXFLAGS -c "$ROOT/src/instruments.cpp" -o "$BUILD/instruments.o"
 clang   -std=c99 -O1 -w -I"$HERE/vendor" -c "$HERE/vendor/qrcode.c" -o "$BUILD/qrcode.o"
 
 clang++ -o "$BUILD/simdisplay" "$BUILD/sim_main.o" "$BUILD/sim_fakes.o" "$BUILD/settings.o" "$BUILD/presets.o" "$BUILD/fx_rows.o" "$BUILD/samples.o" \
-        "$BUILD/qrcode.o" -lm
+        "$BUILD/instruments.o" "$BUILD/qrcode.o" -lm
 
 rm -f "$OUT"/*.ppm "$OUT"/*.png
 "$BUILD/simdisplay" "$OUT" > "$OUT/scene.txt"

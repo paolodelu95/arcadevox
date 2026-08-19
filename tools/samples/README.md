@@ -5,9 +5,46 @@ schermata SUONI. Vale qualunque formato che il computer sappia leggere: `.wav`,
 `.mp3`, `.m4a`, `.aiff`, `.ogg`.
 
 ```sh
-python3 tools/make_samples.py     # legge questa cartella e riscrive src/samples.cpp
-pio run -t upload                 # e li carica sulla scheda
+python3 tools/make_sample_image.py   # legge questa cartella -> tools/suoni.bin
+sh tools/upload_sounds.sh            # e lo scrive nella partizione dei suoni
 ```
+
+I tuoi suoni **non entrano nel firmware**: vanno in una partizione di dati tutta
+loro, a 0x670000. Sono due caricamenti separati, e da questo discendono le due
+cose che contano:
+
+- `firmware/firmware.bin` non contiene le tue registrazioni, quindi pubblicarlo
+  non le pubblica — non e' piu' una cosa da ricordarsi, e' una cosa che non puo'
+  succedere;
+- un **aggiornamento OTA non te li cancella**: riscrive solo la partizione
+  dell'applicazione e lascia stare la loro.
+
+La vecchia strada — compilarli dentro con `make_samples.py` — c'e' ancora, ma
+serve solo a rigenerare i tredici *sintetizzati* di riserva. Se ci passi i tuoi
+file, `src/samples.cpp` si sporca di registrazioni e il gancio pre-commit ti
+blocca il commit: e' voluto, ma ormai e' la strada lunga.
+
+## Oppure: i tredici veri, scaricati da soli
+
+Se quello che vuoi sono i tredici suoni "meme" originali al posto di quelli
+sintetizzati, c'e' uno script che se li prende da internet e li mette qui
+dentro con i nomi giusti:
+
+```sh
+sh tools/fetch_memes.sh              # scarica i tredici in questa cartella
+python3 tools/make_sample_image.py   # li impacchetta in tools/suoni.bin
+sh tools/upload_sounds.sh            # e li scrive nella partizione
+```
+
+Vale tutto quello che c'e' scritto qui sotto: i file restano sul tuo computer e
+il firmware che ne esce sulla tua scheda. Lo script installa anche un gancio
+`pre-commit` che rifiuta il commit di `src/samples.cpp` finche' ci sono dentro
+delle registrazioni — perche' quel file, a differenza di questa cartella, e'
+tracciato da git, ed e' l'unico modo per cui un `git commit -a` distratto non
+pubblichi tredici registrazioni altrui.
+
+Per tornare ai sintetizzati: `git restore src/samples.cpp`, oppure si svuota
+questa cartella e si rilancia `make_samples.py`.
 
 ## Come si chiamano i file
 

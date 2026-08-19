@@ -11,30 +11,38 @@ una licenza esplicita — "may be downloaded and used for any projects, without
 restrictions" — e questo li rende gli unici adatti a un repository pubblico:
 finiscono dentro firmware/firmware.bin, che viene ridistribuito via OTA.
 
-La BATTERIA invece e' sintetizzata, e non e' un ripiego. I suoni di batteria
-elettronica *nascono* sintetizzati: una cassa e' una sinusoide che scende
-d'intonazione mentre si spegne, un rullante e' rumore piu' un tono, un charleston
-e' rumore troncato. Sintetizzarli qui costa qualche riga di matematica invece di
-centinaia di kilobyte, non porta dentro la licenza di nessuno, e suona come deve
-suonare una drum machine. Campionare una batteria acustica sarebbe un'altra cosa,
-e vorrebbe una fonte altrettanto libera del piano.
+Anche la BATTERIA e' campionata, e prima non lo era. Era sintetizzata — una
+cassa era una sinusoide che scendeva mentre si spegneva, un rullante rumore piu'
+tono — e suonava esattamente per quello che era: una drum machine, non una
+batteria. Sono due strumenti diversi, e chi vuole il secondo non si accontenta
+del primo.
 
-Serve solo la libreria standard: niente numpy, niente ffmpeg. Il resampling e la
-conversione li fa `audioop`, che c'e' in ogni Python 3.
+I tredici pezzi vengono dalla MuldjordKit, registrata da Lars Muldjord e
+pubblicata per DrumGizmo; la versione stereo la assembla il progetto FreePats.
+Licenza Creative Commons Attribution 4.0, che e' la ragione per cui e' lei e non
+un'altra: come il piano finisce dentro firmware/firmware.bin, e quel file viene
+ridistribuito. L'attribuzione richiesta e' testuale — "Drum samples provided by
+DrumGizmo.org" — e sta nel README del progetto e nelle note della release.
 
-    python tools/make_instruments.py [--piano-dir CARTELLA]
+Per il piano basta la libreria standard. Per la batteria serve anche un
+convertitore che sappia leggere il FLAC: su macOS c'e' afconvert di sistema,
+altrove ffmpeg. E' la stessa dipendenza che ha gia' tools/make_samples.py.
 
-I file del piano si scaricano con:
+    python tools/make_instruments.py [--piano-dir CARTELLA] [--drums-dir CARTELLA]
+
+I file si scaricano con:
 
     tools/fetch_piano.sh
+    tools/fetch_drums.sh
 """
 
 import argparse
-import math
 import os
-import random
+import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 import warnings
 
 warnings.filterwarnings("ignore")  # aifc e audioop sono deprecati ma presenti
@@ -75,11 +83,33 @@ PIANO_ROOTS = [
 
 
 def read_any(path):
-    """Legge AIFF o WAV e restituisce (frames, sampwidth, rate, canali)."""
+    """Legge AIFF o WAV e restituisce (frames, sampwidth, rate, canali).
+
+    L'AIFF nasce sui Macintosh a processore Motorola e ha i campioni in ordine
+    **big-endian**; il modulo `aifc` li restituisce cosi' come stanno, senza
+    girarli. Tutto il resto della catena — `audioop`, e poi il C che legge i
+    blob — lavora nell'ordine della macchina, che qui e' little-endian: dare in
+    pasto i byte non girati vuol dire scambiare la meta' alta con la meta' bassa
+    di ogni campione, e cio' che ne esce **e' rumore**, con l'ampiezza sparata a
+    fondo scala e nessuna traccia della nota che c'era dentro.
+
+    E' esattamente cio' che era successo al piano: le sette radici erano fruscio
+    a volume pieno invece che sette note. Un byte fuori posto, e il campione
+    piu' curato del progetto suonava peggio del preset che doveva sostituire.
+
+    Il WAV invece e' gia' little-endian per definizione del formato, e il modulo
+    `wave` non ha niente da girare.
+    """
     if path.lower().endswith((".aiff", ".aif", ".aifc")):
         with aifc.open(path, "rb") as f:
-            return (f.readframes(f.getnframes()), f.getsampwidth(),
-                    f.getframerate(), f.getnchannels())
+            raw = f.readframes(f.getnframes())
+            width = f.getsampwidth()
+            # Solo i campioni non compressi arrivano grezzi: se `aifc` ha dovuto
+            # decodificare (ulaw, alaw, sowt) ha gia' consegnato roba nell'ordine
+            # della macchina, e girarla di nuovo la romperebbe.
+            if f.getcomptype() == b"NONE" and width > 1:
+                raw = audioop.byteswap(raw, width)
+            return (raw, width, f.getframerate(), f.getnchannels())
     with wave.open(path, "rb") as f:
         return (f.readframes(f.getnframes()), f.getsampwidth(),
                 f.getframerate(), f.getnchannels())
@@ -178,96 +208,129 @@ def load_piano_note(path, seconds=PIANO_SECONDS):
 
 
 # ------------------------------------------------------------------ batteria
-# Tutto quello che segue e' sintesi sottrattiva elementare, la stessa con cui
-# sono fatte le drum machine da cinquant'anni: un oscillatore che scende, del
-# rumore, e inviluppi esponenziali.
-
-def env(i, n, curve=5.0):
-    """Decadimento esponenziale da 1 a 0 su n campioni."""
-    return math.exp(-curve * i / n)
-
-
-def render(fn, seconds):
-    """Chiama fn(i, n) per ogni campione e impacchetta in 8 bit senza segno."""
-    n = int(RATE * seconds)
-    out = bytearray(n)
-    for i in range(n):
-        v = fn(i, n)
-        v = max(-1.0, min(1.0, v))
-        out[i] = int(128 + v * 120)
-    return bytes(out)
-
-
-def drum_kick(i, n):
-    # L'intonazione scende da 115 a 45 Hz nei primi 40 ms: e' quella discesa a
-    # far sentire "colpo" invece di "nota bassa".
-    t = i / RATE
-    f = 45 + 70 * math.exp(-t * 28)
-    body = math.sin(2 * math.pi * f * t) * env(i, n, 6)
-    click = (random.random() * 2 - 1) * env(i, n, 240) * 0.35
-    return body * 0.95 + click
-
-
-def drum_snare(i, n):
-    t = i / RATE
-    tone = (math.sin(2 * math.pi * 185 * t) + math.sin(2 * math.pi * 278 * t)) * 0.5
-    noise = random.random() * 2 - 1
-    return (tone * env(i, n, 12) * 0.5 + noise * env(i, n, 9) * 0.7)
-
-
-def drum_hat_closed(i, n):
-    return (random.random() * 2 - 1) * env(i, n, 70) * 0.55
-
-
-def drum_hat_open(i, n):
-    return (random.random() * 2 - 1) * env(i, n, 6) * 0.5
-
-
-def drum_clap(i, n):
-    # Tre raffiche ravvicinate piu' una coda: un battito di mani non e' un colpo
-    # solo, ed e' il ritardo fra le raffiche a farlo sembrare tale.
-    t = i / RATE
-    g = 0.0
-    for d in (0.0, 0.011, 0.022):
-        if t >= d:
-            g = max(g, math.exp(-(t - d) * 180))
-    g = max(g, math.exp(-t * 16) * 0.45)
-    return (random.random() * 2 - 1) * g * 0.8
-
-
-def drum_tom(i, n):
-    t = i / RATE
-    f = 110 + 90 * math.exp(-t * 20)
-    return math.sin(2 * math.pi * f * t) * env(i, n, 7) * 0.9
-
-
-def drum_rim(i, n):
-    t = i / RATE
-    return (math.sin(2 * math.pi * 1700 * t) * 0.6 +
-            (random.random() * 2 - 1) * 0.4) * env(i, n, 260)
-
-
-def drum_crash(i, n):
-    # Rumore che si spegne piano. Due strati con decadimenti diversi: quello
-    # veloce da' il colpo, quello lento la coda che resta appesa.
-    fast = (random.random() * 2 - 1) * env(i, n, 22)
-    slow = (random.random() * 2 - 1) * env(i, n, 3.2)
-    return fast * 0.45 + slow * 0.5
-
-
+# Tredici pezzi, uno per tasto. Nomi dei file come li scrive tools/fetch_drums.sh.
+#
+# Il secondo numero e' il tetto in secondi: e' un tetto e non una durata, perche'
+# a tagliare davvero ci pensa trim_decay() sul silenzio vero del campione. Serve
+# solo a impedire che un piatto lasciato suonare quattro secondi si porti via
+# sessantaquattro kilobyte di coda che nessuno sente.
 DRUMS = [
-    ("CASSA", "il colpo che tiene il tempo", drum_kick, 0.34),
-    ("RULLANTE", "rumore e tono insieme", drum_snare, 0.26),
-    ("CHARLESTON", "chiuso, corto", drum_hat_closed, 0.09),
-    ("CHARLES.AP", "aperto, resta sospeso", drum_hat_open, 0.42),
-    ("BATTIMANI", "tre raffiche, non una", drum_clap, 0.30),
-    ("TOM", "scende d'intonazione", drum_tom, 0.36),
-    ("BORDO", "secco, quasi solo attacco", drum_rim, 0.07),
-    ("PIATTO", "coda lunga che resta", drum_crash, 1.30),
+    ("CASSA", "il colpo che tiene il tempo", "01-cassa", 1.0),
+    ("RULLANTE", "pelle e cordiera", "02-rullante", 1.0),
+    ("BORDO", "secco, quasi solo attacco", "03-bordo", 0.8),
+    ("TOM 1", "il piu' acuto dei tre", "04-tom1", 1.2),
+    ("TOM 2", "quello di mezzo", "05-tom2", 1.2),
+    ("TOM 3", "il piu' grave dei tre", "06-tom3", 1.4),
+    ("TOM BASSO", "il timpano, da terra", "07-tombasso", 1.6),
+    ("CHARLESTON", "chiuso, corto", "08-charleston", 0.5),
+    ("CHARLES.AP", "aperto, resta sospeso", "09-charlestonaperto", 1.4),
+    ("RIDE", "il piatto che si cavalca", "10-ride", 2.0),
+    ("CAMPANA", "la cupola del ride", "11-campana", 1.8),
+    ("PIATTO", "coda lunga che resta", "12-piatto", 3.0),
+    ("CINESE", "sporco, si spegne prima", "13-cinese", 2.6),
+]
+
+
+def _to_wav(path):
+    """Porta un FLAC a WAV PCM in un file temporaneo.
+
+    Nessun modulo della libreria standard legge il FLAC, e mettere una
+    dipendenza Python solo per questo sarebbe sproporzionato: macOS ha afconvert
+    di sistema, il resto del mondo ha ffmpeg. E' la stessa scelta — e lo stesso
+    codice — di tools/make_samples.py, che il FLAC lo incontra da sempre fra i
+    file personali della schermata SUONI.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    if shutil.which("afconvert"):
+        cmd = ["afconvert", "-f", "WAVE", "-d", "LEI16@%d" % RATE, "-c", "1", path, tmp.name]
+    elif shutil.which("ffmpeg"):
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
+               "-ac", "1", "-ar", str(RATE), tmp.name]
+    else:
+        os.unlink(tmp.name)
+        sys.exit("per leggere %s serve afconvert (macOS) o ffmpeg."
+                 % os.path.basename(path))
+    subprocess.run(cmd, check=True)
+    return tmp.name
+
+
+def trim_decay(raw, floor=0.012, tail_ms=40):
+    """Taglia la coda dove il colpo e' finito davvero.
+
+    Un colpo di batteria registrato dura quanto dura la stanza: dopo il rullante
+    restano due secondi di riverbero sempre piu' vicini al rumore di fondo, e a
+    8 bit quel riverbero non e' nemmeno piu' rappresentabile — sono migliaia di
+    campioni che valgono tutti 128 o 129 e costano 16 kB al secondo.
+    Si cerca all'indietro l'ultimo punto sopra l'uno per cento del picco e si
+    lascia un pelo di coda, che poi la dissolvenza chiude.
+
+    All'indietro e non in avanti: un piatto ha dei buchi in mezzo — momenti in
+    cui le due lamiere si ritrovano in fase e il livello crolla — e chi cerca dal
+    principio il primo punto sotto la soglia taglia li', a meta' del colpo.
+    """
+    peak = audioop.max(raw, 2)
+    if peak == 0:
+        return raw
+    th = peak * floor
+    step = 32 * 2
+    last = len(raw)
+    for i in range(len(raw) - step, 0, -step):
+        if audioop.max(raw[i:i + step], 2) > th:
+            last = i + step
+            break
+    tail = int(RATE * tail_ms / 1000) * 2
+    return raw[:min(len(raw), last + tail)]
+
+
+def load_drum(path, max_seconds):
+    wav = _to_wav(path)
+    try:
+        raw, width, rate, channels = read_any(wav)
+    finally:
+        os.unlink(wav)
+    raw = to_mono_16k(raw, width, rate, channels)
+    # Soglia piu' bassa che sul piano: un colpo di batteria e' gia' al massimo
+    # nei primi millisecondi, e cercare meta' del picco rischia di entrare dopo
+    # l'attacco invece che prima.
+    raw = trim_to_attack(raw, frac=0.35, preroll_ms=4)
+    raw = raw[:int(RATE * max_seconds) * 2]
+    raw = trim_decay(raw)
+    raw = normalize(raw)
+    # In coda molto meno che sul piano: trenta millisecondi bastano a non fare il
+    # gradino, e piu' di cosi' si mangerebbe la fine di un charleston chiuso, che
+    # dura in tutto un decimo di secondo.
+    raw = fade(raw, ms_in=1, ms_out=30)
+    return to_u8(raw)
+
+
+# ------------------------------------------------------- le due voci in coda
+# Nome e didascalia con cui PIANO e BATTERIA compaiono in fondo all'elenco dei
+# timbri. Stanno qui e non in settings.cpp perche' il menu e la schermata TIMBRI
+# li chiedevano ognuno per conto suo — il primo li aveva scritti a mano, la
+# seconda non li aveva affatto e sotto il cursore restava il nome del primo
+# preset. Una tabella sola, della stessa forma di PRESETS[], e le due schermate
+# smettono di poter dire cose diverse.
+SAMPLED = [
+    ("PIANO", "campionato, non imitato"),
+    ("BATTERIA", "un pezzo per tasto"),
 ]
 
 
 # -------------------------------------------------------------------- output
+def ident(name):
+    """Nome di variabile C a partire dal nome del pezzo.
+
+    I nomi dei pezzi sono fatti per il display, non per il compilatore: "TOM 1"
+    ha uno spazio dentro e "CHARLES.AP" un punto. Sostituire solo il punto,
+    com'era prima, bastava finche' i pezzi erano otto e nessuno aveva spazi —
+    poi "TOM BASSO" e' diventato `DRUM_TOM BASSO` e il file generato non
+    compilava piu'. Qui tutto cio' che non e' lettera o cifra diventa un
+    trattino basso, una volta sola e in un posto solo.
+    """
+    return "".join(c if c.isalnum() else "_" for c in name)
+
+
 def emit_blob(out, name, data):
     out.write("const uint8_t %s[%d] PROGMEM = {\n" % (name, len(data)))
     for i in range(0, len(data), 16):
@@ -279,11 +342,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--piano-dir", default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "piano"))
+    ap.add_argument("--drums-dir", default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "drums"))
     ap.add_argument("--out", default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "src", "instruments.cpp"))
     args = ap.parse_args()
-
-    random.seed(20260819)  # rigenerare due volte deve dare lo stesso file
 
     piano = []
     for name, midi in PIANO_ROOTS:
@@ -297,8 +360,13 @@ def main():
         print("piano %-4s  %6.2f kB  %.2f s" % (name, len(blob) / 1024, len(blob) / RATE))
 
     drums = []
-    for name, hint, fn, secs in DRUMS:
-        blob = render(fn, secs)
+    for name, hint, stem, secs in DRUMS:
+        path = os.path.join(args.drums_dir, stem + ".flac")
+        if not os.path.exists(path):
+            sys.exit("manca %s\nScaricali con tools/fetch_drums.sh" % path)
+        blob = load_drum(path, secs)
+        if len(blob) > RATE * MAX_SECONDS:
+            sys.exit("%s supera i %g secondi" % (name, MAX_SECONDS))
         drums.append((name, hint, blob))
         print("batt. %-11s %6.2f kB  %.2f s" % (name, len(blob) / 1024, len(blob) / RATE))
 
@@ -311,13 +379,17 @@ def main():
         out.write("// Non modificare a mano: si cambia lo script e si rigenera.\n")
         out.write("//\n")
         out.write("// Piano: University of Iowa Electronic Music Studios, pubblicati senza\n")
-        out.write("// restrizioni d'uso. Batteria: sintetizzata dalle formule nello script.\n\n")
+        out.write("// restrizioni d'uso.\n")
+        out.write("//\n")
+        out.write("// Batteria: MuldjordKit di Lars Muldjord (DrumGizmo), versione FreePats,\n")
+        out.write("// Creative Commons Attribution 4.0. L'attribuzione richiesta e':\n")
+        out.write("//     Drum samples provided by DrumGizmo.org.\n\n")
         out.write('#include "instruments.h"\n\n')
         out.write("namespace {\n\n")
         for name, _, blob in piano:
             emit_blob(out, "PIANO_%s" % name.replace("#", "s"), blob)
         for name, _, blob in drums:
-            emit_blob(out, "DRUM_%s" % name.replace(".", "_"), blob)
+            emit_blob(out, "DRUM_%s" % ident(name), blob)
         out.write("}  // namespace\n\n")
 
         out.write("const PianoRoot PIANO_ROOTS[] = {\n")
@@ -329,9 +401,14 @@ def main():
         out.write("const DrumHit DRUM_KIT[] = {\n")
         for name, hint, blob in drums:
             out.write('    {"%s", "%s", DRUM_%s, %d},\n'
-                      % (name, hint, name.replace(".", "_"), len(blob)))
+                      % (name, hint, ident(name), len(blob)))
         out.write("};\n")
-        out.write("const uint8_t DRUM_COUNT = %d;\n" % len(drums))
+        out.write("const uint8_t DRUM_COUNT = %d;\n\n" % len(drums))
+
+        out.write("const SampledInstrument SAMPLED_INSTRUMENTS[] = {\n")
+        for name, hint in SAMPLED:
+            out.write('    {"%s", "%s"},\n' % (name, hint))
+        out.write("};\n")
 
     print("scritto %s (%.1f kB di sorgente)" % (out_path, os.path.getsize(out_path) / 1024))
 

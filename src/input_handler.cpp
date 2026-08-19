@@ -391,6 +391,17 @@ uint32_t fnThreshold(int fn) {
     return (fn == FN_PLAY) ? FN_LONG_PRESS_SLOW_MS : FN_NO_LONG;
 }
 
+// Le sette parole stampate sopra i tasti, nell'ordine dell'enum.
+//
+// Servono a una riga sola sulla seriale ad ogni pressione, ed e' una riga che
+// risponde all'unica domanda a cui da fuori non si puo' rispondere: quando un
+// tasto "non fa niente", il firmware non l'ha visto, oppure l'ha visto e non ha
+// fatto niente? Sono due guasti opposti — uno sta nel contatto o nel diodo sotto
+// il tasto, l'altro nel codice — e senza questa riga si finisce a cercare quello
+// sbagliato. Sette pressioni al secondo nel caso peggiore: non e' traffico.
+const char *const FN_NAME[FN_COUNT] = {"ARPEGGIO", "8 BIT", "REGISTRA", "AVVIA",
+                                       "TIENI",    "POLI",  "SILENZIO"};
+
 }  // namespace
 
 namespace Input {
@@ -465,7 +476,13 @@ void update() {
     for (int i = 0; i < FN_COUNT; ++i) {
         PressTracker &t = fnTrackers[i];
         Button &b = buttons[t.button];
-        if (consume(b.edgeDown)) t.longFired = false;
+        if (consume(b.edgeDown)) {
+            t.longFired = false;
+            // Il numero e' quello serigrafato sul pannello (FN1..FN7), non
+            // l'indice interno: chi legge ha il pannello davanti, non l'enum.
+            Serial.printf("FN%d %s premuto (matrice %d)\n", i + 1, FN_NAME[i],
+                          (int)FN_SLOT[i]);
+        }
         if (b.state && !t.longFired && (now - b.pressedAt) >= t.longMs) {
             t.longFired = true;
             t.longEvent = true;

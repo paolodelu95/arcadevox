@@ -26,5 +26,25 @@ struct MemeSample {
     uint32_t len;
 };
 
-extern const MemeSample MEME_SAMPLES[];
-extern const uint8_t MEME_COUNT;
+// Quanti suoni al massimo: tredici come i tasti. Serve a chi legge l'immagine
+// dalla partizione, che deve sapere quando fermarsi prima di fidarsi di un
+// numero arrivato dalla flash.
+#define MEME_MAX 13
+
+// Non un array ma un **puntatore**, e non una costante ma una variabile.
+//
+// I tredici suoni possono venire da due posti: i blob sintetizzati che il
+// firmware si porta dentro, oppure l'immagine caricata nella partizione dati
+// (vedi sample_store.h). All'accensione puntano ai primi; se la partizione ha
+// qualcosa di valido, SampleStore::begin() li fa puntare li'.
+//
+// I punti che li usano non se ne accorgono: `MEME_SAMPLES[i]` e `MEME_COUNT` si
+// scrivono uguale in tutti e due i casi, ed e' il motivo per cui questo cambio
+// non ha toccato ne' il display ne' la logica dei tasti.
+extern const MemeSample *MEME_SAMPLES;
+extern uint8_t MEME_COUNT;
+
+// I tredici sintetizzati, sempre presenti: sono la riserva, e sono anche cio' che
+// suona una scheda appena programmata, su cui nessuno ha ancora caricato niente.
+extern const MemeSample MEME_BUILTIN[];
+extern const uint8_t MEME_BUILTIN_COUNT;

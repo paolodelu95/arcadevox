@@ -22,6 +22,14 @@ tools/simdisplay/build/
 tools/samples/*
 !tools/samples/README.md
 
+# E l'immagine che ne esce, che va nella partizione dei suoni e non nel firmware.
+# La rifa' tools/make_sample_image.py in due secondi.
+tools/suoni.bin
+
 # I 50 MB di AIFF grezzi del piano: si riscaricano con tools/fetch_piano.sh,
 # e cio che serve davvero (src/instruments.cpp) e gia committato.
 tools/piano/
+
+# Stessa cosa per gli 8 MB di FLAC della batteria: tools/fetch_drums.sh li
+# rimette giu' quando servono.
+tools/drums/

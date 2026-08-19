@@ -123,7 +123,7 @@ const char *valueLabel(uint8_t which, uint8_t index) {
     if (which == SETTING_TIMBRO) {
         const uint8_t i = clampIndex(which, index);
         if (i < PRESET_COUNT) return PRESETS[i].name;
-        return (i == PRESET_COUNT) ? "PIANO" : "BATTERIA";
+        return SAMPLED_INSTRUMENTS[i - PRESET_COUNT].name;
     }
     if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return "";
     return ENTRIES[which].valueLabels[clampIndex(which, index)];

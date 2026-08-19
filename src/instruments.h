@@ -20,10 +20,18 @@
 // firmware/firmware.bin, che il progetto ridistribuisce via OTA, e ridistribuire
 // registrazioni altrui e' esattamente cio' che tools/samples/README.md vieta.
 //
-// La BATTERIA invece e' sintetizzata dalle formule in tools/make_instruments.py.
-// Non e' un ripiego: i suoni di batteria elettronica nascono cosi' — una cassa e'
-// una sinusoide che scende mentre si spegne, un rullante e' rumore piu' tono — e
-// sintetizzarli costa qualche riga invece di centinaia di kilobyte.
+// Anche la BATTERIA e' campionata, e per un giro non lo e' stata: era sintetizzata
+// dalle formule dello script, e suonava per quello che era — una drum machine, che
+// e' un altro strumento. Adesso sono tredici pezzi veri di una batteria acustica,
+// uno per tasto: la MuldjordKit di Lars Muldjord, registrata per DrumGizmo e
+// rimessa insieme dal progetto FreePats sotto Creative Commons Attribution 4.0.
+//
+// Vale la stessa regola del piano, ed e' l'unica che decide da dove si prendono i
+// campioni di questo progetto: finiscono in firmware/firmware.bin, che viene
+// ridistribuito, quindi la licenza deve permettere di ridistribuirli. Qui in piu'
+// chiede una riga di credito, che sta nel README e nelle note della release:
+//
+//     Drum samples provided by DrumGizmo.org.
 #pragma once
 
 #include <Arduino.h>
@@ -43,6 +51,17 @@ struct PianoRoot {
 // PIANO e BATTERIA. Sta qui e non in main.cpp perche' il menu deve sapere
 // quanto e' lungo l'elenco e come si chiamano le ultime due voci.
 #define INSTRUMENT_EXTRA 2
+
+// Come si chiamano quelle due voci. Stessi due campi dei preset — nome e una
+// riga che dice cosa aspettarsi — proprio perche' l'elenco dei timbri e' uno
+// solo: chi lo disegna prende il nome da qui o da PRESETS a seconda dell'indice,
+// e non ha bisogno di sapere altro.
+struct SampledInstrument {
+    const char *name;
+    const char *hint;
+};
+
+extern const SampledInstrument SAMPLED_INSTRUMENTS[];
 
 extern const PianoRoot PIANO_ROOTS[];
 extern const uint8_t PIANO_ROOT_COUNT;

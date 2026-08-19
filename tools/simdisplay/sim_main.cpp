@@ -261,7 +261,12 @@ void scene_timbri_primo() { sceneTimbri(0, 0); }
 // PAD SPAZIALE e CLAVICEMBALO sono i due nomi piu' lunghi: se un nome sborda dal
 // vetro, sborda qui.
 void scene_timbri_nome_lungo() { sceneTimbri(12, 1); }
-void scene_timbri_ultimo() { sceneTimbri(PRESET_COUNT - 1, 3); }
+void scene_timbri_ultimo() { sceneTimbri(PRESET_COUNT + INSTRUMENT_EXTRA - 1, 3); }
+// Le due voci in coda: nome, didascalia e ritratto vengono da un'altra tabella e
+// da un altro disegno, ed e' esattamente il punto in cui prima restava scritto
+// "BASE". Due scene, una per strumento, perche' i due ritratti sono diversi.
+void scene_timbri_piano() { sceneTimbri(PRESET_COUNT, PRESET_COUNT); }
+void scene_timbri_batteria() { sceneTimbri(PRESET_COUNT + 1, PRESET_COUNT + 1); }
 
 void scene_timbri_dopo_uso() {
     boot();
@@ -269,7 +274,7 @@ void scene_timbri_dopo_uso() {
     SynthView v = baseView();
     knobs("TIMBRO", "SCALA", "VOL", "ACCORDO");
     tick(v);
-    for (int i = 0; i < (int)PRESET_COUNT; ++i) {
+    for (int i = 0; i < (int)PRESET_COUNT + INSTRUMENT_EXTRA; ++i) {
         v.timbroCursor = (uint8_t)i;
         v.timbro = (uint8_t)i;
         tick(v);
@@ -604,6 +609,8 @@ const Scene SCENES[] = {
     {"08-timbri-nome-lungo", scene_timbri_nome_lungo},
     {"09-timbri-ultimo", scene_timbri_ultimo},
     {"10-timbri-dopo-uso", scene_timbri_dopo_uso},
+    {"10a1-timbri-piano", scene_timbri_piano},
+    {"10a2-timbri-batteria", scene_timbri_batteria},
 
     {"10b-suoni-vuoto", scene_suoni_vuoto},
     {"10c-suoni-nome-lungo", scene_suoni_nome_lungo},

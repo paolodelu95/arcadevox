@@ -28,6 +28,7 @@
 #include "pinout.h"
 #include "presets.h"
 #include "samples.h"
+#include "sample_store.h"
 #include "sampler.h"
 #include "sequencer.h"
 #include "settings.h"
@@ -868,8 +869,14 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
                 Storage::markDirty();
             }
             label[0] = "TIMBRO";
-            frac[0] = (float)timbroCursor / (float)(PRESET_COUNT - 1);
-            snprintf(buf[0], sizeof(buf[0]), "%d/%d", timbroCursor + 1, PRESET_COUNT);
+            // Le due voci campionate sono in fondo allo stesso elenco: l'arco
+            // della manopola e il contatore devono contarle, altrimenti scelto
+            // il PIANO l'arco resta oltre il fondo corsa e il contatore scrive
+            // "16/15" — cioe' due modi diversi di dire che l'elenco e' finito
+            // una voce prima di dove finisce davvero.
+            frac[0] = (float)timbroCursor / (float)(PRESET_COUNT + INSTRUMENT_EXTRA - 1);
+            snprintf(buf[0], sizeof(buf[0]), "%d/%d", timbroCursor + 1,
+                     PRESET_COUNT + INSTRUMENT_EXTRA);
             label[1] = "SCALA";
             frac[1] = (float)setIndex[SETTING_SCALE] /
                       (float)(Settings::valueCount(SETTING_SCALE) - 1);
@@ -1402,6 +1409,10 @@ void setup() {
     Sequencer::begin();
     Storage::begin();
     AudioEngine::begin();
+    // I suoni della schermata SUONI, se qualcuno ne ha caricati di propri nella
+    // partizione dati. Va dopo AudioEngine::begin() solo per ordine di lettura:
+    // non dipende dal motore, gli prepara solo cio' che dovra' suonare.
+    SampleStore::begin();
 
     // Pattern e parametri dell'ultima accensione, se ci sono.
     Storage::SynthState saved;

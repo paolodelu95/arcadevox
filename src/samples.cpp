@@ -7526,7 +7526,7 @@ static const uint8_t SMP_TADA[] = {
     128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,
 };
 
-const MemeSample MEME_SAMPLES[] = {
+const MemeSample MEME_BUILTIN[] = {
     {"TROMBETTA", "da stadio", SMP_TROMBETTA, sizeof(SMP_TROMBETTA)},
     {"FAAA", "con l'eco", SMP_FAAA, sizeof(SMP_FAAA)},
     {"BOOM", "il colpo grave", SMP_BOOM, sizeof(SMP_BOOM)},
@@ -7542,4 +7542,9 @@ const MemeSample MEME_SAMPLES[] = {
     {"TADA", "e' andata bene", SMP_TADA, sizeof(SMP_TADA)},
 };
 
-const uint8_t MEME_COUNT = sizeof(MEME_SAMPLES) / sizeof(MEME_SAMPLES[0]);
+const uint8_t MEME_BUILTIN_COUNT = sizeof(MEME_BUILTIN) / sizeof(MEME_BUILTIN[0]);
+
+// Il punto di partenza: i sintetizzati. SampleStore::begin() sposta questi
+// due su cio' che trova nella partizione dati, se c'e' e se e' valido.
+const MemeSample *MEME_SAMPLES = MEME_BUILTIN;
+uint8_t MEME_COUNT = MEME_BUILTIN_COUNT;

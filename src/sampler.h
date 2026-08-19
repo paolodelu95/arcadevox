@@ -24,7 +24,8 @@ namespace Sampler {
 void pianoNote(int midi);
 
 // Colpisce il pezzo `index` della batteria (0..DRUM_COUNT-1). Fuori intervallo
-// non fa niente: i tasti sono tredici e i pezzi otto, e il silenzio e' una
+// non fa niente: i pezzi sono tredici come i tasti, quindi oggi non avanza
+// niente, ma il controllo resta — il giorno che il kit cambia, il silenzio e' una
 // risposta migliore di un colpo scelto a caso.
 void drumHit(uint8_t index);
 

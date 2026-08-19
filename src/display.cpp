@@ -37,6 +37,7 @@
 #include <string.h>
 
 #include "audio_engine.h"
+#include "instruments.h"
 #include "logo.h"
 #include "net_portal.h"
 #include "pinout.h"
@@ -855,32 +856,109 @@ void drawListArc(int index, int count, uint16_t accent) {
     }
 }
 
+// L'elenco dei timbri e' uno solo ma le sue voci vengono da due tabelle: i
+// quindici preset del motore sottrattivo e i due strumenti campionati in coda.
+// Queste due righe sono l'unico posto in cui la giunzione si vede — prima non
+// c'era affatto, e sotto il cursore di PIANO e BATTERIA restava scritto "BASE",
+// cioe' il nome del primo preset, perche' l'indice fuori scala veniva riportato
+// a zero invece che letto nell'altra tabella.
+// Una funzione e non una costante: PRESET_COUNT vive in presets.cpp e vale solo
+// da quando quel file e' stato inizializzato, quindi sommarlo qui a tempo di
+// caricamento dipenderebbe dall'ordine fra due unita' di compilazione — che il
+// C++ non promette.
+inline int timbroCount() { return (int)PRESET_COUNT + INSTRUMENT_EXTRA; }
+
+const char *timbroName(int i) {
+    if (i < 0 || i >= timbroCount()) return "";
+    return (i < (int)PRESET_COUNT) ? PRESETS[i].name
+                                   : SAMPLED_INSTRUMENTS[i - (int)PRESET_COUNT].name;
+}
+
+const char *timbroHint(int i) {
+    if (i < 0 || i >= timbroCount()) return "";
+    return (i < (int)PRESET_COUNT) ? PRESETS[i].hint
+                                   : SAMPLED_INSTRUMENTS[i - (int)PRESET_COUNT].hint;
+}
+
+// Il ritratto di un campione: il profilo della sua ampiezza, una colonna ogni
+// fetta di blob. Non e' un ripiego per l'onda e l'inviluppo che il campione non
+// ha — e' la stessa promessa, mantenuta sul materiale vero: il piano fa vedere
+// il martelletto in testa e la coda che scende, e la batteria otto colpi
+// staccati invece di una curva sola.
+void drawSampleProfile(int x, int y, int w, int h, const uint8_t *data, uint32_t len,
+                       uint16_t color) {
+    if (data == nullptr || len == 0 || w < 1) return;
+    const int cy = y + h / 2;
+    const int half = h / 2 - 1;
+    const uint32_t per = (len > (uint32_t)w) ? (len / (uint32_t)w) : 1;
+    gfx->startWrite();
+    for (int i = 0; i < w; ++i) {
+        const uint32_t start = (uint32_t)i * per;
+        int peak = 0;
+        // Un campione ogni quattro: il picco di una fetta da qualche centinaio
+        // non cambia, e il disegno costa un quarto.
+        for (uint32_t j = start; j < start + per && j < len; j += 4) {
+            const int a = (int)data[j] - 128;
+            const int m = (a < 0) ? -a : a;
+            if (m > peak) peak = m;
+        }
+        int hh = peak * half / 128;
+        if (hh < 1) hh = 1;
+        gfx->writeFastVLine(x + i, cy - hh, 2 * hh, color);
+    }
+    gfx->endWrite();
+}
+
+// Il ritratto della batteria: gli otto pezzi in fila, ognuno nel suo spicchio di
+// larghezza. Messi uno accanto all'altro si legge in un colpo d'occhio cio' che
+// li distingue davvero — il bordo e' quasi solo attacco, il piatto e' una coda
+// lunga — che e' esattamente cio' che l'elenco dei nomi non puo' dire.
+void drawDrumKitProfile(int x, int y, int w, int h, uint16_t color) {
+    if (DRUM_COUNT == 0) return;
+    const int slot = w / (int)DRUM_COUNT;
+    if (slot < 2) return;
+    for (uint8_t i = 0; i < DRUM_COUNT; ++i) {
+        drawSampleProfile(x + slot * (int)i, y, slot - 1, h, DRUM_KIT[i].data, DRUM_KIT[i].len,
+                          color);
+    }
+}
+
 void drawTimbriScreen(const SynthView &v, bool full) {
     if (!full && v.timbroCursor == prev.timbroCursor && v.timbro == prev.timbro) return;
 
-    const int sel = (v.timbroCursor < PRESET_COUNT) ? v.timbroCursor : 0;
-    const Preset &p = PRESETS[sel];
+    const int sel = (v.timbroCursor < timbroCount()) ? v.timbroCursor : 0;
+    const char *name = timbroName(sel);
 
     contentFill(68, 88);
 
-    if (sel > 0) textCentered(PRESETS[sel - 1].name, 70, 1, HUD_DIM);
-    if (sel + 1 < (int)PRESET_COUNT) textCentered(PRESETS[sel + 1].name, 146, 1, HUD_DIM);
+    if (sel > 0) textCentered(timbroName(sel - 1), 70, 1, HUD_DIM);
+    if (sel + 1 < timbroCount()) textCentered(timbroName(sel + 1), 146, 1, HUD_DIM);
 
     // Il pallino dice quale sta *suonando adesso*, che con la manopola che scorre
     // liberamente non e' per forza quello sotto il cursore.
-    textCentered(p.name, 82, 2, HUD_ICE);
-    if (sel == (int)v.timbro) gfx->fillCircle(CX - 6 * (int)strlen(p.name) - 10, 90, 3, HUD_VIOLET);
+    textCentered(name, 82, 2, HUD_ICE);
+    if (sel == (int)v.timbro) gfx->fillCircle(CX - 6 * (int)strlen(name) - 10, 90, 3, HUD_VIOLET);
 
-    textCentered(p.hint, 102, 1, HUD_LABEL);
+    textCentered(timbroHint(sel), 102, 1, HUD_LABEL);
 
     // Il ritratto: com'e' fatta la voce e come si spegne. Un timbro si sceglie
     // per come suona, ma vedere che il pianoforte ha la coda che scende e
     // l'organo no e' esattamente cio' che insegna a cosa servono le altre
     // schermate.
-    drawWaveShape(CX - 48, 114, 96, 14, p.wave, HUD_NEON);
-    drawEnvelope(CX - 48, 130, 96, 14, p.attackMs, p.decayMs, p.sustain, p.releaseMs, false);
+    if (sel < (int)PRESET_COUNT) {
+        const Preset &p = PRESETS[sel];
+        drawWaveShape(CX - 48, 114, 96, 14, p.wave, HUD_NEON);
+        drawEnvelope(CX - 48, 130, 96, 14, p.attackMs, p.decayMs, p.sustain, p.releaseMs, false);
+    } else if (sel == (int)PRESET_COUNT) {
+        // La radice di mezzo, che e' quella intorno a cui si suona: le altre sei
+        // hanno la stessa forma un po' piu' corta o un po' piu' lunga.
+        const PianoRoot &r = PIANO_ROOTS[PIANO_ROOT_COUNT / 2];
+        drawSampleProfile(CX - 48, 114, 96, 30, r.data, r.len, HUD_NEON);
+    } else {
+        drawDrumKitProfile(CX - 48, 114, 96, 30, HUD_NEON);
+    }
 
-    drawListArc(sel, PRESET_COUNT, HUD_VIOLET);
+    drawListArc(sel, timbroCount(), HUD_VIOLET);
 }
 
 // ------------------------------------------------------------------- SUONI

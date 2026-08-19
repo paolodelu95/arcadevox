@@ -55,6 +55,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "src", "samples.cpp")
 USER_DIR = os.path.join(HERE, "samples")
 
+# Riga che finisce in testa a src/samples.cpp quando dentro c'e' almeno un file
+# di tools/samples/. La cerca il gancio pre-commit installato da
+# tools/fetch_memes.sh: e' l'unico modo perche' "questi suoni non finiscono su
+# GitHub" sia una cosa che il computer verifica invece di una che ci si ricorda.
+MARKER = "CAMPIONI-PERSONALI: questo file non va committato."
+
 # Quattro secondi. Non e' una preferenza: il motore audio tiene la posizione di
 # lettura come indice intero piu' frazione a 16 bit, e oltre questo l'indice non
 # ci sta piu'. Meglio fermarsi qui e dirlo che consegnare un suono che ricomincia
@@ -594,15 +600,35 @@ def main():
     lines.append('//')
     lines.append('// GENERATO da tools/make_samples.py: non si modifica a mano.')
     lines.append('//')
-    lines.append('// Non sono registrazioni: sono sintetizzati, perche' + "'" +
-                 ' i suoni "meme" che')
-    lines.append('// girano in rete hanno quasi tutti un padrone e questo repository e' + "'" +
-                 ' pubblico.')
-    lines.append('// Ognuno e' + "'" + ' costruito da cio' + "'" +
-                 ' che lo rende riconoscibile — una trombetta')
-    lines.append('// sono tre lame scordate che calano, un boom e' + "'" +
-                 ' una sinusoide che scende')
-    lines.append('// sotto i quaranta hertz — e in flash costa il tempo che dura.')
+    if user:
+        # L'intestazione dice la verita' su cio' che c'e' dentro, e la prima riga
+        # e' un marcatore che si puo' cercare da uno script: il gancio git
+        # installato da tools/fetch_memes.sh legge esattamente questa stringa per
+        # rifiutare il commit. Un file che *contiene* delle registrazioni ma che
+        # in testa continua a dichiararsi sintetizzato sarebbe il modo piu'
+        # veloce di pubblicarle senza accorgersene.
+        lines.append('// ' + MARKER)
+        lines.append('//')
+        lines.append('// %d dei tredici suoni vengono da tools/samples/, cioe' % len(user) +
+                     "'" + ' da registrazioni')
+        lines.append('// vere. Questo file cosi' + "'" +
+                     " com'e' NON va committato e NON va compilato dentro il")
+        lines.append('// firmware/firmware.bin che il progetto pubblica: quei suoni hanno un')
+        lines.append('// padrone, e ridistribuirli dentro un binario e' + "'" +
+                     ' ridistribuirli lo stesso.')
+        lines.append('//')
+        lines.append('// Per tornare ai tredici sintetizzati: si svuota tools/samples/ (tranne')
+        lines.append('// il README) e si rilancia tools/make_samples.py.')
+    else:
+        lines.append('// Non sono registrazioni: sono sintetizzati, perche' + "'" +
+                     ' i suoni "meme" che')
+        lines.append('// girano in rete hanno quasi tutti un padrone e questo repository e' + "'" +
+                     ' pubblico.')
+        lines.append('// Ognuno e' + "'" + ' costruito da cio' + "'" +
+                     ' che lo rende riconoscibile — una trombetta')
+        lines.append('// sono tre lame scordate che calano, un boom e' + "'" +
+                     ' una sinusoide che scende')
+        lines.append('// sotto i quaranta hertz — e in flash costa il tempo che dura.')
     lines.append('//')
     lines.append('// 8 bit senza segno a %d Hz, 128 = silenzio. Totale: %d byte.'
                  % (RATE, total))
@@ -623,13 +649,19 @@ def main():
         lines.append('};')
         lines.append('')
 
-    lines.append('const MemeSample MEME_SAMPLES[] = {')
+    lines.append('const MemeSample MEME_BUILTIN[] = {')
     for name, hint, q in blobs:
         var = "SMP_" + name.replace("'", "").replace(" ", "_")
         lines.append('    {"%s", "%s", %s, sizeof(%s)},' % (name, hint, var, var))
     lines.append('};')
     lines.append('')
-    lines.append('const uint8_t MEME_COUNT = sizeof(MEME_SAMPLES) / sizeof(MEME_SAMPLES[0]);')
+    lines.append('const uint8_t MEME_BUILTIN_COUNT = '
+                 'sizeof(MEME_BUILTIN) / sizeof(MEME_BUILTIN[0]);')
+    lines.append('')
+    lines.append('// Il punto di partenza: i sintetizzati. SampleStore::begin() sposta questi')
+    lines.append('// due su cio\' che trova nella partizione dati, se c\'e\' e se e\' valido.')
+    lines.append('const MemeSample *MEME_SAMPLES = MEME_BUILTIN;')
+    lines.append('uint8_t MEME_COUNT = MEME_BUILTIN_COUNT;')
     lines.append('')
 
     with open(OUT, "w") as f:

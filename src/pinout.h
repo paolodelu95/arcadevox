@@ -67,6 +67,28 @@
 #define MATRIX_NOTE_SLOTS \
     { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }
 // Indice di matrice di FN1..FN7.
+//
+// NOTA DI COLLAUDO, scheda 2026-08 — FN6 (slot 18, riga 4 colonna 2) e' guasto
+// sull'esemplare montato a mano: non arriva al firmware, con nessuna funzione
+// sopra. Il guasto e' su quel solo incrocio, e le due linee che ci passano sono
+// state assolte una per una:
+//
+//   riga 4    sana  -> FN7 e' riga 4 colonna 3 e risponde
+//   colonna 2 sana  -> FN2 e' riga 3 colonna 2 e risponde
+//
+// Resta quindi il pulsante, il suo diodo o una delle sue saldature. La prova che
+// lo ha dimostrato e' stata scambiare qui le ultime due voci — POLI su slot 19,
+// SILENZIO su slot 18 — e vedere POLI rispondere puntualmente su FN7 mentre FN6
+// restava muto anche col panico sopra. Il firmware non c'entrava.
+//
+// Se serve rifarla, o tenere POLI raggiungibile mentre la scheda aspetta il
+// saldatore, e' una riga sola:
+//
+//     { 13, 14, 15, 16, 17, 19, 18 }
+//
+// Qui sotto resta la tabella vera, quella che descrive il pannello com'e'
+// disegnato: una scheda sana deve trovare il progetto giusto, non la
+// medicazione di un esemplare.
 #define MATRIX_FN_SLOTS \
     { 13, 14, 15, 16, 17, 18, 19 }
 
