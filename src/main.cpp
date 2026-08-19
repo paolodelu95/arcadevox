@@ -1530,9 +1530,14 @@ void setup() {
     // configurazione piu' piccola del vero non da' nessun sintomo — si perde
     // solo meta' flash e tutta la memoria esterna, in silenzio. Una riga
     // all'avvio costa niente e toglie di mezzo quella categoria di equivoco.
-    Serial.printf("Hardware: flash %u MB, PSRAM %u MB.\n",
-                  (unsigned)(ESP.getFlashChipSize() / (1024 * 1024)),
-                  (unsigned)(ESP.getPsramSize() / (1024 * 1024)));
+    // Un decimale, e non una divisione intera per un megabyte: getPsramSize()
+    // restituisce la memoria **utilizzabile**, cioe' 8.386.560 byte su un chip
+    // da 8 MB, perche' una parte se la riserva il sistema. Troncando, quella
+    // scheda si dichiarava "PSRAM 7 MB" — un numero che non corrisponde a
+    // nessuna variante esistente, e che manda a cercare un guasto che non c'e'.
+    const float flashMb = (float)ESP.getFlashChipSize() / (1024.0f * 1024.0f);
+    const float psramMb = (float)ESP.getPsramSize() / (1024.0f * 1024.0f);
+    Serial.printf("Hardware: flash %.1f MB, PSRAM %.1f MB.\n", flashMb, psramMb);
     if (!Input::expanderOk()) {
         Serial.println(F("ATTENZIONE: l'espansore MCP23017 non risponde sul bus I2C."));
     }
