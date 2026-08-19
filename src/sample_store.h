@@ -25,12 +25,17 @@
 //
 // DOVE, DI PRECISO
 //
-// Nella partizione `spiffs` di default_8MB.csv: 1,5 MB a 0x670000, che la tabella
-// prevede da sempre e che nessuno usava. Non ne creo una nuova apposta, e la
+// Nella partizione `spiffs` che le tabelle di serie prevedono da sempre e che
+// nessuno usava: 3,4 MB con default_16MB.csv. Non ne creo una nuova apposta, e la
 // ragione e' seria: la tabella delle partizioni **non si aggiorna via OTA** — la
 // riscrive solo un caricamento completo via esptool. Una scheda che si aggiorna
 // da internet terrebbe la tabella vecchia e cercherebbe i suoni a un indirizzo
 // che nel suo mondo non esiste.
+//
+// Di quell'indirizzo, qui, non c'e' traccia apposta: esp_partition_find_first()
+// cerca per tipo e sottotipo, non per posizione. E' il motivo per cui il
+// passaggio da N8 a N16R8 — che ha spostato quella partizione da 0x670000 a
+// 0xc90000 — non ha richiesto di toccare una riga di questo file.
 //
 // COME CI ARRIVA UN PUNTATORE
 //

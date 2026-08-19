@@ -9,16 +9,19 @@
 # l'applicazione e lascia i suoni dove sono; questo script scrive i suoni e lascia
 # l'applicazione dov'e'.
 #
-# L'INDIRIZZO
+# L'INDIRIZZO NON STA SCRITTO QUI
 #
-# 0x670000, la partizione `spiffs` di default_8MB.csv — 1,5 MB che quella tabella
-# prevede da sempre e che nessuno usava. Sta scritto qui e in sample_store.h, e
-# sono gli unici due posti: se un domani la tabella cambia, cambiano tutti e due.
+# Lo script legge la **tabella delle partizioni dalla scheda** e ci cerca dentro
+# la partizione dati di tipo spiffs: quella e' la casa dei suoni, ovunque sia.
 #
-# Non e' un numero che si possa sbagliare a cuor leggero: 0x10000 sarebbe
-# l'applicazione, e scriverci sopra i suoni vuol dire una scheda che non parte
-# piu' finche' non la si riprogramma. Per questo lo script legge la tabella vera
-# dalla scheda prima di scrivere, invece di fidarsi della costante.
+# Prima era una costante, 0x670000, e ha smesso di essere giusta nel momento in
+# cui la configurazione e' passata da N8 a N16R8: con default_16MB.csv quella
+# partizione sta a 0xc90000, e uno script rimasto alla costante vecchia avrebbe
+# scritto quattrocento kilobyte in mezzo alla seconda immagine dell'applicazione.
+#
+# Non e' un numero che si possa sbagliare a cuor leggero — 0x10000 sarebbe
+# l'applicazione, e scriverci sopra vuol dire una scheda che non parte piu' — e
+# la lezione e' che a saperlo deve essere la scheda, non questo file.
 #
 # LA MODALITA' DOWNLOAD
 #
@@ -29,7 +32,8 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE="$ROOT/tools/suoni.bin"
-OFFSET="0x670000"
+PARTS=/tmp/avox_parts.bin
+WHERE=/tmp/avox_offset.txt
 
 if [ ! -s "$IMAGE" ]; then
     echo "manca $IMAGE — prima: python3 tools/make_sample_image.py" >&2
@@ -56,36 +60,18 @@ fi
 echo "porta   $PORT"
 echo "immagine $(wc -c < "$IMAGE" | tr -d ' ') byte"
 
-# La verifica che rende innocuo l'indirizzo scritto a mano qui sopra: si legge la
-# tabella delle partizioni dalla scheda e si controlla che a 0x670000 ci sia
-# davvero una partizione di dati, non l'applicazione.
-echo "== controllo la tabella delle partizioni sulla scheda"
+echo "== chiedo alla scheda dov'e' la partizione dei suoni"
 "$PY" "$ESPTOOL" --chip esp32s3 --port "$PORT" --baud 460800 \
-    read_flash 0x8000 0xc00 /tmp/avox_parts.bin >/dev/null
+    read_flash 0x8000 0xc00 "$PARTS" >/dev/null
 
-"$PY" - "$OFFSET" <<'PY'
-import struct, sys
-want = int(sys.argv[1], 16)
-data = open("/tmp/avox_parts.bin", "rb").read()
-found = None
-for i in range(0, len(data), 32):
-    e = data[i:i + 32]
-    if e[:2] != b"\xaa\x50":
-        break
-    ptype, subtype, offset, size = struct.unpack("<BBII", e[2:12])
-    label = e[12:28].rstrip(b"\x00").decode("ascii", "replace")
-    if offset == want:
-        found = (label, ptype, size)
-print("   partizioni lette dalla scheda")
-if not found:
-    sys.exit("   a 0x%06x non c'e' nessuna partizione: NON scrivo." % want)
-label, ptype, size = found
-if ptype != 1:
-    sys.exit("   a 0x%06x c'e' '%s', che e' di tipo app: NON scrivo." % (want, label))
-print("   0x%06x = '%s', dati, %.1f kB — via libera" % (want, label, size / 1024))
-PY
+# Lo script Python scrive l'indirizzo in un file invece di restituirlo dentro una
+# sostituzione di comando: un heredoc annidato dentro $(...) e' esattamente il
+# genere di cosa che si rompe in silenzio su una shell diversa da quella su cui
+# l'hai provato.
+"$PY" "$ROOT/tools/find_sound_partition.py" "$PARTS" "$IMAGE" "$WHERE" || exit 1
+OFFSET=$(cat "$WHERE")
 
-echo "== scrivo"
+echo "== scrivo a $OFFSET"
 "$PY" "$ESPTOOL" --chip esp32s3 --port "$PORT" --baud 460800 \
     --before default_reset --after hard_reset \
     write_flash -z "$OFFSET" "$IMAGE"

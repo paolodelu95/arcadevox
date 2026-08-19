@@ -1524,6 +1524,15 @@ void setup() {
     Serial.print(F("ArcadeVox "));
     Serial.print(F(FW_VERSION));
     Serial.println(F(" pronto."));
+    // Flash e PSRAM come li vede il chip, non come li dichiara platformio.ini.
+    // Per un pezzo quel file ha descritto una N8 mentre sul PCB c'era una N16R8:
+    // la scheda funzionava lo stesso e nessuno se ne accorgeva, perche' una
+    // configurazione piu' piccola del vero non da' nessun sintomo — si perde
+    // solo meta' flash e tutta la memoria esterna, in silenzio. Una riga
+    // all'avvio costa niente e toglie di mezzo quella categoria di equivoco.
+    Serial.printf("Hardware: flash %u MB, PSRAM %u MB.\n",
+                  (unsigned)(ESP.getFlashChipSize() / (1024 * 1024)),
+                  (unsigned)(ESP.getPsramSize() / (1024 * 1024)));
     if (!Input::expanderOk()) {
         Serial.println(F("ATTENZIONE: l'espansore MCP23017 non risponde sul bus I2C."));
     }

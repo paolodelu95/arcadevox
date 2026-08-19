@@ -66,10 +66,15 @@ HEADER_SIZE = 32
 ENTRY_SIZE = 16
 OUT = os.path.join(HERE, "suoni.bin")
 
-# Quanto ci sta. La partizione `spiffs` di default_8MB.csv e' 0x180000, cioe'
-# 1,5 MB: a 16 kHz e 8 bit sono novantotto secondi di suono, molto piu' dei
-# quattro secondi per tasto che il motore audio sa leggere.
-PARTITION_SIZE = 0x180000
+# Quanto ci sta. La partizione `spiffs` di default_16MB.csv e' 0x360000, cioe'
+# 3,4 MB: a 16 kHz e 8 bit sono tre minuti e mezzo di suono, contro i cinquantadue
+# secondi che i tredici tasti possono occupare al massimo — quattro secondi l'uno,
+# che e' il tetto del motore audio. Sta larga, e va bene cosi'.
+#
+# E' solo un controllo di buon senso: quello vero lo fa tools/upload_sounds.sh,
+# che la dimensione se la fa dire dalla tabella letta dalla scheda invece di
+# fidarsi di questa costante.
+PARTITION_SIZE = 0x360000
 
 
 def main():
