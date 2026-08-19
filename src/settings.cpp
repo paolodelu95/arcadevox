@@ -5,6 +5,7 @@
 #include "audio_engine.h"  // AUDIO_ORDER_NAMES / AUDIO_ORDER_COUNT
 #include "pinout.h"        // NOTE_COUNT
 #include "presets.h"
+#include "instruments.h"  // INSTRUMENT_EXTRA: piano e batteria in coda ai timbri
 
 namespace {
 
@@ -106,7 +107,9 @@ const Entry ENTRIES[SETTING_COUNT] = {
 // senza dover ritoccare la tabella qui sopra.
 uint8_t valueCount(uint8_t which) {
     if (which >= SETTING_COUNT) return 0;
-    if (which == SETTING_TIMBRO) return PRESET_COUNT;
+    // I timbri sono i quindici preset piu' gli strumenti campionati, che stanno
+    // sulla stessa manopola perche' per chi suona sono la stessa scelta.
+    if (which == SETTING_TIMBRO) return PRESET_COUNT + INSTRUMENT_EXTRA;
     return ENTRIES[which].count;
 }
 
@@ -117,7 +120,11 @@ uint8_t clampIndex(uint8_t which, uint8_t index) {
 }
 
 const char *valueLabel(uint8_t which, uint8_t index) {
-    if (which == SETTING_TIMBRO) return PRESETS[clampIndex(which, index)].name;
+    if (which == SETTING_TIMBRO) {
+        const uint8_t i = clampIndex(which, index);
+        if (i < PRESET_COUNT) return PRESETS[i].name;
+        return (i == PRESET_COUNT) ? "PIANO" : "BATTERIA";
+    }
     if (which >= SETTING_COUNT || ENTRIES[which].count == 0) return "";
     return ENTRIES[which].valueLabels[clampIndex(which, index)];
 }

@@ -28,6 +28,7 @@
 #include "pinout.h"
 #include "presets.h"
 #include "samples.h"
+#include "sampler.h"
 #include "sequencer.h"
 #include "settings.h"
 #include "status_led.h"
@@ -295,6 +296,19 @@ static uint8_t settingsCursor = 0;
 // Riga selezionata nell'elenco dei timbri. Segue il preset caricato, perche' su
 // questa schermata scorrere *e'* caricare.
 static uint8_t timbroCursor = 0;
+
+// Lo strumento che suona sotto i tasti. I quindici timbri sono tutti lo stesso
+// motore sottrattivo con parametri diversi; il piano e la batteria no, sono
+// campioni, e per questo hanno bisogno di essere una cosa a parte invece che il
+// sedicesimo e il diciassettesimo preset.
+//
+// Stanno pero' **in coda allo stesso elenco**, sulla stessa manopola, perche'
+// dal punto di vista di chi suona sono la stessa scelta: "con che suono".
+// Distinguere qui cio' che l'orecchio non distingue avrebbe voluto dire una
+// schermata in piu' per due voci.
+enum : uint8_t { INSTR_SYNTH = 0, INSTR_PIANO, INSTR_BATTERIA };
+static uint8_t instrument = INSTR_SYNTH;
+
 // --- schermata SUONI ---
 // L'ultimo suono partito, per la schermata, e la velocita' di lettura, che e' la
 // manopola che rende questi tredici suoni una cosa con cui si gioca invece di
@@ -448,6 +462,33 @@ static void loadPreset(uint8_t index) {
 
     pushAllParams();
     Storage::markDirty();
+}
+
+// Applica la voce scelta nell'elenco dei timbri.
+//
+// I primi quindici sono preset del motore sottrattivo: cambiano i parametri e
+// basta. Le ultime due sono strumenti campionati, e li' non c'e' nessun
+// parametro da caricare — cambia chi produce il suono.
+//
+// Le voci che stavano suonando si spengono in entrambi i versi del passaggio:
+// una nota del motore lasciata aperta mentre si passa al piano non la
+// rilascerebbe piu' nessuno, perche' da quel momento i tasti non parlano piu'
+// con il motore.
+static void applyTimbro(uint8_t index) {
+    const uint8_t before = instrument;
+    instrument = (index < PRESET_COUNT)
+                     ? INSTR_SYNTH
+                     : ((index == PRESET_COUNT) ? INSTR_PIANO : INSTR_BATTERIA);
+
+    if (instrument != before) {
+        AudioEngine::allNotesOff();
+        for (int i = 0; i < MAX_VOICES; ++i) voiceSounding[i] = false;
+    }
+
+    if (index < PRESET_COUNT) {
+        loadPreset(index);
+        if (midiOutOn()) MidiOut::program(index);
+    }
 }
 
 // Fotografia dei parametri da mandare in NVS.
@@ -804,12 +845,12 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
             // Scorrere carica: il timbro si sceglie suonando mentre giri, ed e'
             // il gesto piu' redditizio dello strumento per chi comincia.
             if (enc[0] != 0) {
-                const int t = nudgeIndex(timbroCursor, enc[0], PRESET_COUNT);
+                const int t =
+                    nudgeIndex(timbroCursor, enc[0], PRESET_COUNT + INSTRUMENT_EXTRA);
                 if (t != (int)timbroCursor) {
                     timbroCursor = (uint8_t)t;
                     setIndex[SETTING_TIMBRO] = timbroCursor;
-                    loadPreset(timbroCursor);
-                    if (midiOutOn()) MidiOut::program(timbroCursor);
+                    applyTimbro(timbroCursor);
                     Storage::markDirty();
                 }
             }
@@ -1054,7 +1095,7 @@ static void resetKnob(uint8_t scr, int e) {
     } else if (scr == SCREEN_TIMBRI && e == 0) {
         // Ricarica il timbro da capo, buttando via le modifiche fatte a mano: e'
         // la scialuppa di chi ha girato troppe manopole e vuole ricominciare.
-        loadPreset(timbroCursor);
+        applyTimbro(timbroCursor);
         what = "TIMBRO";
     }
 
@@ -1156,6 +1197,21 @@ static inline int8_t freqToMidiNote(float hz) {
     if (hz < 8.0f) return -1;
     const int n = (int)lroundf(69.0f + 12.0f * log2f(hz / 440.0f));
     return (n < 0 || n > 127) ? (int8_t)-1 : (int8_t)n;
+}
+
+// Fa suonare il tasto `note` con lo strumento campionato scelto.
+//
+// Il piano passa dalla stessa noteFreqAt() del motore, quindi eredita scala,
+// tonica e ottava senza duplicarne la logica: cambia il timbro sotto le dita,
+// non che cosa suona un tasto. La batteria invece ignora tutto questo — un
+// rullante non ha un'intonazione da trasporre — e mappa il tasto sul pezzo.
+static void playSampledKey(int note, int8_t oct) {
+    if (instrument == INSTR_BATTERIA) {
+        Sampler::drumHit((uint8_t)note);
+        return;
+    }
+    const int8_t midi = freqToMidiNote(noteFreqAt(note, oct));
+    if (midi >= 0) Sampler::pianoNote(midi);
 }
 
 // Spegne tutto quello che stavamo mandando fuori: cambio di modalita', uscita,
@@ -1260,7 +1316,7 @@ static void midiPump() {
                 // Il cambio programma sceglie il timbro: e' il modo in cui un
                 // sequencer esterno si aspetta di poterlo fare.
                 setIndex[SETTING_TIMBRO] = (uint8_t)(e.data1 % PRESET_COUNT);
-                loadPreset(setIndex[SETTING_TIMBRO]);
+                applyTimbro(setIndex[SETTING_TIMBRO]);
                 toast(PRESETS[setIndex[SETTING_TIMBRO]].name);
                 break;
 
@@ -1891,7 +1947,11 @@ void loop() {
     } else if (holdActive) {
         liveNote = latchedNote;  // nota tenuta anche a tasti rilasciati
     }
-    if (memeMode) liveNote = -1;  // qui i tasti fanno i suoni, non le note
+    // Col piano o la batteria scelti fra i timbri, i tasti non pilotano piu' il
+    // motore sottrattivo: fanno partire un campione. Vale la stessa soppressione
+    // della schermata SUONI, e per gli stessi motivi.
+    const bool sampledKeys = memeMode || (instrument != INSTR_SYNTH);
+    if (sampledKeys) liveNote = -1;  // qui i tasti fanno i suoni, non le note
     prevAnyHeld = anyHeld;
 
     // -------------------------------- scrittura sul pattern (edit e record)
@@ -1902,6 +1962,18 @@ void loop() {
                 const MemeSample &m = MEME_SAMPLES[pressed];
                 AudioEngine::playSample(m.data, m.len, MEME_RATE);
                 memeLast = (int8_t)pressed;
+            }
+        } else if (instrument != INSTR_SYNTH) {
+            // Il campione parte subito, e il tasto continua a scrivere sul
+            // pattern come farebbe col synth: e' cosi' che una base di batteria
+            // si registra suonandola invece di programmarla.
+            playSampledKey(pressed, octave);
+            if (stepWrite) {
+                Sequencer::writeAtCursor(pressed, octave);
+                Storage::markDirty();
+            } else if (!arpActive) {
+                Sequencer::noteEvent(now, pressed, octave);
+                Storage::markDirty();
             }
         } else if (stepWrite) {
             // A giro fermo, sulla schermata RITMO, il tasto premuto suona **e**
@@ -1934,16 +2006,22 @@ void loop() {
     float wantVel[MAX_VOICES];
     for (int i = 0; i < MAX_VOICES; ++i) wantVel[i] = 1.0f;
 
-    if (memeMode) {
-        // Sulla schermata SUONI i tasti fanno partire i campioni e nient'altro.
-        // Zittire la sola nota "viva" non bastava: in polifonico ogni tasto ha una
-        // voce sua, che non passa da liveNote — quindi premendo si sentivano
-        // insieme il suono e la nota, e con TIENI inserito quest'ultima restava
-        // agganciata all'accordo tenuto e non si spegneva piu'.
-        //
-        // Anche la sequenza tace: qui non c'e' niente da accompagnare.
+    if (sampledKeys) {
+        // Quando i tasti fanno partire campioni, il motore sottrattivo non deve
+        // suonarci sotto. Zittire la sola nota "viva" non bastava: in polifonico
+        // ogni tasto ha una voce sua, che non passa da liveNote — quindi premendo
+        // si sentivano insieme il campione e la nota, e con TIENI inserito
+        // quest'ultima restava agganciata all'accordo e non si spegneva piu'.
         lastTarget = -1;
         lastWasLive = false;
+
+        // La sequenza pero' **non** tace, se lo strumento e' campionato: e' il
+        // punto di tutto: il pattern tiene la batteria mentre le mani fanno
+        // altro. Solo sulla schermata SUONI resta muta, perche' li' i tredici
+        // tasti sono effetti sonori e non c'e' niente da accompagnare.
+        if (!memeMode && seqTrigger && seqNote >= 0) {
+            playSampledKey(seqNote, Sequencer::outputOctave());
+        }
     } else if (!polyMode) {
         // MONO: una voce sola, la nota dal vivo ha priorita' sulla sequenza.
         const bool useLive = (liveNote >= 0);

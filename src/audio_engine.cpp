@@ -101,6 +101,10 @@ struct NoteEvent {
     const uint8_t *data;
     uint32_t len;
     uint32_t rate;
+    // Se la manopola VELOCITA della schermata SUONI vale per questa
+    // riproduzione. Per piano e batteria no: quella manopola e uno strumento
+    // di gioco sui tredici suoni, e scordare un pianoforte non e un effetto.
+    bool speedable;
 };
 
 QueueHandle_t eventQueue = nullptr;
@@ -177,6 +181,7 @@ struct SamplePlay {
     uint32_t stepInt;
     uint16_t stepFrac;
     uint32_t rate;  // frequenza originale, per ricalcolare il passo al volo
+    bool speedable;
     bool active;    // solo core 0: nessuno lo tocca da fuori
 };
 
@@ -302,7 +307,7 @@ void releaseVoice(Voice &v) {
 }
 
 void applySampleStep(SamplePlay &sp, uint32_t rate) {
-    float mul = pSampleSpeed;
+    float mul = sp.speedable ? pSampleSpeed : 1.0f;
     if (mul < 0.5f) mul = 0.5f;
     if (mul > 2.0f) mul = 2.0f;
     const float ratio = (float)rate * mul / (float)SAMPLE_RATE;
@@ -314,7 +319,7 @@ void applySampleStep(SamplePlay &sp, uint32_t rate) {
 
 // Fa partire un campione. Gira **sul core 0**, dentro drainEvents: da fuori non
 // si tocca niente.
-void startSample(const uint8_t *data, uint32_t len, uint32_t rate) {
+void startSample(const uint8_t *data, uint32_t len, uint32_t rate, bool speedable) {
     if (!data || len < 2) return;
     int pick = -1;
     uint32_t bestLeft = 0xFFFFFFFFu;
@@ -339,6 +344,7 @@ void startSample(const uint8_t *data, uint32_t len, uint32_t rate) {
     sp.idx = 0;
     sp.frac = 0;
     sp.rate = rate;
+    sp.speedable = speedable;
     applySampleStep(sp, rate);
     sp.active = true;
 }
@@ -351,7 +357,7 @@ void drainEvents() {
             continue;
         }
         if (ev.type == EV_SAMPLE) {
-            startSample(ev.data, ev.len, ev.rate);
+            startSample(ev.data, ev.len, ev.rate, ev.speedable);
             continue;
         }
         if (ev.type == EV_SAMPLE_STOP) {
@@ -978,15 +984,15 @@ bool copyScope(int8_t *dst) {
 
 // ---------------------------------------------------------------- campioni
 
-void playSample(const uint8_t *data, uint32_t len, uint32_t rate) {
+void playSample(const uint8_t *data, uint32_t len, uint32_t rate, bool speedable) {
     if (!eventQueue || !data || len < 2) return;
-    NoteEvent ev = {EV_SAMPLE, 0, 0.0f, 0.0f, data, len, rate};
+    NoteEvent ev = {EV_SAMPLE, 0, 0.0f, 0.0f, data, len, rate, speedable};
     xQueueSend(eventQueue, &ev, 0);
 }
 
 void stopSamples() {
     if (!eventQueue) return;
-    NoteEvent ev = {EV_SAMPLE_STOP, 0, 0.0f, 0.0f, nullptr, 0, 0};
+    NoteEvent ev = {EV_SAMPLE_STOP, 0, 0.0f, 0.0f, nullptr, 0, 0, false};
     xQueueSend(eventQueue, &ev, 0);
 }
 

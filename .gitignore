@@ -21,3 +21,7 @@ tools/simdisplay/build/
 # li usa; qui dentro si committa solo le istruzioni per metterceli.
 tools/samples/*
 !tools/samples/README.md
+
+# I 50 MB di AIFF grezzi del piano: si riscaricano con tools/fetch_piano.sh,
+# e cio che serve davvero (src/instruments.cpp) e gia committato.
+tools/piano/

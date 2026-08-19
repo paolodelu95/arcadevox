@@ -91,7 +91,10 @@ void shutdown();
 
 // `data` sono byte a 8 bit senza segno (128 = silenzio) alla frequenza `rate`.
 // Il puntatore deve restare valido: in pratica punta sempre in flash.
-void playSample(const uint8_t *data, uint32_t len, uint32_t rate);
+// speedable = se la manopola VELOCITA della schermata SUONI vale per questa
+// riproduzione. I tredici suoni si, il piano e la batteria no: scordare un
+// pianoforte non e un effetto, e un difetto.
+void playSample(const uint8_t *data, uint32_t len, uint32_t rate, bool speedable = true);
 void stopSamples();
 // Quanti stanno suonando adesso: serve al display e alle luci.
 uint8_t samplesPlaying();
