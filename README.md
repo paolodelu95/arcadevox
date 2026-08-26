@@ -38,6 +38,9 @@ con un inviluppo vero e un filtro risonante.
   preconteggio e metronomo
 - **20 LED RGB sotto i tasti**: la tastiera si disegna da sola, le funzioni attive si
   accendono, l'ordine della catena la scheda **se lo impara** da sola
+- **Collaudo delle luci all'accensione**: mentre il display disegna l'intro, il pannello
+  fa passare rosso, verde e blu su tutti e venti i tasti — un LED morto o un canale morto
+  si vedono subito — e poi racconta la stessa scena che sta comparendo sul vetro
 - **Display GC9A01** tondo con un'interfaccia **radiale**: otto schermate, la ghiera che dice
   dove sei, e sotto ogni manopola scritto cosa fa in quel momento
 - **Tredici suoni campionati** su una schermata sua: i tasti smettono di essere note e

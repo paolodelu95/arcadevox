@@ -142,6 +142,17 @@ struct SynthView {
 
 namespace Display {
 
+// L'intro dell'accensione dura tre secondi e li passa dentro delay(): il core 1
+// e' occupato a disegnare e chiunque altro avesse qualcosa da fare in quei tre
+// secondi — le luci dei tasti, per esempio — resterebbe fermo.
+//
+// Il pacer e' la via d'uscita: una funzione che l'intro chiama ad ogni pausa,
+// invece di dormire. Va registrata **prima** di begin() e tolta subito dopo, e
+// deve tornare in fretta (si auto-limita da se': viene chiamata ogni
+// millisecondo). Il display non sa cosa faccia, e non deve saperlo — cosi' la
+// dipendenza va in un verso solo e le luci restano fuori da questo file.
+void setPacer(void (*fn)(uint32_t now));
+
 void begin();
 // L'anello si percorre nei due sensi: destra avanti, sinistra indietro.
 void nextScreen();

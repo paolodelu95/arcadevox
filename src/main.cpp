@@ -1391,6 +1391,15 @@ static bool bootHeldSince(uint32_t now) {
     return false;
 }
 
+// Cosa si fa mentre l'intro del display tiene occupato il core 1: il gioco di
+// luci dei tasti — che e' anche il collaudo delle venti luci — e il LED di bordo,
+// che comincia il suo giro subito invece di restare spento fino al primo giro di
+// loop. Vedi Display::setPacer.
+static void bootLights(uint32_t now) {
+    Keylight::bootTick(now);
+    StatusLed::update(now);
+}
+
 // ------------------------------------------------------------------ setup
 void setup() {
     Serial.begin(115200);
@@ -1519,7 +1528,19 @@ void setup() {
 
     pushAllParams();
 
+    // L'intro del display sono circa tre secondi in cui il pannello resterebbe
+    // nero. Sono invece il momento in cui le venti luci si collaudano da sole —
+    // un canale per volta, cosi' un LED morto o un canale morto si vedono — e
+    // raccontano la stessa scena che sta comparendo sul vetro.
+    //
+    // Va dopo la lettura della NVS, e non prima, per due motivi: la luminosita'
+    // e' quella che ha scelto chi suona, e la mappa della catena e' quella
+    // imparata dalla scheda. Con i valori di fabbrica il gioco di luci partirebbe
+    // scomposto proprio sulle schede che hanno fatto l'apprendimento.
+    Keylight::bootBegin(setIndex[SETTING_LED]);
+    Display::setPacer(bootLights);
     Display::begin();
+    Display::setPacer(nullptr);
 
     Serial.print(F("ArcadeVox "));
     Serial.print(F(FW_VERSION));

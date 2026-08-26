@@ -1584,6 +1584,35 @@ constexpr uint32_t PACE_GHOST_MS = 220;    // pausa sulle sole eco cromatiche
 constexpr uint32_t PACE_BAND_MS = 45;      // per banda di lettere (8)
 constexpr uint32_t PACE_HOLD_MS = 400;     // logo fermo prima di cedere il display
 
+// Chi ha qualcosa da fare mentre l'intro tiene il core: le luci dei tasti, che
+// hanno un gioco loro lungo quanto questa scena. Nessuno lo registra e le pause
+// tornano ad essere delay() normali — che e' anche il caso del simulatore, dove
+// il tempo non scorre davvero.
+void (*pacer)(uint32_t) = nullptr;
+
+// La pausa dell'intro. Il pacer viene chiamato una volta al millisecondo: chi si
+// registra si limita da se' al proprio ritmo, e cosi' questa funzione non ha
+// bisogno di sapere niente di lui.
+void pace(uint32_t ms) {
+    if (!pacer) {
+        delay(ms);
+        return;
+    }
+    const uint32_t until = millis() + ms;
+    do {
+        pacer(millis());
+        delay(1);
+    } while ((int32_t)(millis() - until) < 0);
+}
+
+// La pausa corta della traccia: sono tre millisecondi per due colonne, e
+// arrotondarli a un multiplo di millisecondo cambierebbe il ritmo del disegno.
+// Qui il pacer si chiama e basta, senza allungare niente.
+void paceUs(uint32_t us) {
+    if (pacer) pacer(millis());
+    delayMicroseconds(us);
+}
+
 // Cielo stellato. Le posizioni vengono da un generatore lineare con seme fisso:
 // stessa scena ad ogni accensione, senza una tabella di coordinate in flash.
 void logoStars() {
@@ -1605,7 +1634,7 @@ void logoStars() {
         }
         seed = seed * 1103515245u + 12345u;
         gfx->drawPixel(x, y, ((seed >> 16) & 3) ? LOGO_DIMCYAN : WHITE);
-        if (++lit % 3 == 0) delay(PACE_STAR_MS);  // il cielo si accende un po' per volta
+        if (++lit % 3 == 0) pace(PACE_STAR_MS);  // il cielo si accende un po' per volta
     }
 }
 
@@ -1620,7 +1649,7 @@ void logoSun() {
         const float t = (float)(dy + SUN_R) / (float)(2 * SUN_R);
         gfx->drawFastHLine(SUN_CX - half, SUN_CY + dy, 2 * half + 1,
                            mix565(LOGO_MAGENTA, LOGO_AMBER, t));
-        if ((dy & 1) == 0) delay(PACE_SUN_MS);
+        if ((dy & 1) == 0) pace(PACE_SUN_MS);
     }
 
     int y = SUN_CY - 4;
@@ -1636,7 +1665,7 @@ void logoSun() {
         gfx->endWrite();
         y += h + 5;
         ++h;
-        delay(PACE_SLIT_MS);  // le fessure scendono una alla volta: il sole "tramonta"
+        pace(PACE_SLIT_MS);  // le fessure scendono una alla volta: il sole "tramonta"
     }
 }
 
@@ -1648,14 +1677,14 @@ void logoGrid() {
         gfx->drawFastHLine(0, HORIZON + d, 240, (d < 18) ? dim565(LOGO_GRID, 3, 5) : LOGO_GRID);
         d += step;
         step = step * 3 / 2 + 1;
-        delay(PACE_GRID_H_MS);
+        pace(PACE_GRID_H_MS);
     }
     // Le verticali si aprono a ventaglio dal centro verso i lati: comparendo
     // tutte insieme, com'erano prima, la fase non si vedeva nemmeno.
     for (int k = 0; k <= 11; ++k) {
         gfx->drawLine(CX, HORIZON, CX + k * 30, 238, LOGO_GRID);
         if (k > 0) gfx->drawLine(CX, HORIZON, CX - k * 30, 238, LOGO_GRID);
-        delay(PACE_GRID_V_MS);
+        pace(PACE_GRID_V_MS);
     }
 }
 
@@ -1674,7 +1703,7 @@ void logoTrace() {
         }
         px = x;
         py = y;
-        if ((x & 1) == 0) delayMicroseconds(PACE_TRACE_US);
+        if ((x & 1) == 0) paceUs(PACE_TRACE_US);
     }
 }
 
@@ -1724,13 +1753,13 @@ void splash() {
     // eco e non il contrario.
     logoWordmark(-3, 2, LOGO_MAGENTA, LOGO_MAGENTA, 2, 0, LOGO_H);
     logoWordmark(3, 2, LOGO_NEON, LOGO_NEON, 2, 0, LOGO_H);
-    delay(PACE_GHOST_MS);  // le eco da sole restano in vista: e' meta' dell'effetto
+    pace(PACE_GHOST_MS);  // le eco da sole restano in vista: e' meta' dell'effetto
     for (int band = 0; band < LOGO_H; band += 4) {
         logoWordmark(0, 0, WHITE, LOGO_ICE, 1, band, band + 4);
-        delay(PACE_BAND_MS);
+        pace(PACE_BAND_MS);
     }
 
-    delay(PACE_HOLD_MS);
+    pace(PACE_HOLD_MS);
 }
 
 
@@ -1860,6 +1889,8 @@ void drawHoldRing(uint8_t fill, uint8_t currentScreenIdx) {
 }  // namespace
 
 namespace Display {
+
+void setPacer(void (*fn)(uint32_t)) { pacer = fn; }
 
 void begin() {
     bus = new Arduino_ESP32SPI(PIN_TFT_DC, PIN_TFT_CS, PIN_TFT_SCLK, PIN_TFT_MOSI,

@@ -67,6 +67,23 @@ void update(uint32_t now, const LightView &v);
 // Spegne tutto (ingresso in modalita' rete, spegnimento ordinato).
 void allOff();
 
+// --- il gioco di luci dell'accensione ---
+//
+// Gira mentre il display disegna l'intro, che sono tre secondi buoni in cui il
+// pannello resterebbe nero. Fa il collaudo delle venti luci — tre passate, un
+// canale per volta, e un lampo bianco che li accende tutti e tre insieme: un LED
+// morto resta nero mentre i vicini si accendono, un canale morto salta una
+// passata sola — e lo fa raccontando la stessa scena che sta comparendo sul
+// vetro tondo, con gli stessi tempi e gli stessi colori.
+//
+// `brightness` e' la voce LUCI del menu, 0..8: a zero il gioco non parte, perche'
+// spente vuol dire spente anche all'accensione.
+void bootBegin(uint8_t brightness);
+// Un fotogramma, se e' il momento: si auto-limita a ~50 fps. Restituisce false
+// quando la coreografia e' finita — l'ultimo fotogramma che ha messo a video e'
+// gia' quello di riposo, quindi il passaggio al loop normale non si vede.
+bool bootTick(uint32_t now);
+
 // --- apprendimento dell'ordine della catena ---
 // Accende un LED alla volta: il chiamante deve dire quale tasto e' stato premuto
 // e la mappa si costruisce da sola.
