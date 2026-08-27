@@ -310,6 +310,19 @@ static uint8_t timbroCursor = 0;
 enum : uint8_t { INSTR_SYNTH = 0, INSTR_PIANO, INSTR_BATTERIA };
 static uint8_t instrument = INSTR_SYNTH;
 
+// Lo strumento con cui suona **il pattern**, che non e' quello sotto le dita.
+//
+// E' tutta qui la differenza fra un sequencer e un metronomo evoluto: registri
+// un giro di batteria, poi cambi timbro e ci suoni sopra il synth, e il giro
+// continua a essere di batteria. Con un solo strumento condiviso, cambiare
+// suono per le mani cambiava anche il loop — e la cosa che uno vuole fare con
+// una drum machine era esattamente l'unica che non si poteva fare.
+//
+// Il pattern adotta lo strumento nel momento in cui ci scrivi dentro: non c'e'
+// niente da impostare, suoni la batteria mentre registri e il pattern e' di
+// batteria. E' la regola che si spiega da sola, perche' non va spiegata.
+static uint8_t seqInstrument = INSTR_SYNTH;
+
 // --- schermata SUONI ---
 // L'ultimo suono partito, per la schermata, e la velocita' di lettura, che e' la
 // manopola che rende questi tredici suoni una cosa con cui si gioca invece di
@@ -539,6 +552,7 @@ static Storage::SynthState snapshotState() {
     s.setAudio = setIndex[SETTING_AUDIO];
     s.setTimbro = setIndex[SETTING_TIMBRO];
     s.setMidiOut = setIndex[SETTING_MIDIOUT];
+    s.seqInstrument = seqInstrument;
     return s;
 }
 
@@ -775,13 +789,19 @@ static const char *seqNoteName() {
     return SEQ_NOTE_NAMES[i - 1];
 }
 
+// Definita piu' sotto, accanto agli strumenti: qui serve solo il nome.
+static void adoptSeqInstrument();
+
 // Scrive nello step sotto il cursore la posizione `i` dell'elenco qui sopra.
 static void seqWriteIndex(int i) {
     if (i < 0) i = 0;
     if (i > NOTE_COUNT + 1) i = NOTE_COUNT + 1;
     if (i == 0) Sequencer::setAtCursor(SEQ_REST, 0);
     else if (i == NOTE_COUNT + 1) Sequencer::setAtCursor(SEQ_TIE, 0);
-    else Sequencer::setAtCursor(i - 1, octave);
+    else {
+        Sequencer::setAtCursor(i - 1, octave);
+        adoptSeqInstrument();
+    }
 }
 
 static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
@@ -1212,13 +1232,37 @@ static inline int8_t freqToMidiNote(float hz) {
 // tonica e ottava senza duplicarne la logica: cambia il timbro sotto le dita,
 // non che cosa suona un tasto. La batteria invece ignora tutto questo — un
 // rullante non ha un'intonazione da trasporre — e mappa il tasto sul pezzo.
-static void playSampledKey(int note, int8_t oct) {
-    if (instrument == INSTR_BATTERIA) {
+// Lo strumento arriva da fuori invece di leggere la variabile globale: le
+// sorgenti sono due — le dita e il pattern — e da quando hanno strumenti diversi
+// chiedere "qual e' lo strumento" senza dire di chi non ha piu' una risposta.
+static void playSampledKey(int note, int8_t oct, uint8_t instr) {
+    if (instr == INSTR_BATTERIA) {
         Sampler::drumHit((uint8_t)note);
         return;
     }
     const int8_t midi = freqToMidiNote(noteFreqAt(note, oct));
     if (midi >= 0) Sampler::pianoNote(midi);
+}
+
+static const char *instrumentName(uint8_t instr) {
+    if (instr == INSTR_PIANO) return SAMPLED_INSTRUMENTS[0].name;
+    if (instr == INSTR_BATTERIA) return SAMPLED_INSTRUMENTS[1].name;
+    return "SYNTH";
+}
+
+// Il pattern adotta lo strumento con cui gli si sta scrivendo dentro.
+//
+// Va chiamata da **ogni** punto che scrive uno step, e non una volta sola
+// all'ingresso in registrazione: in un pattern si entra in troppi modi —
+// suonandolo, dalla manopola NOTA, a giro fermo o mentre gira — e legarla a uno
+// solo vorrebbe dire che negli altri il pattern resta dello strumento di prima,
+// che e' precisamente il difetto che questa variabile esiste per togliere.
+static void adoptSeqInstrument() {
+    if (seqInstrument == instrument) return;
+    seqInstrument = instrument;
+    // Vale la pena dirlo: da questo momento il loop suonera' un altro strumento,
+    // e non c'e' nessun altro posto in cui la cosa si vedrebbe.
+    flashUnless(0, "RITMO", instrumentName(seqInstrument), -1.0f);
 }
 
 // Spegne tutto quello che stavamo mandando fuori: cambio di modalita', uscita,
@@ -1403,6 +1447,23 @@ static void bootLights(uint32_t now) {
 // ------------------------------------------------------------------ setup
 void setup() {
     Serial.begin(115200);
+    // Scrivere sulla seriale non deve **mai** poter fermare lo strumento.
+    //
+    // Con l'USB in modalita' OTG la Serial e' una CDC di TinyUSB, e una CDC
+    // enumerata ma che nessuno sta leggendo si riempie e basta: da quel momento
+    // ogni write aspetta che il buffer si svuoti, e aspetta fino allo scadere del
+    // timeout. Il synth resta fermo per tutto quel tempo — non solo il display:
+    // anche la scansione della tastiera, che gira sullo stesso core.
+    //
+    // Si vedeva premendo un tasto funzione, che ne scrive una riga: lo strumento
+    // si bloccava per qualche secondo, e al risveglio TIENI trovava i tasti nota
+    // gia' rilasciati e non latchava niente. Due sintomi molto diversi da una
+    // causa sola, ed e' il motivo per cui la cura sta qui e non nel latch.
+    //
+    // A zero, una write che non passa viene persa invece di bloccare. Per della
+    // diagnostica e' il compromesso giusto: la riga che non leggeva nessuno vale
+    // meno del giro di loop che stava costando.
+    Serial.setTxTimeoutMs(0);
 
     for (int i = 0; i < SETTING_COUNT; ++i) setIndex[i] = Settings::ENTRIES[i].byDefault;
 
@@ -1490,6 +1551,12 @@ void setup() {
         setIndex[SETTING_AUDIO] = Settings::clampIndex(SETTING_AUDIO, saved.setAudio);
         setIndex[SETTING_TIMBRO] = Settings::clampIndex(SETTING_TIMBRO, saved.setTimbro);
         setIndex[SETTING_MIDIOUT] = Settings::clampIndex(SETTING_MIDIOUT, saved.setMidiOut);
+        // Da un blob piu- vecchio il campo non c'e' e si rilegge a zero, che vale
+        // INSTR_SYNTH: e' il comportamento di prima, ed e' quello giusto per un
+        // pattern scritto quando gli strumenti campionati non esistevano.
+        if (saved.stateRev >= 4 && saved.seqInstrument <= INSTR_BATTERIA) {
+            seqInstrument = saved.seqInstrument;
+        }
         // La schermata TIMBRI si apre gia' ferma sul timbro che stai sentendo,
         // non in cima all'elenco.
         timbroCursor = setIndex[SETTING_TIMBRO];
@@ -2013,12 +2080,14 @@ void loop() {
             // Il campione parte subito, e il tasto continua a scrivere sul
             // pattern come farebbe col synth: e' cosi' che una base di batteria
             // si registra suonandola invece di programmarla.
-            playSampledKey(pressed, octave);
+            playSampledKey(pressed, octave, instrument);
             if (stepWrite) {
                 Sequencer::writeAtCursor(pressed, octave);
+                adoptSeqInstrument();
                 Storage::markDirty();
             } else if (!arpActive) {
                 Sequencer::noteEvent(now, pressed, octave);
+                adoptSeqInstrument();
                 Storage::markDirty();
             }
         } else if (stepWrite) {
@@ -2026,14 +2095,17 @@ void loop() {
             // scrive: il cursore avanza da solo, quindi una melodia si compone
             // premendo un tasto dopo l'altro e basta.
             Sequencer::writeAtCursor(pressed, octave);
+            adoptSeqInstrument();
             Storage::markDirty();
         } else if (!arpActive) {
             Sequencer::noteEvent(now, pressed, octave);
+            adoptSeqInstrument();
             Storage::markDirty();
         }
     }
     if (arpActive && arpRetrigger && liveNote >= 0 && !stepWrite) {
         Sequencer::noteEvent(now, liveNote, octave);
+        adoptSeqInstrument();
         Storage::markDirty();
     }
 
@@ -2042,6 +2114,25 @@ void loop() {
 
     const bool seqTrigger = Sequencer::consumeTrigger();
     const int seqNote = Sequencer::outputNote();
+
+    // Il pattern ha uno strumento suo, che puo' essere diverso da quello sotto le
+    // dita: e' cosi' che la batteria continua a girare mentre suoni il synth.
+    // Sulla schermata SUONI resta muto comunque — li' i tredici tasti sono
+    // effetti sonori e non c'e' niente da accompagnare.
+    const bool seqSampled = memeMode || (seqInstrument != INSTR_SYNTH);
+
+    // Un colpo campionato parte **fuori** dalla catena delle voci: non occupa una
+    // voce del motore, quindi non toglie polifonia alle dita e non si contende
+    // niente con loro. E' la ragione per cui le due sorgenti possono davvero
+    // suonare insieme invece di rubarsi il posto.
+    if (seqSampled && !memeMode && seqTrigger && seqNote >= 0) {
+        playSampledKey(seqNote, Sequencer::outputOctave(), seqInstrument);
+    }
+
+    // Cio' che il motore sottrattivo deve suonare della sequenza: niente, se la
+    // sequenza e' campionata. Passando da qui invece che da seqNote, le tre
+    // strade sotto non hanno bisogno di sapere niente di tutto questo.
+    const int seqForVoices = seqSampled ? -1 : seqNote;
 
     // ------------------------------------------------------------- voci
     bool wantVoice[MAX_VOICES] = {false};
@@ -2061,17 +2152,18 @@ void loop() {
         lastTarget = -1;
         lastWasLive = false;
 
-        // La sequenza pero' **non** tace, se lo strumento e' campionato: e' il
-        // punto di tutto: il pattern tiene la batteria mentre le mani fanno
-        // altro. Solo sulla schermata SUONI resta muta, perche' li' i tredici
-        // tasti sono effetti sonori e non c'e' niente da accompagnare.
-        if (!memeMode && seqTrigger && seqNote >= 0) {
-            playSampledKey(seqNote, Sequencer::outputOctave());
+        // Zittite le dita, ma **non** la sequenza: se il pattern e' di synth
+        // mentre le mani suonano il piano, il loop deve continuare a girare. E'
+        // lo stesso principio del caso opposto, visto dall'altro lato.
+        if (seqForVoices >= 0) {
+            wantVoice[VOICE_SEQ] = true;
+            wantFreq[VOICE_SEQ] = noteFreqAt(seqForVoices, Sequencer::outputOctave());
+            wantRetrig[VOICE_SEQ] = seqTrigger;
         }
     } else if (!polyMode) {
         // MONO: una voce sola, la nota dal vivo ha priorita' sulla sequenza.
         const bool useLive = (liveNote >= 0);
-        const int target = useLive ? liveNote : seqNote;
+        const int target = useLive ? liveNote : seqForVoices;
         if (target >= 0) {
             const int8_t oct = useLive ? octave : Sequencer::outputOctave();
             const bool retrig = (target != lastTarget) || (useLive != lastWasLive) ||
@@ -2116,9 +2208,9 @@ void loop() {
             wantFreq[n] = noteFreqAt(n, octave);
         }
         // La sequenza non viene zittita dalle dita: ci suoni sopra.
-        if (seqNote >= 0) {
+        if (seqForVoices >= 0) {
             wantVoice[VOICE_SEQ] = true;
-            wantFreq[VOICE_SEQ] = noteFreqAt(seqNote, Sequencer::outputOctave());
+            wantFreq[VOICE_SEQ] = noteFreqAt(seqForVoices, Sequencer::outputOctave());
             wantRetrig[VOICE_SEQ] = seqTrigger;
         }
         lastTarget = -1;

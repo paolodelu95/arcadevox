@@ -102,9 +102,20 @@ struct SynthState {
     // pieni e nessuna lunghezza vecchia puo' coincidere con quella nuova.
     float filtEnvAmount;
     float filtEnvMs;
+
+    // --- 2.8.0: il pattern ha uno strumento suo ---
+    // Senza questo, un giro di batteria registrato ieri tornava suonato dal
+    // synth alla riaccensione: il pattern sopravviveva allo spegnimento e lo
+    // strumento con cui era stato scritto no, che e' il modo piu' sicuro di
+    // rendere inutile l'averlo salvato.
+    uint8_t seqInstrument;
 };
 
-#define STORAGE_STATE_REV 3
+// Alzata a 4 perche' seqInstrument e' un singolo byte in coda a una struttura
+// piena di float: il riempimento puo' lasciare sizeof identico, e il controllo
+// sulla sola lunghezza non se ne accorgerebbe. E' esattamente il buco che questo
+// campo di revisione esiste per tappare, ed e' gia' successo una volta.
+#define STORAGE_STATE_REV 4
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.
 #define STORAGE_SCALE_REV 1

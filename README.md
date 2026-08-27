@@ -36,6 +36,9 @@ con un inviluppo vero e un filtro risonante.
   con il sequencer
 - **Step-sequencer** a 16 step con scrittura passo-passo, record quantizzato in overdub,
   preconteggio e metronomo
+- **Il pattern ha uno strumento suo**: registri il giro di batteria, cambi timbro e ci
+  suoni sopra il synth mentre la batteria continua a girare. Il pattern adotta lo
+  strumento con cui ci scrivi dentro, e se lo ricorda allo spegnimento
 - **20 LED RGB sotto i tasti**: la tastiera si disegna da sola, le funzioni attive si
   accendono, l'ordine della catena la scheda **se lo impara** da sola
 - **Collaudo delle luci all'accensione**: mentre il display disegna l'intro, il pannello
