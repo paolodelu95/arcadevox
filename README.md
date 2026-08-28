@@ -561,20 +561,25 @@ permettere di ridistribuirli. È lo stesso motivo per cui `tools/samples/` resta
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.8**, 23 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI, con le schermate vere |
-| [`docs/ArcadeVox_Libretto.html`](docs/ArcadeVox_Libretto.html) | La sorgente del libretto, da cui si rigenera il PDF |
+| [`docs/ArcadeVox_Uso.pdf`](docs/ArcadeVox_Uso.pdf) | **Libretto d'uso 2.8**, 16 pagine A4: suonare, timbri, piano e batteria, ritmo, MIDI, schermate, aggiornamenti |
+| [`docs/ArcadeVox_Montaggio.pdf`](docs/ArcadeVox_Montaggio.pdf) | **Libretto di montaggio 2.8**, 9 pagine A4: blueprint, connettori pin per pin, tarature, collaudo e diagnostica |
+| `docs/ArcadeVox_Uso.html` · `docs/ArcadeVox_Montaggio.html` | Le sorgenti, da cui si rigenerano i due PDF |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |
 | [`docs/pannello.svg`](docs/pannello.svg) | Blueprint del pannello, da solo |
 | [`PROGRESS.md`](PROGRESS.md) | Stato dei milestone e differenze rispetto al brief iniziale |
 | [`CLAUDE_2.md`](CLAUDE_2.md) | Il brief di progetto originale (scheda 1.x) |
 
-Il PDF è già pronto da stampare — 20 pagine, cioè cinque fogli esatti a libretto. Se ritocchi
-l'HTML lo rigeneri così:
+I libretti sono **due** perché servono in due momenti diversi: quello di montaggio si tiene
+aperto accanto alla scheda mentre si salda e si cabla, e finito il lavoro non serve più;
+quello d'uso si tiene accanto allo strumento e non parla mai di connettori. Tenerli insieme
+voleva dire che chi voleva imparare a suonare cominciava da quattro pagine di pinout.
+
+Entrambi sono già pronti da stampare. Se ritocchi un HTML rigeneri il suo PDF così:
 
 ```bash
 "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" --headless --disable-gpu \
   --no-pdf-header-footer --run-all-compositor-stages-before-draw --virtual-time-budget=6000 \
-  --print-to-pdf=docs/ArcadeVox_Libretto.pdf "file://$PWD/docs/ArcadeVox_Libretto.html"
+  --print-to-pdf=docs/ArcadeVox_Uso.pdf "file://$PWD/docs/ArcadeVox_Uso.html"
 ```
 
 Su Windows l'eseguibile sta in `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`

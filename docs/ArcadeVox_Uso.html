@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<title>ArcadeVox 2.8 — Libretto di montaggio e uso</title>
+<title>ArcadeVox 2.8 — Libretto d'uso</title>
 <style>
   @page { size: A4 portrait; margin: 14mm 15mm; }
 
@@ -127,497 +127,36 @@
   <div>
     <h1>ArcadeVox</h1>
     <div class="ver">FIRMWARE 2.8.2</div>
-    <div class="tag">Sintetizzatore digitale su ESP32-S3<br>
-      13 tasti cromatici · 7 funzioni · 4 encoder · 20 LED RGB · MIDI USB</div>
+    <div class="tag">Libretto d'<b>uso</b><br>Suonare, timbri, ritmo, MIDI e aggiornamenti</div>
   </div>
-
   <div class="toc">
-    <div><span><b>1</b> &nbsp;Il pannello a colpo d'occhio</span><span>2</span></div>
-    <div><span><b>2</b> &nbsp;Montaggio: i connettori pin per pin</span><span>3</span></div>
-    <div><span><b>3</b> &nbsp;Primo avvio e due tarature</span><span>7</span></div>
-    <div><span><b>4</b> &nbsp;Suonare: tasti, scale, accordi</span><span>8</span></div>
-    <div><span><b>5</b> &nbsp;Le quattro manopole e le sette schermate</span><span>9</span></div>
-    <div><span><b>6</b> &nbsp;8 BIT</span><span>10</span></div>
-    <div><span><b>7</b> &nbsp;Gli effetti</span><span>11</span></div>
-    <div><span><b>8</b> &nbsp;L'inviluppo</span><span>11</span></div>
-    <div><span><b>9</b> &nbsp;Il ritmo: sedici passi</span><span>12</span></div>
-    <div><span><b>10</b> Dinamica e i quindici timbri</span><span>13</span></div>
-    <div><span><b>11</b> MIDI IN: suonarlo dal computer</span><span>14</span></div>
-    <div><span><b>12</b> MIDI OUT: registrarlo sul computer</span><span>16</span></div>
-    <div><span><b>13</b> Le sette schermate</span><span>17</span></div>
-    <div><span><b>14</b> Le luci sotto i tasti</span><span>17</span></div>
-    <div><span><b>15</b> Impostazioni</span><span>18</span></div>
-    <div><span><b>16</b> WiFi, aggiornamenti e diagnostica</span><span>19</span></div>
-    <div><span><b>17</b> Tutti i comandi in una pagina</span><span>20</span></div>
+    <div><span><b>1</b> &nbsp;I tredici tasti</span><span>2</span></div>
+    <div><span><b>2</b> &nbsp;Quattro manopole, e niente da ricordare</span><span>3</span></div>
+    <div><span><b>3</b> &nbsp;8 BIT</span><span>4</span></div>
+    <div><span><b>4</b> &nbsp;L'inviluppo</span><span>4</span></div>
+    <div><span><b>5</b> &nbsp;Gli effetti</span><span>5</span></div>
+    <div><span><b>6</b> &nbsp;Sedici passi</span><span>6</span></div>
+    <div><span><b>7</b> &nbsp;Dinamica e inviluppo di filtro</span><span>7</span></div>
+    <div><span><b>8</b> &nbsp;Sette radici, una ogni tre semitoni</span><span>8</span></div>
+    <div><span><b>9</b> &nbsp;Un pezzo per tasto</span><span>9</span></div>
+    <div><span><b>10</b> &nbsp;Il pattern ha uno strumento suo</span><span>10</span></div>
+    <div><span><b>11</b> &nbsp;Collegarlo al computer</span><span>11</span></div>
+    <div><span><b>12</b> &nbsp;Il verso opposto</span><span>12</span></div>
+    <div><span><b>13</b> &nbsp;Le otto schermate</span><span>13</span></div>
+    <div><span><b>14</b> &nbsp;Impostazioni</span><span>14</span></div>
+    <div><span><b>15</b> &nbsp;Le luci</span><span>14</span></div>
+    <div><span><b>16</b> &nbsp;WiFi e aggiornamenti</span><span>15</span></div>
+    <div><span><b>17</b> &nbsp;I sette tasti funzione</span><span>16</span></div>
   </div>
 </section>
 
-<!-- ══════════════════════════════════ 1. PANNELLO ══════════════════════════════════ -->
-<section class="page">
-  <div class="masthead">
-    <div><h1>Il pannello</h1><div class="sub">Dove sta ogni cosa</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 2</div>
-  </div>
-
-  <h2><span class="n">1</span>A colpo d'occhio</h2>
-
-  <p>Venti tasti Cherry MX, ognuno col suo LED RGB dentro. In basso e al centro c'è la
-  <b>tastiera</b>, disegnata come un pezzo di pianoforte: otto tasti naturali nella fila
-  bassa, cinque alterazioni in quella di mezzo. Sono tredici, cioè <b>un'ottava cromatica
-  intera</b>. La fila in alto sono i <b>sette tasti funzione</b>. A sinistra, sopra, i
-  <b>quattro encoder</b>; a destra il <b>display tondo</b> e il <b>joystick</b>.</p>
-
-  <div class="fig">
-    <svg viewBox="0 0 330 200" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica,Arial,sans-serif">
-      <defs>
-        <pattern id="g2" width="10" height="10" patternUnits="userSpaceOnUse">
-          <path d="M10,0 L0,0 L0,10" fill="none" stroke="#dde3e9" stroke-width="0.25"/>
-        </pattern>
-        <clipPath id="pc2"><rect x="5" y="5" width="320" height="185" rx="6"/></clipPath>
-        <marker id="ar2" markerWidth="5" markerHeight="5" refX="4.5" refY="2.5" orient="auto">
-          <path d="M0,0 L5,2.5 L0,5 Z" fill="#5b6570"/></marker>
-      </defs>
-      <rect x="0" y="0" width="330" height="200" fill="#ffffff"/>
-      <rect x="5" y="5" width="320" height="185" rx="6" fill="#f7f8fa" stroke="#16191d" stroke-width="1.2"/>
-      <rect x="5" y="5" width="320" height="185" fill="url(#g2)" clip-path="url(#pc2)"/>
-
-      <g>
-        <g transform="translate(30,58)"><circle r="13" fill="#e7ebef" stroke="#4a545e" stroke-width="0.7"/>
-          <circle r="4.5" fill="#c9d2da" stroke="#4a545e" stroke-width="0.4"/>
-          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#16191d" stroke-width="0.9"/>
-          <text y="21" font-size="5" text-anchor="middle" font-weight="bold">ENC 1</text>
-          <text y="27" font-size="4.2" text-anchor="middle" fill="#5b6570">CUTOFF</text></g>
-        <g transform="translate(64,58)"><circle r="13" fill="#e7ebef" stroke="#4a545e" stroke-width="0.7"/>
-          <circle r="4.5" fill="#f2b705" stroke="#4a545e" stroke-width="0.4"/>
-          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#16191d" stroke-width="0.9"/>
-          <text y="21" font-size="5" text-anchor="middle" font-weight="bold">ENC 2</text>
-          <text y="27" font-size="4.2" text-anchor="middle" fill="#5b6570">RISONANZA</text></g>
-        <g transform="translate(98,58)"><circle r="13" fill="#e7ebef" stroke="#4a545e" stroke-width="0.7"/>
-          <circle r="4.5" fill="#c9d2da" stroke="#4a545e" stroke-width="0.4"/>
-          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#16191d" stroke-width="0.9"/>
-          <text y="21" font-size="5" text-anchor="middle" font-weight="bold">ENC 3</text>
-          <text y="27" font-size="4.2" text-anchor="middle" fill="#5b6570">VOLUME</text></g>
-        <g transform="translate(132,58)"><circle r="13" fill="#e7ebef" stroke="#4a545e" stroke-width="0.7"/>
-          <circle r="4.5" fill="#1f6feb" stroke="#4a545e" stroke-width="0.4"/>
-          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#16191d" stroke-width="0.9"/>
-          <text y="21" font-size="5" text-anchor="middle" font-weight="bold">ENC 4</text>
-          <text y="27" font-size="4.2" text-anchor="middle" fill="#5b6570">A SCELTA</text></g>
-        <text x="81" y="30" font-size="5.4" text-anchor="middle" fill="#0b5fa5" font-weight="bold" letter-spacing="0.8">QUATTRO ENCODER · C'E' SCRITTO SOTTO COSA FANNO</text>
-      </g>
-
-      <g>
-        <rect x="8" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="17" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">ARPEGGIO</text>
-        <text x="17" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN1</text>
-        <rect x="27.05" y="100" width="18" height="18" rx="2" fill="#ffe0cc" stroke="#d92d20" stroke-width="0.7"/>
-        <text x="36.05" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#a33">8 BIT</text>
-        <text x="36.05" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN2</text>
-        <rect x="46.1" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="55.1" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">REGISTRA</text>
-        <text x="55.1" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN3</text>
-        <rect x="65.15" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="74.15" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">AVVIA</text>
-        <text x="74.15" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN4</text>
-        <rect x="84.2" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="93.2" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">TIENI</text>
-        <text x="93.2" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN5</text>
-        <rect x="103.25" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="112.25" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">VOCI</text>
-        <text x="112.25" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN6</text>
-        <rect x="122.3" y="100" width="18" height="18" rx="2" fill="#dfe6ec" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="131.3" y="108" font-size="3.4" text-anchor="middle" font-weight="bold" fill="#16191d">SILENZIO</text>
-        <text x="131.3" y="113.5" font-size="2.9" text-anchor="middle" fill="#5b6570">FN7</text>
-        <text x="150" y="110" font-size="4.6" fill="#0b5fa5" font-weight="bold">7 TASTI FUNZIONE</text>
-        <text x="150" y="115.5" font-size="4" fill="#5b6570">uno ciascuno: c'e' scritto sopra</text>
-      </g>
-
-      <g fill="#2b3138">
-        <rect x="19.5" y="124" width="14" height="18" rx="2" stroke="#16191d" stroke-width="0.5"/>
-        <text x="26.5" y="135" font-size="4.2" text-anchor="middle" fill="#ffffff">DO#</text>
-        <rect x="38.6" y="124" width="14" height="18" rx="2" stroke="#16191d" stroke-width="0.5"/>
-        <text x="45.6" y="135" font-size="4.2" text-anchor="middle" fill="#ffffff">RE#</text>
-        <rect x="76.7" y="124" width="14" height="18" rx="2" stroke="#16191d" stroke-width="0.5"/>
-        <text x="83.7" y="135" font-size="4.2" text-anchor="middle" fill="#ffffff">FA#</text>
-        <rect x="95.75" y="124" width="14" height="18" rx="2" stroke="#16191d" stroke-width="0.5"/>
-        <text x="102.75" y="135" font-size="4" text-anchor="middle" fill="#ffffff">SOL#</text>
-        <rect x="114.8" y="124" width="14" height="18" rx="2" stroke="#16191d" stroke-width="0.5"/>
-        <text x="121.8" y="135" font-size="4.2" text-anchor="middle" fill="#ffffff">LA#</text>
-      </g>
-      <text x="150" y="136" font-size="4.6" fill="#0b5fa5" font-weight="bold">5 ALTERAZIONI</text>
-
-      <g fill="#ffffff">
-        <rect x="8" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="17" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">DO</text>
-        <rect x="27.05" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="36.05" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">RE</text>
-        <rect x="46.1" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="55.1" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">MI</text>
-        <rect x="65.15" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="74.15" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">FA</text>
-        <rect x="84.2" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="93.2" y="159" font-size="4.2" text-anchor="middle" fill="#16191d">SOL</text>
-        <rect x="103.25" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="112.25" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">LA</text>
-        <rect x="122.3" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="131.3" y="159" font-size="4.6" text-anchor="middle" fill="#16191d">SI</text>
-        <rect x="141.35" y="148" width="18" height="18" rx="2" stroke="#4a545e" stroke-width="0.6"/>
-        <text x="150.35" y="159" font-size="4.4" text-anchor="middle" fill="#16191d">DO'</text>
-      </g>
-      <text x="165" y="159" font-size="4.6" fill="#0b5fa5" font-weight="bold">8 NATURALI</text>
-      <text x="165" y="164.5" font-size="4" fill="#5b6570">13 tasti = un'ottava cromatica intera</text>
-
-      <g stroke="#5b6570" stroke-width="0.35" fill="none">
-        <line x1="8" y1="176" x2="159.35" y2="176" marker-start="url(#ar2)" marker-end="url(#ar2)"/>
-      </g>
-      <text x="83" y="182" font-size="4" text-anchor="middle" fill="#5b6570">151 mm — passo Cherry MX 19,05 mm</text>
-
-      <g transform="translate(250,58)">
-        <circle r="27" fill="#e7ebef" stroke="#4a545e" stroke-width="0.8"/>
-        <circle r="22" fill="#0d1117" stroke="#2b3138" stroke-width="0.8"/>
-        <circle r="18" fill="none" stroke="#0b5fa5" stroke-width="0.5" stroke-dasharray="2 2"/>
-        <text y="-6" font-size="5" text-anchor="middle" fill="#00e5ff" font-weight="bold">ARCADEVOX</text>
-        <text y="3" font-size="6.5" text-anchor="middle" fill="#f2b705" font-weight="bold">SAW</text>
-        <text y="11" font-size="4" text-anchor="middle" fill="#88ffbb">OTT +1</text>
-        <text y="35" font-size="5" text-anchor="middle" font-weight="bold">DISPLAY GC9A01</text>
-        <text y="41" font-size="4.2" text-anchor="middle" fill="#5b6570">tondo 1.28" — 8 schermate</text>
-      </g>
-
-      <g transform="translate(250,140)">
-        <circle r="24" fill="#e7ebef" stroke="#4a545e" stroke-width="0.8"/>
-        <circle r="24" fill="none" stroke="#8a949e" stroke-width="0.35" stroke-dasharray="2 2"/>
-        <circle r="9" fill="#f2b705" stroke="rgba(0,0,0,.5)" stroke-width="0.5"/>
-        <path d="M0,-11 L0,-15 M0,11 L0,15 M-11,0 L-15,0 M11,0 L15,0" stroke="#5b6570" stroke-width="0.6" fill="none" marker-end="url(#ar2)"/>
-        <text y="-18" font-size="3.8" text-anchor="middle" fill="#5b6570">OTTAVA +</text>
-        <text y="21" font-size="3.8" text-anchor="middle" fill="#5b6570">OTTAVA -</text>
-        <text x="-19" y="-1.5" font-size="3.8" text-anchor="end" fill="#5b6570">ONDA</text>
-        <text x="19" y="-1.5" font-size="3.8" text-anchor="start" fill="#5b6570">ONDA</text>
-        <text y="33" font-size="5" text-anchor="middle" font-weight="bold">JOYSTICK</text>
-        <text y="39" font-size="4.2" text-anchor="middle" fill="#5b6570">4 microswitch digitali</text>
-      </g>
-
-      <g>
-        <rect x="196" y="8" width="125" height="16" rx="2" fill="#ffffff" stroke="#c8cfd6" stroke-width="0.5"/>
-        <text x="202" y="16" font-size="6.5" font-weight="bold">ArcadeVox 2.0</text>
-        <text x="202" y="21.5" font-size="4" fill="#5b6570">blueprint del pannello — vista dall'alto, quote in mm</text>
-      </g>
-    </svg>
-    <div class="cap">Fig. 1 — Blueprint del pannello. Il PCB porta i venti tasti e i quattro
-      encoder; display e joystick sono moduli a parte, montati sulla destra e collegati con
-      due connettori (vedi capitolo 2).</div>
-  </div>
-
-  <h2><span class="n">1b</span>Cosa c'è dentro</h2>
-  <div class="cols2">
-    <div>
-      <table>
-        <tr><th>Parte</th><th>Modello</th></tr>
-        <tr><td>Cervello</td><td>ESP32-S3-DevKitC-1 <b>N16R8</b></td></tr>
-        <tr class="alt"><td>Tasti</td><td>20 × Cherry MX hot-swap con SK6812</td></tr>
-        <tr><td>Espansore</td><td>MCP23017 (I²C, indirizzo 0x20)</td></tr>
-        <tr class="alt"><td>Encoder</td><td>4 × EC11 con pulsante</td></tr>
-        <tr><td>Audio</td><td>MAX98357 + altoparlante 4–8 Ω</td></tr>
-        <tr class="alt"><td>Display</td><td>GC9A01 tondo 240×240</td></tr>
-      </table>
-    </div>
-    <div>
-      <p><b>Perché un espansore.</b> Venti tasti più quattro pulsanti d'encoder farebbero
-      ventiquattro fili verso il microcontrollore, che non ha tutti quei piedini liberi. Il
-      MCP23017 ne prende due (i due dell'I²C) e ne restituisce sedici. La matrice è 4 colonne
-      × 5 righe, con un <b>diodo per tasto</b>: si possono premere tutti i tasti che si vuole
-      insieme senza che ne compaiano di finti.</p>
-      <p><b>La variante conta.</b> La DevKitC-1 montata è la <b>N16R8</b>: 16 MB di flash e
-      8 MB di PSRAM ottale. Il <code>platformio.ini</code> è configurato per lei, e non è
-      indifferente — su una <b>N8</b>, che la PSRAM non ce l'ha, la riga che la imposta in
-      ottale <b>impedisce l'avvio</b>. Chi ne monta una deve tornare a <code>qio_qspi</code> e
-      a una tabella da 8 MB.</p>
-    </div>
-  </div>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>1 · Il pannello</span></div>
-</section>
-
-<!-- ══════════════════════════════════ 2. CONNETTORI ══════════════════════════════════ -->
-<section class="page">
-  <div class="masthead">
-    <div><h1>Montaggio</h1><div class="sub">I connettori, pin per pin</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 3</div>
-  </div>
-
-  <h2><span class="n">2</span>Dove va ogni filo</h2>
-
-  <p>Sul PCB ci sono quattro connettori, tutti passo 2,54 mm. Il <b>pin 1 è quello segnato
-  con il quadrato</b> sulla serigrafia; nei disegni qui sotto è quello a sinistra. Tutte le
-  tabelle si leggono nello stesso verso: numero del pin, che segnale porta, e dove va a
-  finire sul modulo dall'altra parte.</p>
-
-  <div class="fig">
-    <svg viewBox="0 0 330 60" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica,Arial,sans-serif">
-      <g transform="translate(6,10)">
-        <rect x="0" y="6" width="72" height="20" rx="1.5" fill="#f7f8fa" stroke="#16191d" stroke-width="0.8"/>
-        <rect x="3" y="9" width="8" height="8" fill="#16191d"/>
-        <g font-size="5" text-anchor="middle">
-          <text x="7" y="15.5" fill="#fff">1</text>
-          <text x="17" y="15.5">2</text><text x="27" y="15.5">3</text><text x="37" y="15.5">4</text>
-          <text x="47" y="15.5">5</text><text x="57" y="15.5">6</text><text x="67" y="15.5">7</text>
-        </g>
-        <g fill="none" stroke="#4a545e" stroke-width="0.5">
-          <rect x="13" y="9" width="8" height="8"/><rect x="23" y="9" width="8" height="8"/>
-          <rect x="33" y="9" width="8" height="8"/><rect x="43" y="9" width="8" height="8"/>
-          <rect x="53" y="9" width="8" height="8"/><rect x="63" y="9" width="8" height="8"/>
-        </g>
-        <text x="0" y="4" font-size="5.5" font-weight="bold">J_DISPLAY · 7 poli</text>
-        <text x="0" y="33" font-size="4.4" fill="#5b6570">verso il modulo GC9A01</text>
-      </g>
-      <g transform="translate(96,10)">
-        <rect x="0" y="6" width="52" height="20" rx="1.5" fill="#f7f8fa" stroke="#16191d" stroke-width="0.8"/>
-        <rect x="3" y="9" width="8" height="8" fill="#16191d"/>
-        <g font-size="5" text-anchor="middle">
-          <text x="7" y="15.5" fill="#fff">1</text>
-          <text x="17" y="15.5">2</text><text x="27" y="15.5">3</text><text x="37" y="15.5">4</text><text x="47" y="15.5">5</text>
-        </g>
-        <g fill="none" stroke="#4a545e" stroke-width="0.5">
-          <rect x="13" y="9" width="8" height="8"/><rect x="23" y="9" width="8" height="8"/>
-          <rect x="33" y="9" width="8" height="8"/><rect x="43" y="9" width="8" height="8"/>
-        </g>
-        <text x="0" y="4" font-size="5.5" font-weight="bold">J_JOY · 5 poli</text>
-        <text x="0" y="33" font-size="4.4" fill="#5b6570">verso i microswitch del joystick</text>
-      </g>
-      <g transform="translate(166,10)">
-        <rect x="0" y="6" width="52" height="20" rx="1.5" fill="#f7f8fa" stroke="#16191d" stroke-width="0.8"/>
-        <rect x="3" y="9" width="8" height="8" fill="#16191d"/>
-        <g font-size="5" text-anchor="middle">
-          <text x="7" y="15.5" fill="#fff">1</text>
-          <text x="17" y="15.5">2</text><text x="27" y="15.5">3</text><text x="37" y="15.5">4</text><text x="47" y="15.5">5</text>
-        </g>
-        <g fill="none" stroke="#4a545e" stroke-width="0.5">
-          <rect x="13" y="9" width="8" height="8"/><rect x="23" y="9" width="8" height="8"/>
-          <rect x="33" y="9" width="8" height="8"/><rect x="43" y="9" width="8" height="8"/>
-        </g>
-        <text x="0" y="4" font-size="5.5" font-weight="bold">J_AUDIO · 5 poli</text>
-        <text x="0" y="33" font-size="4.4" fill="#5b6570">verso il MAX98357</text>
-      </g>
-      <g transform="translate(236,10)">
-        <rect x="0" y="6" width="22" height="20" rx="1.5" fill="#f7f8fa" stroke="#16191d" stroke-width="0.8"/>
-        <rect x="3" y="9" width="8" height="8" fill="#16191d"/>
-        <g font-size="5" text-anchor="middle"><text x="7" y="15.5" fill="#fff">1</text><text x="17" y="15.5">2</text></g>
-        <rect x="13" y="9" width="8" height="8" fill="none" stroke="#4a545e" stroke-width="0.5"/>
-        <text x="0" y="4" font-size="5.5" font-weight="bold">J_PWR · 2 poli</text>
-        <text x="0" y="33" font-size="4.4" fill="#5b6570">alimentazione 5 V</text>
-      </g>
-      <g transform="translate(276,10)">
-        <rect x="0" y="6" width="46" height="20" rx="1.5" fill="#fff6e5" stroke="#f2b705" stroke-width="0.8"/>
-        <text x="23" y="14" font-size="4.4" text-anchor="middle" fill="#8a6d00">pin 1 = quadrato</text>
-        <text x="23" y="20" font-size="4.4" text-anchor="middle" fill="#8a6d00">sulla serigrafia</text>
-      </g>
-    </svg>
-    <div class="cap">Fig. 2 — I quattro connettori del PCB, visti dall'alto.</div>
-  </div>
-
-  <h3>J_DISPLAY — 7 poli, verso il GC9A01</h3>
-  <table>
-    <tr><th>Pin</th><th>Segnale</th><th>Filo verso il display</th><th>Nota</th></tr>
-    <tr><td class="pin">1</td><td class="mono">3V3</td><td><b>VCC</b></td><td>il modulo va a 3,3 V, non a 5</td></tr>
-    <tr class="alt"><td class="pin">2</td><td class="mono">GND</td><td><b>GND</b></td><td></td></tr>
-    <tr><td class="pin">3</td><td class="mono">GPIO13</td><td><b>SCL</b> (o SCK / CLK)</td><td>clock SPI</td></tr>
-    <tr class="alt"><td class="pin">4</td><td class="mono">GPIO14</td><td><b>SDA</b> (o MOSI / DIN)</td><td>dato SPI</td></tr>
-    <tr><td class="pin">5</td><td class="mono">GPIO15</td><td><b>RES</b> (o RST)</td><td>reset</td></tr>
-    <tr class="alt"><td class="pin">6</td><td class="mono">GPIO16</td><td><b>DC</b></td><td>dato/comando</td></tr>
-    <tr><td class="pin">7</td><td class="mono">GPIO17</td><td><b>CS</b></td><td>chip select</td></tr>
-  </table>
-  <div class="note"><b>L'ottavo filo del display</b>
-    I moduli GC9A01 hanno anche un pin <code>BLK</code> (retroilluminazione). Il connettore ne
-    porta sette, quindi <b>il BLK va ponticellato al VCC</b> direttamente sul modulo: la
-    retroilluminazione resta sempre accesa e non occupa un filo. L'ordine dei pin 3–7 è lo
-    stesso serigrafato sui moduli in commercio, quindi in pratica si infila il cavo dritto.</div>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>2 · Montaggio</span></div>
-</section>
-
-<section class="page">
-  <div class="masthead">
-    <div><h1>Montaggio</h1><div class="sub">Joystick e audio</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 4</div>
-  </div>
-
-  <h3>J_JOY — 5 poli, verso il joystick</h3>
-  <p>Il joystick è a <b>quattro microswitch digitali</b>, non analogico: ogni direzione è un
-  contatto che chiude verso massa. Il quinto filo è il comune.</p>
-  <table>
-    <tr><th>Pin</th><th>Segnale</th><th>Filo verso il joystick</th><th>Cosa fa suonando</th></tr>
-    <tr><td class="pin">1</td><td class="mono">GPIO2</td><td><b>SU</b></td><td>ottava +1</td></tr>
-    <tr class="alt"><td class="pin">2</td><td class="mono">GPIO41</td><td><b>GIÙ</b></td><td>ottava −1</td></tr>
-    <tr><td class="pin">3</td><td class="mono">GPIO42</td><td><b>SINISTRA</b></td><td>forma d'onda precedente</td></tr>
-    <tr class="alt"><td class="pin">4</td><td class="mono">GPIO47</td><td><b>DESTRA</b></td><td>forma d'onda successiva</td></tr>
-    <tr><td class="pin">5</td><td class="mono">GND</td><td><b>COMUNE</b></td><td>il ritorno di tutti e quattro</td></tr>
-  </table>
-  <div class="tip"><b>Se una direzione va al contrario</b>
-    Non serve dissaldare: basta scambiare i due fili sul connettore. E se le hai montate tutte
-    ruotate di 90°, scambia le due coppie.</div>
-
-  <h3>J_AUDIO — 5 poli, verso il MAX98357</h3>
-  <table>
-    <tr><th>Pin</th><th>Segnale</th><th>Filo verso l'ampli</th><th>Nota</th></tr>
-    <tr><td class="pin">1</td><td class="mono">3V3</td><td><b>VIN</b></td><td>a 3,3 V l'ampli fa meno potenza ma non scalda</td></tr>
-    <tr class="alt"><td class="pin">2</td><td class="mono">GND</td><td><b>GND</b></td><td></td></tr>
-    <tr><td class="pin">3</td><td class="mono">GPIO18</td><td><b>LRC</b></td><td>vedi il riquadro qui sotto</td></tr>
-    <tr class="alt"><td class="pin">4</td><td class="mono">GPIO21</td><td><b>BCLK</b></td><td>idem</td></tr>
-    <tr><td class="pin">5</td><td class="mono">GPIO1</td><td><b>DIN</b></td><td>idem</td></tr>
-  </table>
-  <div class="warn"><b>I tre fili dell'audio non hanno un nome sullo schematico</b>
-    Il connettore porta 3,3 V, massa e <i>tre segnali numerati</i>: quale sia il BCLK, quale
-    l'LRC e quale il DIN lo decide il cavo che ci infili, e nessun disegno può dirtelo. Il
-    firmware parte con l'ordine qui sopra, che è quello serigrafato sui moduli MAX98357 più
-    diffusi. <b>Se il synth resta muto o suona a una velocità sbagliata non devi
-    ricompilare</b>: vai in <span class="key">SETTINGS</span> → <b>AUDIO → USCITA</b> e prova
-    le altre cinque combinazioni girando l'encoder 2. Cambiano a caldo, mentre suoni, e quella
-    giusta viene salvata.</div>
-  <p>Gli altri due piedini del modulo non vanno al connettore: <code>SD</code> si lascia
-  scollegato (l'ampli resta acceso) e <code>GAIN</code> pure, che vuol dire 9 dB — se il
-  volume non basta, si porta a massa per 12 dB.</p>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>2 · Montaggio</span></div>
-</section>
-
-<section class="page">
-  <div class="masthead">
-    <div><h1>Montaggio</h1><div class="sub">Alimentazione, tasti, luci</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 5</div>
-  </div>
-
-  <h3>J_PWR — 2 poli, l'alimentazione</h3>
-  <table>
-    <tr><th>Pin</th><th>Segnale</th><th>Filo</th><th>Nota</th></tr>
-    <tr><td class="pin">1</td><td class="mono">5V_LED</td><td><b>+5 V</b></td><td>alimenta i venti LED <i>e</i> la DevKitC-1</td></tr>
-    <tr class="alt"><td class="pin">2</td><td class="mono">GND</td><td><b>massa</b></td><td></td></tr>
-  </table>
-  <div class="warn"><b>Quanta corrente serve</b>
-    Venti SK6812 al massimo bianco chiedono circa <b>1,2 A</b> da soli. Con l'ESP32, il
-    display e l'ampli, un alimentatore da <b>5 V / 2 A</b> è il minimo sensato. Se le luci
-    ammiccano o la scheda si riavvia premendo molti tasti, il colpevole è quasi sempre
-    l'alimentatore, non il firmware: abbassa la <b>LUMINOSITÀ</b> nelle impostazioni e vedi
-    se smette.</div>
-  <div class="note"><b>Un solo ingresso, due strade</b>
-    I 5 V di J_PWR arrivano anche al pin <code>5V</code> della DevKitC-1. Puoi quindi
-    alimentare tutto da J_PWR e usare la presa USB solo per programmare. <b>Non</b> alimentare
-    contemporaneamente da un alimentatore sul J_PWR e da un caricabatterie sull'USB.</div>
-
-  <h3>La tastiera: come è cablata (e perché funziona così)</h3>
-  <p>I venti tasti stanno su una matrice 4 × 5 gestita dall'MCP23017. Non c'è niente da
-  cablare a mano — è tutto sul PCB — ma sapere com'è fatta aiuta quando un tasto non
-  risponde.</p>
-  <table>
-    <tr><th></th><th>COL 0</th><th>COL 1</th><th>COL 2</th><th>COL 3</th></tr>
-    <tr><th>ROW 0</th><td>DO</td><td>DO#</td><td>RE</td><td>RE#</td></tr>
-    <tr class="alt"><th>ROW 1</th><td>MI</td><td>FA</td><td>FA#</td><td>SOL</td></tr>
-    <tr><th>ROW 2</th><td>SOL#</td><td>LA</td><td>LA#</td><td>SI</td></tr>
-    <tr class="alt"><th>ROW 3</th><td>DO'</td><td>FN1</td><td>FN2</td><td>FN3</td></tr>
-    <tr><th>ROW 4</th><td>FN4</td><td>FN5</td><td>FN6</td><td>FN7</td></tr>
-  </table>
-  <p>Le colonne (GPB0–GPB3) sono <b>uscite</b> e vengono portate basse una alla volta; le
-  righe (GPA0–GPA4) sono <b>ingressi con pull-up</b>. Il verso lo impongono i diodi, che sul
-  PCB hanno il catodo dal lato del tasto: la corrente può scorrere solo riga → tasto →
-  colonna. Invertendo i ruoli non si leggerebbe <i>niente</i>. I quattro pulsanti degli
-  encoder occupano gli ingressi rimasti (GPB4–GPB7).</p>
-  <div class="tip"><b>Se non risponde una riga o una colonna intera</b>
-    È l'espansore o una pista, non i tasti: venti interruttori non si guastano tutti insieme.
-    Se invece non risponde <i>niente</i> e il display scrive che l'espansore non risponde,
-    guarda le due resistenze di pull-up dell'I²C e le saldature dell'MCP23017.</div>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>2 · Montaggio</span></div>
-</section>
-
-<section class="page">
-  <div class="masthead">
-    <div><h1>Montaggio</h1><div class="sub">Le luci, e i controlli prima di dare corrente</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 6</div>
-  </div>
-
-  <h3>Le luci</h3>
-  <p>Ogni Cherry MX ha un SK6812 dentro, e sono tutti in <b>catena</b>: il dato entra nel
-  primo (quello del DO), esce e va al secondo, e così via per venti. Un filo solo, da GPIO12
-  attraverso una resistenza da 330 Ω.</p>
-  <div class="note"><b>L'ordine della catena non è scritto da nessuna parte</b>
-    Dallo schematico si sa per certo solo qual è il <i>primo</i> LED. Per il resto la scheda
-    <b>se lo impara</b>: <span class="key">SETTINGS</span> → <b>LUCI → IMPARA LUCI</b> accende
-    un LED alla volta e aspetta che tu prema il tasto che si è illuminato. Venti pressioni e
-    la mappa finisce in memoria per sempre. Si fa una volta sola, alla fine del montaggio.</div>
-
-  <h3>Prima di dare corrente</h3>
-  <ol>
-    <li>Controlla che il modulo display sia cablato a <b>3,3 V</b> e non a 5.</li>
-    <li>Controlla il verso del connettore del joystick: il comune (pin 5) va a massa.</li>
-    <li>Verifica che l'MCP23017 sia nel verso giusto — la tacca verso l'alto — e che i tre
-      piedini di indirizzo siano a massa.</li>
-    <li>Dai corrente <b>senza</b> altoparlante collegato la prima volta: se l'ordine dei fili
-      audio è sbagliato può uscire un rumore forte.</li>
-  </ol>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>2 · Montaggio</span></div>
-</section>
-
-<!-- ══════════════════════════════════ 3. PRIMO AVVIO ══════════════════════════════════ -->
-<section class="page">
-  <div class="masthead">
-    <div><h1>Primo avvio</h1><div class="sub">Due tarature e si suona</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 7</div>
-  </div>
-
-  <h2><span class="n">3</span>Le due cose da fare una volta sola</h2>
-
-  <p>All'accensione compare il logo, poi la schermata <b>SUONA</b>, e i tredici tasti nota
-  cominciano a respirare piano: è l'invito a suonare, e si spegne alla prima nota. Se la
-  tastiera risponde e si sente qualcosa, hai già finito. Altrimenti sono due tarature, cinque
-  minuti in tutto, e non si rifanno mai più.</p>
-
-  <h3>Taratura 1 — l'ordine dei fili audio</h3>
-  <ol>
-    <li>Spingi il <b>joystick a sinistra</b> una volta: dalla schermata SUONA si arriva
-      direttamente al <b>MENU</b>, che è l'ultima dell'anello.</li>
-    <li>Gira la <b>prima manopola</b> fino ad <b>AUDIO → USCITA</b>.</li>
-    <li>Tieni premuto un tasto della tastiera con l'altra mano e gira la <b>seconda
-      manopola</b>: a ogni scatto cambia la combinazione. Quando il suono diventa una nota
-      pulita, sei arrivato.</li>
-    <li>Non c'è niente da confermare: la scelta è già salvata.</li>
-  </ol>
-  <div class="note"><b>Come riconoscere quella giusta</b>
-    Se BCLK e LRC sono scambiati la nota esce a un'altezza sbagliata e gracchia. Se il DIN è
-    al posto di uno degli altri due non esce niente del tutto. Quella giusta suona pulita e
-    intonata: non c'è modo di sbagliarsi.</div>
-
-  <h3>Taratura 2 — l'ordine delle luci</h3>
-  <ol>
-    <li>Dal MENU, gira la prima manopola fino a <b>LUCI → IMPARA LUCI</b> — è una riga rossa —
-      e <b>tieni premuto il click della seconda manopola</b> finché l'anello esterno non si è
-      riempito.</li>
-    <li>Si accende un LED bianco lampeggiante. <b>Premi quel tasto.</b></li>
-    <li>Si accende il successivo. Avanti così per venti volte: il display conta.</li>
-    <li>Alla fine la mappa viene salvata e si torna a suonare.</li>
-  </ol>
-  <p>Se ti perdi, <b>joystick a sinistra</b> per annullare e ricominciare da capo — e c'è
-  scritto sullo schermo. Finché la mappa non è stata imparata le luci funzionano lo stesso, ma
-  probabilmente sul tasto sbagliato; <b>AZZERA LUCI</b> rimette l'ordine di fabbrica.</p>
-
-  <h3>Se non parte niente</h3>
-  <table>
-    <tr><th>Sintomo</th><th>Dove guardare</th></tr>
-    <tr><td>Display nero, nessuna luce</td><td>alimentazione: J_PWR e il cavo USB</td></tr>
-    <tr class="alt"><td>Display nero, luci accese</td><td>i sette fili di J_DISPLAY, e il ponticello BLK–VCC</td></tr>
-    <tr><td>Tutto acceso, nessun tasto risponde</td><td>l'MCP23017: verso, saldature, indirizzo a massa</td></tr>
-    <tr class="alt"><td>Tasti sì, audio no</td><td>taratura 1, poi il cavo dell'altoparlante</td></tr>
-    <tr><td>Luci sul tasto sbagliato</td><td>taratura 2</td></tr>
-  </table>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>3 · Primo avvio</span></div>
-</section>
-
-<!-- ══════════════════════════════════ 4. SUONARE ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Suonare</h1><div class="sub">Tasti, scale, accordi, arpeggiator</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 8</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 2</div>
   </div>
 
-  <h2><span class="n">4</span>I tredici tasti</h2>
+  <h2><span class="n">1</span>I tredici tasti</h2>
   <p>Da sinistra a destra la scala sale, come su un pianoforte. Il joystick <b>su/giù</b>
   sposta l'ottava, da −2 a +2: il numero resta scritto in alto a sinistra sul display, su una
   targhetta del colore di quell'ottava — lo stesso che prendono le celle del sequencer.</p>
@@ -667,17 +206,17 @@
     <tr><td>ORDINE</td><td>nell'ordine in cui hai premuto i tasti</td></tr>
   </table>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>4 · Suonare</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>1 · Suonare</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 5-7. MANOPOLE, 8BIT, FX ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Le manopole</h1><div class="sub">C'è scritto sotto ognuna cosa fa adesso</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 9</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 3</div>
   </div>
 
-  <h2><span class="n">5</span>Quattro manopole, e niente da ricordare</h2>
+  <h2><span class="n">2</span>Quattro manopole, e niente da ricordare</h2>
   <p>Le quattro manopole cambiano mestiere a seconda della schermata. Non è un problema,
   perché <b>sotto ognuna c'è scritto cosa fa in quel momento</b>, in basso sul display, con un
   arco che mostra a che punto della corsa sei. Girando, il nome lascia il posto al valore per
@@ -729,16 +268,16 @@
     Il filtro non si mette a urlare da solo — c'è un limite — ma il picco guadagna parecchio,
     e il volume generale va tenuto più basso di quanto verrebbe naturale.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>5 · Le manopole</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>2 · Le manopole</span></div>
 </section>
 
 <section class="page">
   <div class="masthead">
     <div><h1>8 BIT e inviluppo</h1><div class="sub">La sala giochi, e la forma del suono</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 10</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 4</div>
   </div>
 
-  <h2><span class="n">6</span>8 BIT</h2>
+  <h2><span class="n">3</span>8 BIT</h2>
   <p><span class="key hot">8 BIT</span> e tutto quello che esce diventa, appunto, a 8 bit. L'effetto
   agisce sul <b>segnale finale</b> — non su una voce sola — e fa due cose insieme, che è
   quello che serve perché suoni davvero come un chip e non come un file rovinato:</p>
@@ -764,7 +303,7 @@
     Onda <b>PULSE</b>, 8 BIT acceso, decay corto, sustain basso, un filo di eco. Ci suoni
     sopra una pentatonica e sembra una colonna sonora del 1989.</div>
 
-  <h2><span class="n">8</span>L'inviluppo</h2>
+  <h2><span class="n">4</span>L'inviluppo</h2>
   <p>Una schermata come le altre. <b>Un parametro per manopola</b>, nell'ordine in cui si
   leggono:</p>
   <div class="cols2">
@@ -781,16 +320,16 @@
     <div><div class="shot"><img src="data:image/png;base64,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" alt="Il profilo si deforma mentre giri, e ogni tratto ha il colore della sua manopola"><div class="lbl">Il profilo si deforma mentre giri, e ogni tratto ha il colore della sua manopola</div></div></div>
   </div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>6–8 · 8 BIT e inviluppo</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>3–4 · 8 BIT e inviluppo</span></div>
 </section>
 
 <section class="page">
   <div class="masthead">
     <div><h1>Gli effetti</h1><div class="sub">Quattordici righe, una famiglia alla volta</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 11</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 5</div>
   </div>
 
-  <h2><span class="n">7</span>Gli effetti</h2>
+  <h2><span class="n">5</span>Gli effetti</h2>
   <p>Quattordici righe raggruppate per famiglia. La <b>prima manopola</b> sceglie la riga, la
   <b>seconda</b> ne cambia il valore — e non si chiama mai "cambia": si chiama col nome della
   riga su cui sei.</p>
@@ -838,17 +377,17 @@
       organo.</li>
   </ul>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>7 · Gli effetti</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>5 · Gli effetti</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 9. SEQUENCER ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Il ritmo</h1><div class="sub">Sedici passi, due modi di riempirli</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 12</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 6</div>
   </div>
 
-  <h2><span class="n">9</span>Sedici passi</h2>
+  <h2><span class="n">6</span>Sedici passi</h2>
   <p>Una griglia di sedici caselle, un sedicesimo ciascuna, sulla schermata <b>RITMO</b>. Si
   riempie in due modi che convivono: si può scrivere anche mentre il giro sta suonando.</p>
 
@@ -903,17 +442,17 @@
   lasci. In <b>POLIFONICO</b> la sequenza suona <i>sotto</i> le dita e ci suoni sopra. È la
   differenza fra usarla come accompagnamento e usarla come base.</p>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>9 · Ritmo</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>6 · Ritmo</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 10. DINAMICA E TIMBRI ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Dinamica e timbri</h1><div class="sub">Quindici punti di partenza, e il filtro che si muove da solo</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 13</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 7</div>
   </div>
 
-  <h2><span class="n">10</span>Dinamica e inviluppo di filtro</h2>
+  <h2><span class="n">7</span>Dinamica e inviluppo di filtro</h2>
   <p>Fino alla 2.0 ogni nota usciva con la stessa forza. Adesso la <b>dinamica</b> scala due
   cose insieme: il picco dell'inviluppo <i>e</i> quanto si apre il filtro. Sono le due
   insieme a fare la differenza — è così che si riconosce un pianoforte suonato piano da uno
@@ -951,17 +490,17 @@
     in poi si ritocca liberamente. Il click di una manopola riporta quel parametro al valore
     del timbro, ma un suono tuo, una volta sovrascritto, non torna: se ti piaceva, annotalo.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>10 · Dinamica e timbri</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>7 · Dinamica e timbri</span></div>
 </section>
 
 <!-- ═════ 11. IL PIANO ═════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Il piano</h1><div class="sub">Campionato, non imitato</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 14</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 8</div>
   </div>
 
-  <h2><span class="n">11</span>Sette radici, una ogni tre semitoni</h2>
+  <h2><span class="n">8</span>Sette radici, una ogni tre semitoni</h2>
   <p>In coda ai quindici timbri, sulla <b>stessa manopola</b>, ci sono <b>PIANO</b> e
   <b>BATTERIA</b>. Stanno lì e non in una schermata a parte perché per chi suona sono la
   stessa domanda — <i>con che suono</i> — e dividerle avrebbe separato ciò che l'orecchio non
@@ -990,17 +529,17 @@
     dettaglio burocratico: questi campioni finiscono dentro il firmware, che viene
     ridistribuito via aggiornamento, quindi la licenza deve permettere di ridistribuirli.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>11 · Il piano</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>8 · Il piano</span></div>
 </section>
 
 <!-- ═════ 12. LA BATTERIA ═════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>La batteria</h1><div class="sub">Tredici pezzi, uno per tasto</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 15</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 9</div>
   </div>
 
-  <h2><span class="n">12</span>Un pezzo per tasto</h2>
+  <h2><span class="n">9</span>Un pezzo per tasto</h2>
   <p>La batteria non si intona — un rullante non ha un'altezza da trasporre — quindi qui i
   tredici tasti smettono di essere una tastiera e diventano tredici pezzi, da sinistra a
   destra nell'ordine in cui li trovi sotto le dita.</p>
@@ -1024,17 +563,17 @@
     progetto FreePats, sotto <b>Creative Commons Attribution 4.0</b>. Quella licenza chiede
     una citazione, ed è questa: <b>Drum samples provided by DrumGizmo.org.</b></div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>12 · La batteria</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>9 · La batteria</span></div>
 </section>
 
 <!-- ═════ 13. LA BASE E LE MANI ═════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>La base e le mani</h1><div class="sub">La batteria gira, tu ci suoni sopra</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 16</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 10</div>
   </div>
 
-  <h2><span class="n">13</span>Il pattern ha uno strumento suo</h2>
+  <h2><span class="n">10</span>Il pattern ha uno strumento suo</h2>
   <p>Il giro registrato e le dita hanno <b>strumenti separati</b>. È tutta qui la differenza
   fra un sequencer e un metronomo evoluto: prima lo strumento era uno solo e condiviso,
   quindi cambiare suono per le mani cambiava anche il loop — e la cosa che chiunque vuole
@@ -1064,49 +603,17 @@
     un pattern di synth: adotta l'ultimo strumento con cui ci hai scritto. Per avere batteria
     <i>e</i> melodia registrate insieme servirebbero due tracce, che oggi non ci sono.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>13 · La base e le mani</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>10 · La base e le mani</span></div>
 </section>
 
 <!-- ═════ 14. IL COLLAUDO ═════ -->
 <section class="page">
   <div class="masthead">
-    <div><h1>Il collaudo</h1><div class="sub">Cosa guardare nei primi tre secondi</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 17</div>
-  </div>
-
-  <h2><span class="n">14</span>All'accensione le luci si controllano da sole</h2>
-  <p>Mentre il display disegna l'intro, il pannello fa passare <b>rosso, verde e blu</b> su
-  tutti e venti i tasti, uno dopo l'altro. Non è una decorazione: è il momento in cui si vede
-  se qualcosa non va, e dura quanto l'intro perché è l'unico in cui nessuno sta ancora
-  suonando.</p>
-  <table>
-    <tr><th>Cosa vedi</th><th>Cosa vuol dire</th></tr>
-    <tr><td>un tasto resta spento in tutte e tre le passate</td><td>quel LED non riceve il dato: guarda la saldatura, o il tasto prima di lui nella catena</td></tr>
-    <tr class="alt"><td>un tasto salta <b>una</b> passata</td><td>un canale morto: il LED è vivo ma gli manca un colore</td></tr>
-    <tr><td>la catena si ferma a metà</td><td>l'interruzione è fra l'ultimo acceso e il primo spento, ed è lì che va cercata</td></tr>
-    <tr class="alt"><td>i colori ci sono ma sui tasti sbagliati</td><td>la mappa della catena non è mai stata imparata: <b>MENU → IMPARA LUCI</b></td></tr>
-  </table>
-
-  <p>Finita la passata, i venti tasti raccontano la stessa scena che sta comparendo sul
-  vetro, e poi si mettono a <b>respirare</b>: nessuno ha ancora suonato, e il respiro è
-  l'invito. Si spegne da solo alla prima nota.</p>
-
-  <div class="tip"><b>Serve soprattutto la prima volta</b>
-    Su una scheda appena montata questa è la prova che venti LED, tre canali ciascuno e una
-    catena lunga venti anelli funzionano — e la si ottiene dando corrente, senza strumenti e
-    senza aprire niente.</div>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>14 · Il collaudo</span></div>
-</section>
-
-<!-- ═════ 15. MIDI IN ═════ -->
-<section class="page">
-  <div class="masthead">
     <div><h1>MIDI IN</h1><div class="sub">Suonare ArcadeVox dal computer</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 18</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 11</div>
   </div>
 
-  <h2><span class="n">15</span>Collegarlo al computer</h2>
+  <h2><span class="n">11</span>Collegarlo al computer</h2>
   <p>Si collega alla <b>porta USB nativa</b> della DevKit — la stessa da cui si carica il
   firmware — e compare come <b>strumento MIDI</b> di nome <b>ArcadeVox</b>: un dispositivo
   composito, porta seriale e MIDI sulla stessa presa, un cavo solo. Non serve installare
@@ -1115,7 +622,7 @@
   filtro: è la <b>dinamica vera</b> della sezione 10, quella che i tasti del pannello non
   possono dare perché sotto hanno interruttori e non sensori di forza.</p>
 
-  <h2><span class="n">15b</span>I controlli riconosciuti</h2>
+  <h2><span class="n">11b</span>I controlli riconosciuti</h2>
   <table>
     <tr><th>Messaggio</th><th>Cosa fa</th></tr>
     <tr><td><b>Note on / off</b></td><td>suona, con dinamica; una velocity di 0 vale come note-off</td></tr>
@@ -1140,17 +647,17 @@
     <b>UART</b> della DevKit, che ha un convertitore suo, oppure tenere premuto <b>BOOT</b>
     mentre si preme <b>RESET</b>.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>15 · MIDI IN</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>11 · MIDI IN</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 12. MIDI OUT ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>MIDI OUT</h1><div class="sub">Quello che suoni finisce sul computer</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 19</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 12</div>
   </div>
 
-  <h2><span class="n">16</span>Il verso opposto</h2>
+  <h2><span class="n">12</span>Il verso opposto</h2>
   <p>Tasti, arpeggiator, sequencer e note aggiunte dagli accordi escono sulla stessa presa.
   Partono <b>dallo stesso elenco che pilota il motore audio</b>, quindi non c'è modo che
   quello che senti e quello che registri vadano fuori sincrono.</p>
@@ -1187,17 +694,17 @@
       per accordarci sopra un disco.</li>
   </ul>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>16 · MIDI OUT</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>12 · MIDI OUT</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 13-15 ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Le schermate</h1><div class="sub">Otto pagine, e la ghiera che dice dove sei</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 20</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 13</div>
   </div>
 
-  <h2><span class="n">17</span>Le otto schermate</h2>
+  <h2><span class="n">13</span>Le otto schermate</h2>
   <p>Si percorrono col <b>joystick</b>, nei due sensi. La ghiera del display è divisa in otto
   settori colorati, uno per schermata: quello dove sei è acceso pieno, gli altri sono spenti.
   Dopo due giri diventa una mappa — il viola sono i timbri, l'arancione i suoni, il verde il
@@ -1248,16 +755,16 @@
     <div><div class="shot"><img src="data:image/png;base64,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" alt="La banda: appare, resta ferma, sparisce"><div class="lbl">La banda: appare, resta ferma, sparisce</div></div></div>
   </div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>17 · Le schermate</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>13 · Le schermate</span></div>
 </section>
 
 <section class="page">
   <div class="masthead">
     <div><h1>Luci e impostazioni</h1><div class="sub">Cosa si accende, e cosa si regola</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 21</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 14</div>
   </div>
 
-  <h2><span class="n">19</span>Impostazioni</h2>
+  <h2><span class="n">14</span>Impostazioni</h2>
   <p>Non si "entra" nel menu: guardarlo <b>è</b> esserci dentro. La prima manopola scorre le
   voci, la seconda cambia il valore.</p>
   <table>
@@ -1283,7 +790,7 @@
   <p class="cap">Le sensibilità sono in <b>giri di manopola</b>, che è la grandezza che senti
   sotto le dita.</p>
 
-  <h2><span class="n">18</span>Le luci</h2>
+  <h2><span class="n">15</span>Le luci</h2>
   <table>
     <tr><th>Colore</th><th>Cosa vuol dire</th></tr>
     <tr><td>azzurro tenue / viola tenue</td><td>tasto bianco / tasto nero, a riposo</td></tr>
@@ -1306,17 +813,17 @@
   <p>La <b>luminosità</b> si regola in <b>MENU → LUCI</b>, da spente a otto. Se l'alimentatore
   è al limite, abbassarla è la prima cosa da provare.</p>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>18–19 · Luci e impostazioni</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>14–15 · Luci e impostazioni</span></div>
 </section>
 
 <!-- ══════════════════════════════════ 13. WIFI + DIAGNOSTICA ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
-    <div><h1>WiFi e diagnostica</h1><div class="sub">Aggiornare senza telefono, e cosa fare se</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 22</div>
+    <div><h1>WiFi</h1><div class="sub">Aggiornare senza telefono</div></div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 15</div>
   </div>
 
-  <h2><span class="n">20</span>WiFi e aggiornamenti</h2>
+  <h2><span class="n">16</span>WiFi e aggiornamenti</h2>
   <p>Dal <b>MENU</b>, scorri fino a <b>MODALITÀ WIFI</b> e tieni premuto il click della seconda
   manopola. Il synth <b>ammutolisce</b> — lo stack WiFi occupa lo stesso core del motore audio
   — e si esce col <b>joystick a sinistra</b>.</p>
@@ -1339,43 +846,15 @@
     pagina del synth non la va a cercare. Spegnere i dati per un attimo basta quasi sempre — e
     infatti c'è scritto sul display.</div>
 
-  <h2><span class="n">20b</span>Se qualcosa non va</h2>
-  <table>
-    <tr><th>Sintomo</th><th>Cosa succede davvero</th><th>Cosa fare</th></tr>
-    <tr><td>Nessun suono</td><td>i tre fili audio non sono nell'ordine che il firmware si aspetta</td><td>MENU → AUDIO → USCITA, prova le sei combinazioni</td></tr>
-    <tr class="alt"><td>Suono stridulo o a velocità sbagliata</td><td>BCLK e LRC scambiati</td><td>stessa voce di menu</td></tr>
-    <tr><td>Un tasto non risponde</td><td>hot-swap non inserito bene, o piedino piegato</td><td>estrai lo switch e guarda i due piedini</td></tr>
-    <tr class="alt"><td>Una riga intera non risponde</td><td>una pista o una saldatura</td><td>controlla l'MCP23017, non i tasti</td></tr>
-    <tr class="alt"><td>Luci sul tasto sbagliato</td><td>la mappa della catena non è mai stata imparata</td><td>MENU → LUCI → IMPARA LUCI</td></tr>
-    <tr><td>Le luci ammiccano premendo molti tasti</td><td>l'alimentatore va in ginocchio</td><td>abbassa la LUMINOSITÀ, o metti un alimentatore da 2 A</td></tr>
-    <tr class="alt"><td>Una manopola salta</td><td>rimbalzi del contatto</td><td>più facile sulla quarta: non ha il pull-up esterno</td></tr>
-    <tr><td>Il filtro fischia da solo</td><td>risonanza altissima</td><td>è previsto: su SUONA abbassa la quarta manopola sotto l'85%</td></tr>
-    <tr class="alt"><td>Ho girato una manopola e non so più dov'ero</td><td>—</td><td>premi e lascia il suo click</td></tr>
-    <tr class="alt"><td>Note appese</td><td>—</td><td><span class="key hot">SILENZIO</span>: zittisce tutto all'istante</td></tr>
-  </table>
-
-  <div class="warn"><b>Se l'espansore non risponde: il PCB non ha i pull-up dell'I²C</b>
-    SDA e SCL vanno dal microcontrollore all'espansore e basta, senza le due resistenze che di
-    solito le tengono su: il bus si regge sui pull-up interni dell'ESP32, che a 400 kHz sono al
-    limite. Il firmware se ne accorge e riprova a <b>100 kHz</b>, scrivendolo sulla seriale. La
-    cura definitiva sono due resistenze da <b>4,7 kΩ</b> fra SDA e 3,3 V e fra SCL e 3,3 V, sul
-    retro fra i piedini 12 e 13 dell'MCP23017 e il suo piedino 9.</div>
-
-  <p class="cap">Parametri, pattern e mappa delle luci sopravvivono allo spegnimento. Per
-  riportare tutto ai valori di fabbrica: <code>pio run -t erase</code>, poi
-  <code>pio run -t upload</code>.</p>
-
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>20 · WiFi e diagnostica</span></div>
+    <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>16 · WiFi</span></div>
 </section>
-
-<!-- ══════════════════════════════════ 14. QUICK REFERENCE ══════════════════════════════════ -->
 <section class="page">
   <div class="masthead">
     <div><h1>Tutti i comandi</h1><div class="sub">Una pagina sola, da tenere accanto</div></div>
-    <div class="meta">ArcadeVox 2.8<br>libretto · pag. 23</div>
+    <div class="meta">ArcadeVox 2.8<br>uso · pag. 16</div>
   </div>
 
-  <h2><span class="n">21</span>I sette tasti funzione</h2>
+  <h2><span class="n">17</span>I sette tasti funzione</h2>
   <table>
     <tr><th>Tasto</th><th>Cosa fa</th></tr>
     <tr><td><span class="key">ARPEGGIO</span></td><td>arpeggiator on/off</td></tr>
@@ -1422,7 +901,7 @@
     Schematico, netlist e note di montaggio stanno in <code>docs/HARDWARE.md</code>; il
     firmware è commentato file per file.</div>
 
-  <div class="runner"><span>ArcadeVox 2.8 — libretto</span><span>21 · Comandi</span></div>
+  <div class="runner"><span>ArcadeVox 2.8 — uso</span><span>17 · Comandi</span></div>
 </section>
 
 </body>
