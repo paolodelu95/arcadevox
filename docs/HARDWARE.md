@@ -8,11 +8,17 @@ il contenuto in forma di `#define`.
 
 | | |
 |---|---|
-| MCU | ESP32-S3-DevKitC-1 **N8** — 8 MB di flash, **niente PSRAM** |
+| MCU | ESP32-S3-DevKitC-1 **N16R8** — 16 MB di flash, 8 MB di PSRAM ottale |
 | Tasti | 20 × Cherry MX hot-swap con SK6812 integrato (`CHERRY_MX-HOTSWAP-RGB_SK6812`) |
 | Matrice | 4 colonne × 5 righe su MCP23017, un 1N4148W per tasto |
 | Encoder | 4 × EC11B152442D, pulsante d'albero compreso |
 | Connettori | J_PWR (2p), J_AUDIO (5p), J_DISPLAY (7p), J_JOY (5p) |
+
+> **La variante del modulo non è indifferente.** Il firmware configura la PSRAM in modo
+> **ottale** (`board_build.arduino.memory_type = qio_opi`), che è ciò che la R8 vuole: su una
+> **N8**, priva di PSRAM, quella riga **impedisce l'avvio**. Con la tabella `default_16MB.csv`
+> le due partizioni applicative passano da 3,2 a 6,2 MB e quella dei suoni da 1,5 a 3,4 MB.
+> Chi monta una N8 deve rimettere `qio_qspi` e una tabella da 8 MB.
 | Luci | catena di 20 SK6812 a 5 V, dato via R1 = 330 Ω |
 
 ## GPIO dell'ESP32
@@ -166,7 +172,7 @@ analogica.
 
 | Q.tà | Componente | Sigla |
 |---|---|---|
-| 1 | ESP32-S3-DEVKITC-1-N8 | U0 |
+| 1 | ESP32-S3-DEVKITC-1-**N16R8** | U0 |
 | 1 | MCP23017-E/SP (DIP-28) | U1 |
 | 20 | Cherry MX hot-swap con SK6812 | SW_* |
 | 20 | 1N4148W (SOD-123) | D1–D20 |

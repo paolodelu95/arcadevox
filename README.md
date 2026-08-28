@@ -50,6 +50,8 @@ con un inviluppo vero e un filtro risonante.
   diventano tredici suoni, con la velocità di lettura su una manopola
 - **MIDI IN** dalla porta USB nativa: il synth compare al computer come strumento,
   con dinamica vera, pitch bend, pedale di risonanza e i CC che tutti i DAW danno per scontati
+- **Piano e batteria campionati**, in coda allo stesso elenco dei timbri: un pianoforte
+  vero su sette radici e una batteria acustica di tredici pezzi, uno per tasto
 - **15 timbri di fabbrica** — pianoforte, chitarra, organo, archi, campane, acido, arcade… —
   con una schermata tutta loro, e il ritratto di ognuno: forma d'onda e inviluppo
 - **Memoria**: pattern, parametri e mappa dei LED sopravvivono allo spegnimento
@@ -59,7 +61,7 @@ con un inviluppo vero e un filtro risonante.
 
 | Parte | Modello |
 |---|---|
-| MCU | ESP32-S3-DevKitC-1 **N8** (8 MB flash, niente PSRAM) |
+| MCU | ESP32-S3-DevKitC-1 **N16R8** (16 MB flash, 8 MB di PSRAM ottale) |
 | Tastiera | 20 Cherry MX hot-swap con SK6812 integrato, matrice 4×5 con diodo per tasto |
 | Espansore | MCP23017 su I2C: 4 colonne + 5 righe + i 4 pulsanti degli encoder |
 | Encoder | 4 × EC11 con pulsante d'albero |
@@ -179,7 +181,7 @@ giri diventa una mappa — il viola sono i timbri, l'arancione i suoni, il lime 
 | Schermata | Cosa mostra |
 |---|---|
 | **SUONA** | la forma d'onda vera che esce, con la curva del filtro dietro come orizzonte |
-| **TIMBRI** | i quindici timbri di fabbrica, con il ritratto di quello scelto |
+| **TIMBRI** | i quindici timbri, il piano e la batteria campionati, col ritratto di quello scelto |
 | **SUONI** | tredici suoni campionati, uno per tasto |
 | **INVILUPPO** | il profilo A/D/S/R disegnato, che si deforma mentre giri |
 | **EFFETTI** | quattordici righe: grana, eco, LFO, arpeggio, corpo, inviluppo di filtro |
@@ -443,6 +445,26 @@ la schermata **TIMBRI**, e si sentono mentre giri la manopola: scorrere *è* car
 sovrascrive i parametri correnti: da lì in poi si ritocca liberamente, un preset è un punto
 di partenza e non una gabbia.
 
+## Piano e batteria campionati
+
+In coda ai quindici timbri ci sono **PIANO** e **BATTERIA**, sulla stessa manopola perché
+per chi suona sono la stessa domanda — *con che suono* — e distinguerli in una schermata a
+parte avrebbe separato ciò che l'orecchio non separa. Sotto però non sono preset: sono
+campioni, e il motore sottrattivo tace.
+
+Il **piano** è multi-campione: sette radici, una ogni tre semitoni. Una nota si suona
+prendendo la radice più vicina e rileggendo il campione al rapporto che la porta
+all'intonazione giusta. Dentro l'arco delle radici lo spostamento non supera mai il semitono
+e mezzo — oltre, un pianoforte si sente tirato — e fuori si trasporta di ottave intere, cioè
+con un rapporto esatto di 2, l'unico spostamento grande che un orecchio perdona.
+
+La **batteria** ha tredici pezzi, uno per tasto, e non si intona: un rullante non ha
+un'altezza da trasporre.
+
+Un colpo campionato parte **fuori dalla catena delle voci**: non occupa una voce del motore,
+quindi non toglie polifonia alle dita. È la ragione per cui il pattern e la tastiera possono
+davvero suonare insieme invece di rubarsi il posto — vedi *Il pattern ha uno strumento suo*.
+
 ## Aggiornare il firmware via WiFi
 
 > **Scorciatoia senza tastiera.** La modalità rete si raggiunge dal menu, cioè
@@ -518,11 +540,28 @@ Il `platformio.ini` è pinnato al core Arduino 2.0.x, perché il motore audio us
 legacy `driver/i2s.h`; di conseguenza anche Arduino_GFX è fermo alla 1.4.9, l'ultima
 compatibile con quel core.
 
+## Crediti dei campioni
+
+Il **piano** viene dalla [University of Iowa Electronic Music Studios](https://theremin.music.uiowa.edu/MIS.html),
+che pubblica le sue registrazioni dal 1997 dichiarandole utilizzabili *"for any projects,
+without restrictions"*.
+
+La **batteria** è la MuldjordKit di Lars Muldjord, registrata per DrumGizmo e rimessa
+insieme dal progetto FreePats, sotto **Creative Commons Attribution 4.0**:
+
+> Drum samples provided by DrumGizmo.org.
+
+Quella riga non è una cortesia, è la condizione della licenza. È anche la regola che decide
+da dove si prendono i campioni di questo progetto, ed è una sola: finiscono in
+`firmware/firmware.bin`, che viene **ridistribuito via OTA**, quindi la licenza deve
+permettere di ridistribuirli. È lo stesso motivo per cui `tools/samples/` resta fuori da git
+— vedi [`tools/samples/README.md`](tools/samples/README.md).
+
 ## Documentazione
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.5**, 20 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI, con le schermate vere |
+| [`docs/ArcadeVox_Libretto.pdf`](docs/ArcadeVox_Libretto.pdf) | **Libretto 2.8**, 23 pagine A4: blueprint, connettori pin per pin, montaggio, uso, MIDI, con le schermate vere |
 | [`docs/ArcadeVox_Libretto.html`](docs/ArcadeVox_Libretto.html) | La sorgente del libretto, da cui si rigenera il PDF |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |
 | [`docs/pannello.svg`](docs/pannello.svg) | Blueprint del pannello, da solo |
