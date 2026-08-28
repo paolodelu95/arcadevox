@@ -479,9 +479,35 @@ void update(uint32_t now, const LightView &v) {
                 else if (h < 170) base = {0, (uint8_t)(60 - k), (uint8_t)k};
                 else base = {(uint8_t)k, 0, (uint8_t)(60 - k)};
             } else {
-                const bool inScale = (v.scaleRoot < 0) || (v.scaleMask & (1u << n));
                 base = IS_SHARP[n] ? REST_SHARP : REST_NATURAL;
-                if (!inScale) base = {6, 0, 0};  // fuori scala: quasi spento, rossastro
+
+                // `scaleMask` segna le **toniche**, non le note "comprese nella
+                // scala": lo riempie scaleIsRoot(), che e' vera dove il grado e'
+                // un multiplo della lunghezza della scala.
+                //
+                // Qui veniva letto come "questa nota appartiene alla scala" e
+                // tutto il resto finiva dipinto di rosso. Su una pentatonica le
+                // toniche fra i tredici tasti sono tre, quindi dieci tasti su
+                // tredici diventavano rossi appena si sceglieva una scala — e
+                // restavano tali, perche' il rosso era il colore di riposo:
+                // premendo il tasto tornava quello giusto e al rilascio si
+                // ripresentava.
+                //
+                // Un tasto "fuori scala" non esiste su questa tastiera, e non e'
+                // un dettaglio: scaleSemitone() mappa **ognuno** dei tredici su
+                // un grado valido, per questo su una pentatonica gli stessi tasti
+                // coprono due ottave abbondanti. Una nota fuori dalla scala non
+                // si puo' proprio suonare, quindi non c'e' niente da segnalare.
+                //
+                // La tonica invece vale la pena vederla: dice dove ricomincia
+                // l'ottava, ed e' l'unico riferimento rimasto su una tastiera i
+                // cui tasti hanno smesso di essere bianchi e neri. Ambra, che sta
+                // lontana sia dal turchese dei naturali sia dal viola delle
+                // alterazioni e non si confonde con nessuno dei due.
+                if (v.scaleRoot >= 0 && (v.scaleMask & (1u << n))) {
+                    base = {60, 34, 0};
+                }
+
                 if (v.crush) base = IS_SHARP[n] ? Rgb{50, 20, 0} : Rgb{40, 30, 0};
             }
 

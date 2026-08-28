@@ -36,7 +36,16 @@ struct LightView {
     bool crush;           // 8 BIT inserito: cambia la tinta di tutto il pannello
     uint8_t brightness;   // 0..8, dalla schermata impostazioni
     int8_t scaleRoot;     // tonica della scala (0..11), -1 = cromatica libera
-    uint16_t scaleMask;   // bit 0..12: nota compresa nella scala scelta
+    // Bit 0..12: i tasti che cadono su una **tonica**, cioe' dove la scala
+    // ricomincia. Lo riempie scaleIsRoot().
+    //
+    // Non e' "le note comprese nella scala", che e' quello che diceva prima
+    // questa riga e che ha prodotto un guasto vero: chi legge ci aveva costruito
+    // sopra un "fuori scala" e dipingeva di rosso dieci tasti su tredici. Su
+    // questa tastiera un tasto fuori scala non esiste — scaleSemitone() mappa
+    // ognuno dei tredici su un grado valido — quindi una maschera con quel
+    // significato non avrebbe nemmeno ragione di esserci.
+    uint16_t scaleMask;
     // Nessuno ha ancora premuto un tasto da quando la scheda si e' accesa: i
     // tredici tasti nota respirano insieme, piano. Non e' un lampeggio — il
     // lampeggio dice urgenza, il respiro dice possibilita' — e si spegne da solo
