@@ -1878,7 +1878,20 @@ uint8_t holdDrawn = 0;
 void drawHoldRing(uint8_t fill, uint8_t currentScreenIdx) {
     if (fill == holdDrawn) return;
     if (fill == 0) {
-        drawPosRing(currentScreenIdx);  // stessa primitiva, stessi pixel
+        // Prima si spegne **tutta** la corona, poi si ridisegnano i settori.
+        //
+        // Ridisegnare i soli settori non bastava, ed e' la stessa primitiva a
+        // ingannare: drawPosRing lascia sei gradi di stacco fra un settore e
+        // l'altro — quarantotto in tutto — mentre l'arco della conferma e'
+        // continuo e ci passa sopra. Il rosso finito dentro gli stacchi non lo
+        // ricopriva nessuno, e restava appeso al bordo come otto trattini finche'
+        // non si cambiava schermata.
+        //
+        // "Stessa primitiva, stessi pixel" valeva per la forma della corona, non
+        // per la sua copertura: l'arco pieno ne tocca di piu' di quanti i settori
+        // ne rimettano a posto.
+        arcSeg(0.0f, 360.0f, POSRING_IN, POSRING_OUT, BLACK);
+        drawPosRing(currentScreenIdx);
     } else {
         const float a = 360.0f * (float)fill / 255.0f;
         arcSeg(0.0f, a, POSRING_IN, POSRING_OUT, HUD_RED);
