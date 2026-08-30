@@ -274,6 +274,9 @@ static int8_t arpDir = 1;
 static uint32_t arpLastStep = 0;
 static bool prevAnyHeld = false;
 
+// Inattivita' dopo la quale il display torna da solo sulla schermata SUONA.
+static const uint32_t HOME_IDLE_MS = 30000;
+
 static uint32_t lastDisplayAt = 0;
 static uint32_t lastLightAt = 0;
 // Ultima volta che qualcuno ha toccato un tasto, e se l'ha mai fatto. Servono
@@ -1038,15 +1041,13 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
             }
             break;
 
-        default:  // LIVELLO: si guarda, non si tocca. Tre trattini scritti sono
-                  // informazione: dicono che qui non c'e' niente da girare, e
-                  // nessuno resta a chiedersi perche' non succede niente.
+        default:
             break;
     }
 
     for (int e = 0; e < 4; ++e) {
-        // Il valore lampeggia al posto del nome solo se un valore ce l'ha: sulle
-        // manopole mute di LIVELLO uno scatto non deve far comparire una
+        // Il valore lampeggia al posto del nome solo se un valore ce l'ha: dove
+        // una manopola non comanda niente uno scatto non deve far comparire una
         // didascalia vuota al posto del trattino.
         Display::setKnob(e, label[e], buf[e], frac[e], enc[e] != 0 && buf[e][0] != '\0');
     }
@@ -1898,6 +1899,27 @@ void loop() {
     if (Input::joyRight()) Display::nextScreen();
     if (Input::joyLeft()) Display::prevScreen();
 
+    // ------------------------------------------------------ ritorno a casa
+    //
+    // Passato mezzo minuto senza che nessuno tocchi niente, il display torna da
+    // solo su SUONA.
+    //
+    // E' la stessa idea dell'invito che fa respirare i tasti, applicata al vetro:
+    // uno strumento acceso in mezzo a una stanza viene raccolto da qualcuno che
+    // non l'ha lasciato lui, e cio' che trova non deve essere l'elenco delle
+    // impostazioni aperto sulla riga in cui l'ha piantato l'ultima persona. SUONA
+    // e' la pagina che si spiega da se' — c'e' l'onda, ci sono le quattro
+    // manopole del suonare, e adesso c'e' anche il livello — quindi e' la sola
+    // che valga la pena trovare accesa.
+    //
+    // Trenta secondi e non cinque: si sceglie un timbro guardando l'elenco e
+    // pensandoci, e una pagina che scappa via mentre la stai leggendo e' molto
+    // peggio di una pagina che resta dov'e'. Tenere premuto un tasto conta come
+    // attivita', quindi nemmeno un accordo lungo fa scattare il ritorno.
+    if (Display::currentScreen() != SCREEN_SUONA && Input::idleMs() >= HOME_IDLE_MS) {
+        Display::goTo(SCREEN_SUONA);
+    }
+
     // Le due letture stanno in due variabili e non dentro l'if. Sembra pedanteria
     // e invece era il bug: joyUp() e' un evento a fronte, leggerla *e'* consumarla,
     // e chiamandola una volta nella condizione e una nel calcolo la seconda
@@ -2418,7 +2440,6 @@ void loop() {
         view.arpName = ARP_NAMES[arpMode];
         view.poly = polyMode;
         view.chordName = CHORDS[chordMode].label;
-        view.voices = AudioEngine::activeVoices();
 
         view.crush = crushOn;
         view.crushName = CRUSH_PRESETS[crushPreset].label;

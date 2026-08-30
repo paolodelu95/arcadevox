@@ -109,7 +109,6 @@ SynthView baseView() {
     v.arpName = "SU";
     v.poly = false;
     v.chordName = "SINGOLA";
-    v.voices = 0;
 
     // Effetti: tutti a riposo, come all'accensione. Le stringhe non possono
     // restare nulle — il display le scrive senza chiedersi se esistono.
@@ -185,23 +184,39 @@ void tick(const SynthView &v, uint32_t ms = 33) {
 // cambio di pagina.
 
 // --- SUONA ------------------------------------------------------------------
-void sceneSuona(uint8_t wave, bool poly, uint8_t voices, float cutoff, float res) {
+void sceneSuona(uint8_t wave, bool poly, float rms, float cutoff, float res) {
     boot();
     gotoScreen(SCREEN_SUONA);
     Sim::setScope(wave, 0.8f);
+    Sim::setLevels(rms, rms);
     SynthView v = baseView();
     v.waveform = wave;
     v.poly = poly;
-    v.voices = voices;
     v.cutoffHz = cutoff;
     v.resonance = res;
     knobs("ONDA", "TAGLIO", "VOL", "RISON.");
     tick(v);
 }
-void scene_suona_sine() { sceneSuona(WAVE_SINE, false, 1, 2000.0f, 0.0f); }
-void scene_suona_square() { sceneSuona(WAVE_SQUARE, true, 4, 800.0f, 0.4f); }
-void scene_suona_saw() { sceneSuona(WAVE_SAW, true, 8, 6000.0f, 0.9f); }
-void scene_suona_noise() { sceneSuona(WAVE_NOISE, false, 0, 120.0f, 0.0f); }
+void scene_suona_sine() { sceneSuona(WAVE_SINE, false, 0.1f, 2000.0f, 0.0f); }
+void scene_suona_square() { sceneSuona(WAVE_SQUARE, true, 0.3f, 800.0f, 0.4f); }
+void scene_suona_saw() { sceneSuona(WAVE_SAW, true, 0.6f, 6000.0f, 0.9f); }
+void scene_suona_noise() { sceneSuona(WAVE_NOISE, false, 0.0f, 120.0f, 0.0f); }
+
+// La corona del livello ai tre estremi che contano: muta, a meta' corsa, e in
+// zona rossa col picco appeso in cima. E' la prova che prima stava sulla
+// schermata LIVELLO, spostata dove sta adesso la cosa che misura.
+void sceneSuonaLivello(float rms, float peak) {
+    boot();
+    gotoScreen(SCREEN_SUONA);
+    Sim::setScope(WAVE_SINE, rms);
+    Sim::setLevels(rms, peak);
+    SynthView v = baseView();
+    knobs("ONDA", "TAGLIO", "VOL", "RISON.");
+    tick(v);
+}
+void scene_suona_livello_muto() { sceneSuonaLivello(0.0f, 0.0f); }
+void scene_suona_livello_meta() { sceneSuonaLivello(0.1f, 0.2f); }
+void scene_suona_livello_rosso() { sceneSuonaLivello(0.9f, 1.0f); }
 
 void scene_suona_tutto_acceso() {
     boot();
@@ -213,7 +228,6 @@ void scene_suona_tutto_acceso() {
     v.crush = true;
     v.hold = true;
     v.poly = true;
-    v.voices = 12;
     v.octave = 2;
     knobs("ONDA", "TAGLIO", "VOL", "RISON.");
     tick(v);
@@ -227,15 +241,17 @@ void scene_suona_dopo_uso() {
     knobs("ONDA", "TAGLIO", "VOL", "RISON.");
     tick(v);
     // Dieci giri che toccano tutte le fasce dinamiche: la traccia, l'orizzonte
-    // del filtro, la corona delle voci, la fila delle targhette e l'ottava.
+    // del filtro, la corona del livello con il suo picco che ricade, la fila
+    // delle targhette e l'ottava.
     const uint8_t waves[10] = {WAVE_SQUARE, WAVE_SAW,   WAVE_TRIANGLE, WAVE_SINE, WAVE_PULSE,
                                WAVE_NOISE,  WAVE_SAW,   WAVE_SQUARE,   WAVE_SINE, WAVE_SAW};
     const int8_t octs[10] = {1, 2, -2, -1, 0, 2, -2, 1, 0, -1};
+    const float lv[10] = {0.02f, 0.3f, 0.9f, 0.05f, 0.6f, 1.0f, 0.001f, 0.4f, 0.75f, 0.15f};
     for (int i = 0; i < 10; ++i) {
+        Sim::setLevels(lv[i], lv[i]);
         v.waveform = waves[i];
         v.octave = octs[i];
         v.poly = (i % 2) == 0;
-        v.voices = (uint8_t)(i + 3);
         v.cutoffHz = 200.0f + 700.0f * (float)i;
         v.resonance = 0.1f * (float)i;
         v.arp = (i % 3) == 0;
@@ -420,33 +436,6 @@ void scene_ritmo_dopo_uso() {
     }
 }
 
-// --- LIVELLO ----------------------------------------------------------------
-void sceneLivello(float rms, float peak) {
-    boot();
-    gotoScreen(SCREEN_LIVELLO);
-    Sim::setLevels(rms, peak);
-    SynthView v = baseView();
-    knobs("-", "-", "VOL", "-");
-    tick(v);
-}
-void scene_livello_zero() { sceneLivello(0.0f, 0.0f); }
-void scene_livello_meta() { sceneLivello(0.1f, 0.2f); }
-void scene_livello_clip() { sceneLivello(0.99f, 1.0f); }
-
-void scene_livello_dopo_uso() {
-    boot();
-    gotoScreen(SCREEN_LIVELLO);
-    SynthView v = baseView();
-    knobs("-", "-", "VOL", "-");
-    Sim::setLevels(0.0f, 0.0f);
-    tick(v);
-    const float lv[10] = {0.02f, 0.3f, 0.9f, 0.05f, 0.6f, 1.0f, 0.001f, 0.4f, 0.75f, 0.15f};
-    for (int i = 0; i < 10; ++i) {
-        Sim::setLevels(lv[i], lv[i]);
-        tick(v);
-    }
-}
-
 // --- MENU -------------------------------------------------------------------
 void sceneMenu(uint8_t cursor) {
     boot();
@@ -604,6 +593,9 @@ const Scene SCENES[] = {
     {"04-suona-noise", scene_suona_noise},
     {"05-suona-tutto-acceso", scene_suona_tutto_acceso},
     {"06-suona-dopo-uso", scene_suona_dopo_uso},
+    {"06a-suona-livello-muto", scene_suona_livello_muto},
+    {"06b-suona-livello-meta", scene_suona_livello_meta},
+    {"06c-suona-livello-rosso", scene_suona_livello_rosso},
 
     {"07-timbri-primo", scene_timbri_primo},
     {"08-timbri-nome-lungo", scene_timbri_nome_lungo},
@@ -634,10 +626,6 @@ const Scene SCENES[] = {
     {"23-ritmo-countin", scene_ritmo_countin},
     {"24-ritmo-dopo-uso", scene_ritmo_dopo_uso},
 
-    {"25-livello-zero", scene_livello_zero},
-    {"26-livello-meta", scene_livello_meta},
-    {"27-livello-clip", scene_livello_clip},
-    {"28-livello-dopo-uso", scene_livello_dopo_uso},
 
     {"29-menu-prima", scene_menu_prima},
     {"30-menu-uscita-audio", scene_menu_uscita_audio},

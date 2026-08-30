@@ -6,7 +6,7 @@
 #include "fx_rows.h"
 #include "settings.h"
 
-// Un solo anello di otto schermate, percorso col joystick sinistra/destra.
+// Un solo anello di sette schermate, percorso col joystick sinistra/destra.
 //
 // Nove erano troppe, e tre di quelle nove esistevano solo perche' un parametro
 // non aveva trovato posto altrove. LEVELS spariva dentro SUONA — cutoff,
@@ -15,9 +15,18 @@
 // SUONA, cosi' la forma d'onda che scegli la vedi davvero invece di vederne il
 // ritratto disegnato a formule; FX si allarga in un elenco vero e cambia nome.
 //
+// L'ottava, LIVELLO, ha fatto la stessa fine per la stessa ragione. Era un
+// quadrante ad ago bellissimo e inutile: per guardarlo bisognava andarsene dalla
+// schermata su cui si suona, cioe' rinunciare a vedere l'onda e le manopole
+// proprio mentre si controllava quanto forte stesse uscendo. Un livello che si
+// puo' consultare solo smettendo di fare la cosa di cui misura il livello non
+// serve a niente. Adesso e' una corona di tacche in fondo a SUONA, dove si sta
+// gia' guardando, e non chiede piu' di andare da nessuna parte.
+//
 // La corona di posizione dice sempre dove sei — un settore colorato per pagina —
 // e il ritorno a casa con la pressione lunga non serve piu': da qualunque punto
-// dell'anello, casa e' al massimo quattro passi in una delle due direzioni.
+// dell'anello, casa e' al massimo tre passi in una delle due direzioni. E se ci
+// si dimentica di tornarci, ci torna da solo: vedere main.cpp e HOME_IDLE_MS.
 #define SCREEN_SUONA 0      // onda vera, taglio, volume, risonanza: si suona qui
 #define SCREEN_TIMBRI 1     // i quindici timbri, la scala e l'accordo
 // I tredici tasti smettono di essere note e diventano tredici suoni. Sta subito
@@ -28,9 +37,8 @@
 #define SCREEN_INVILUPPO 3  // attacco, decadimento, sostegno, rilascio
 #define SCREEN_EFFETTI 4    // elenco: grana, eco, LFO, arpeggio, corpo, filtro
 #define SCREEN_RITMO 5      // sequencer: il cursore c'e' sempre, non si "entra"
-#define SCREEN_LIVELLO 6    // VU meter ad ago
-#define SCREEN_MENU 7       // impostazioni
-#define SCREEN_COUNT 8
+#define SCREEN_MENU 6       // impostazioni
+#define SCREEN_COUNT 7
 
 // Le schermate "a elenco" sono l'unica eccezione alla regola delle quattro
 // manopole: la 1 sceglie la riga, la 2 ne cambia il valore. Su tutte le altre le
@@ -72,7 +80,6 @@ struct SynthView {
     const char *arpName;
     bool poly;          // false = MONO, true = POLIFONICO
     const char *chordName;
-    uint8_t voices;     // voci che stanno suonando adesso
 
     // --- effetti ---
     bool crush;               // 8 BIT inserito

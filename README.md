@@ -44,7 +44,7 @@ con un inviluppo vero e un filtro risonante.
 - **Collaudo delle luci all'accensione**: mentre il display disegna l'intro, il pannello
   fa passare rosso, verde e blu su tutti e venti i tasti — un LED morto o un canale morto
   si vedono subito — e poi racconta la stessa scena che sta comparendo sul vetro
-- **Display GC9A01** tondo con un'interfaccia **radiale**: otto schermate, la ghiera che dice
+- **Display GC9A01** tondo con un'interfaccia **radiale**: sette schermate, la ghiera che dice
   dove sei, e sotto ogni manopola scritto cosa fa in quel momento
 - **Tredici suoni campionati** su una schermata sua: i tasti smettono di essere note e
   diventano tredici suoni, con la velocità di lettura su una manopola
@@ -133,7 +133,6 @@ corsa sei. Girando, il nome lascia il posto al valore per un secondo e poi torna
 | **INVILUPPO** | attacco | decadimento | **sostegno** | rilascio |
 | **EFFETTI** | scegli la riga | cambia il valore | volume | — |
 | **RITMO** | passo | nota | volume | tempo |
-| **LIVELLO** | — | — | volume | — |
 | **MENU** | scegli la voce | cambia il valore | volume | — |
 
 La terza è **sempre il volume**, tranne su INVILUPPO dove le lettere da regolare sono quattro
@@ -174,20 +173,35 @@ targhetta del colore dell'ottava — lo stesso che prendono le celle del sequenc
 
 ### Le sette schermate
 
-Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in otto settori
+Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in sette settori
 colorati, uno per schermata: quello dove sei è acceso pieno, gli altri sono spenti. Dopo due
 giri diventa una mappa — il viola sono i timbri, l'arancione i suoni, il lime il ritmo.
 
+E se ti dimentichi dove sei, **ci torna da solo**: passati trenta secondi senza che nessuno
+tocchi niente, il display rientra su SUONA. Uno strumento acceso in mezzo a una stanza viene
+raccolto da qualcuno che non l'ha lasciato lì, e quello che deve trovare è la pagina su cui si
+suona — non l'elenco delle impostazioni aperto dove l'ha piantato l'ultima persona. Tenere
+premuto un tasto conta come attività, quindi nemmeno un accordo lungo lo fa scattare.
+
 | Schermata | Cosa mostra |
 |---|---|
-| **SUONA** | la forma d'onda vera che esce, con la curva del filtro dietro come orizzonte |
+| **SUONA** | la forma d'onda vera che esce, la curva del filtro dietro come orizzonte, e il livello in fondo |
 | **TIMBRI** | i quindici timbri, il piano e la batteria campionati, col ritratto di quello scelto |
 | **SUONI** | tredici suoni campionati, uno per tasto |
 | **INVILUPPO** | il profilo A/D/S/R disegnato, che si deforma mentre giri |
 | **EFFETTI** | quattordici righe: grana, eco, LFO, arpeggio, corpo, inviluppo di filtro |
 | **RITMO** | la griglia a 16 passi, con la testina che orbita sul bordo |
-| **LIVELLO** | il VU meter ad ago, concentrico al vetro |
 | **MENU** | le impostazioni |
+
+Sotto l'onda di **SUONA**, sull'arco basso, ventiquattro tacche dicono **quanto forte sta
+uscendo**: verdi fin dove si sta larghi, rosse nell'ultimo quinto dove si rischia di tosare, e
+una tacca bianca più lunga che resta appesa mezzo secondo sul picco prima di ricadere. Le
+tacche della zona rossa si vedono, in rosso spento, anche quando il suono è basso: il confine
+si guarda **prima** di arrivarci.
+
+Prima era una schermata a sé, con un bel quadrante ad ago — e valeva molto meno, perché per
+consultarla bisognava andarsene dalla pagina su cui si suona. Un livello si guarda *mentre* si
+fa rumore, non al posto di farlo.
 
 ### Quando il display parla
 
@@ -561,7 +575,7 @@ permettere di ridistribuirli. È lo stesso motivo per cui `tools/samples/` resta
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/ArcadeVox_Uso.pdf`](docs/ArcadeVox_Uso.pdf) | **Libretto d'uso 2.8**, 16 pagine A4: suonare, timbri, piano e batteria, ritmo, MIDI, schermate, aggiornamenti |
+| [`docs/ArcadeVox_Uso.pdf`](docs/ArcadeVox_Uso.pdf) | **Libretto d'uso 2.9**, 16 pagine A4: suonare, timbri, piano e batteria, ritmo, MIDI, schermate, aggiornamenti |
 | [`docs/ArcadeVox_Montaggio.pdf`](docs/ArcadeVox_Montaggio.pdf) | **Libretto di montaggio 2.8**, 9 pagine A4: blueprint, connettori pin per pin, tarature, collaudo e diagnostica |
 | `docs/ArcadeVox_Uso.html` · `docs/ArcadeVox_Montaggio.html` | Le sorgenti, da cui si rigenerano i due PDF |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Il cablaggio della scheda, ricavato dallo schematico e dalla netlist |

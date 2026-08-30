@@ -207,7 +207,20 @@ Button buttons[B_COUNT];
 
 const uint8_t JOY_PINS[4] = {PIN_JOY_UP, PIN_JOY_DOWN, PIN_JOY_LEFT, PIN_JOY_RIGHT};
 
+// Ultimo istante in cui qualcuno ha toccato qualcosa: un tasto, il joystick, un
+// albero, una manopola. Serve al ritorno a casa del display, ed e' tenuta qui
+// dentro perche' questo e' l'unico file che vede *tutti* i comandi — contarli uno
+// per uno in main.cpp vorrebbe dire dimenticarne uno, e il modo in cui ci si
+// accorge di averne dimenticato uno e' che la schermata scappa via da sotto le
+// mani di chi la sta usando.
+uint32_t lastActivity = 0;
+int32_t encActivity = 0;
+
 void feed(Button &b, bool raw, uint32_t now) {
+    // Premuto **o tenuto**: tenere giu' un tasto e' usare lo strumento tanto
+    // quanto premerlo. Con il solo fronte, un accordo tenuto venti secondi
+    // conterebbe come venti secondi di inattivita'.
+    if (raw) lastActivity = now;
     if (raw != b.rawLast) {
         b.rawLast = raw;
         b.lastChange = now;
@@ -425,7 +438,15 @@ void begin() {
     encoderBegin(encoders[0], PIN_ENC1_A, PIN_ENC1_B, isrEnc0);
     encoderBegin(encoders[1], PIN_ENC2_A, PIN_ENC2_B, isrEnc1);
     encoderBegin(encoders[2], PIN_ENC3_A, PIN_ENC3_B, isrEnc2);
-    encoderBegin(encoders[3], PIN_ENC4_A, PIN_ENC4_B, isrEnc3);
+    // ENC4 con A e B scambiati, e non e' un refuso: sul PCB le sue due fasi
+    // arrivano al contrario delle altre tre — si vede gia' dai piedini, che sono
+    // gli unici a scendere (40, 39) invece di salire. Il risultato era la sola
+    // manopola dello strumento che toglieva girando in avanti.
+    //
+    // Lo scambio sta qui e non in pinout.h apposta: li' i nomi devono restare
+    // quelli dello schematico, altrimenti chi cerca ENC4_A col multimetro in mano
+    // trova scritta una cosa e ne misura un'altra.
+    encoderBegin(encoders[3], PIN_ENC4_B, PIN_ENC4_A, isrEnc3);
 
     for (int i = 0; i < FN_COUNT; ++i) {
         fnTrackers[i] = PressTracker{(uint8_t)(B_MATRIX0 + FN_SLOT[i]), fnThreshold(i), false,
@@ -437,6 +458,17 @@ void update() {
     const uint32_t now = millis();
 
     matrixScan();
+
+    // Gli encoder non passano da feed(): il conto lo muove l'interrupt. Si guarda
+    // la somma dei quattro contatori — se e' cambiata, qualcuno ha girato. La
+    // somma puo' traboccare i trentadue bit, e non importa: qui si confronta per
+    // uguaglianza, non si misura niente.
+    int32_t encSum = 0;
+    for (int e = 0; e < 4; ++e) encSum += encoders[e].count;
+    if (encSum != encActivity) {
+        encActivity = encSum;
+        lastActivity = now;
+    }
 
     for (int k = 0; k < MATRIX_COLS * MATRIX_ROWS; ++k) {
         feed(buttons[B_MATRIX0 + k], (matrixRaw & (1u << k)) != 0, now);
@@ -539,6 +571,11 @@ uint32_t fnHeldMs(int fn) {
     const Button &b = buttons[B_MATRIX0 + FN_SLOT[fn]];
     return b.state ? (millis() - b.pressedAt) : 0;
 }
+
+// Da quanto nessuno tocca niente. Appena acceso vale gia' molto — lastActivity
+// parte da zero — ed e' giusto cosi': una scheda appena accesa e' inattiva per
+// definizione, e comunque parte gia' dalla schermata di casa.
+uint32_t idleMs() { return millis() - lastActivity; }
 
 int encDelta(int which) {
     if (which < 0 || which >= 4) return 0;

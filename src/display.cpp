@@ -189,12 +189,11 @@ const uint16_t SCREEN_ACCENT[SCREEN_COUNT] = {
     HUD_AMBER,   // INVILUPPO
     HUD_MAGENTA, // EFFETTI
     HUD_LIME,    // RITMO
-    HUD_ICE,     // LIVELLO
     HUD_LABEL,   // MENU: il piu' silenzioso della ruota, qui non si suona
 };
 
-const char *const SCREEN_TITLE[SCREEN_COUNT] = {"SUONA", "TIMBRI",  "SUONI", "INVIL.",
-                                                "EFFETTI", "RITMO", "LIVELLO", "MENU"};
+const char *const SCREEN_TITLE[SCREEN_COUNT] = {"SUONA", "TIMBRI", "SUONI", "INVIL.",
+                                                "EFFETTI", "RITMO", "MENU"};
 
 // ------------------------------------------------------------------- helper
 void textAt(const char *s, int x, int y, uint8_t size, uint16_t color) {
@@ -421,7 +420,7 @@ void chrome(const char *title, uint16_t accent) {
 // Serve a rispondere alla domanda che l'anello di schermate poneva e non
 // risolveva: con nove pagine percorribili nei due sensi, l'unico segnale di dove
 // ti trovassi era il titolo, e per sapere quanto mancava alla prossima bisognava
-// ricordarsi l'ordine. Otto settori colorati si contano con la coda dell'occhio,
+// ricordarsi l'ordine. Sette settori colorati si contano con la coda dell'occhio,
 // e siccome ogni settore ha il colore della sua pagina, dopo due giri la ghiera
 // e' una mappa: il viola e' i timbri, il lime e' il ritmo.
 void drawPosRing(uint8_t current) {
@@ -603,12 +602,94 @@ void drawFilterCurve(uint16_t color) {
     }
 }
 
+// ------------------------------------------------------------- il livello
+//
+// Qui c'era una corona di sedici tacche che contava le voci in canna, e nessuno
+// e' mai riuscito a capire cosa stesse dicendo: si accendeva, si spegneva, e per
+// leggerla bisognava gia' sapere che il synth ha otto voci e che il polifonico ne
+// impegna piu' del mono. Una spia che si puo' interpretare solo conoscendo
+// l'implementazione non e' una spia, e' una decorazione che si muove.
+//
+// Al suo posto, nello stesso arco e con le stesse tacche, va la cosa che quella
+// forma sa dire davvero: **quanto forte sta uscendo**. Il livello e' l'unica
+// grandezza dello strumento che si spiega da se' — sale quando suoni forte, e chi
+// guarda lo capisce al primo tasto premuto senza che nessuno glielo dica.
+//
+// E' anche il motivo per cui la schermata LIVELLO non c'e' piu'. Quel quadrante
+// ad ago era piu' bello di questa fila di trattini, e valeva molto meno: per
+// consultarlo bisognava lasciare la pagina su cui si suona. Un livello si guarda
+// **mentre** si fa rumore, non al posto di farlo — quindi la sua casa e' qui,
+// sotto l'onda che lo produce, insieme alle quattro manopole che lo governano.
+constexpr int VU_TICKS = 24;
+constexpr int VU_TICK_IN = 48;
+constexpr int VU_TICK_OUT = 56;
+constexpr int VU_PEAK_IN = 45;   // il picco sborda di tre pixel per lato: e' una
+constexpr int VU_PEAK_OUT = 59;  // tacca sola e deve staccarsi dalle ventiquattro
+// Da sinistra a destra come si legge, e come si riempie una barra ovunque. Nella
+// vecchia corona delle voci l'indice zero cadeva a 130 gradi, cioe' **a destra**:
+// si riempiva all'indietro, ed era un motivo in piu' per non capirla.
+constexpr float VU_A0 = 230.0f;
+constexpr float VU_A1 = 130.0f;
+constexpr float VU_DB_MIN = -40.0f;
+constexpr float VU_RED_ZONE = 0.8f;  // -8 dBFS: da qui in su si rischia il clip
+
+// Livello lineare 0..1 -> posizione sulla corsa, in decibel. La scala lineare
+// qui non va bene: mezza scala in ampiezza e' -6 dB, cioe' un suono che si sente
+// ancora quasi come il massimo, e la corona passerebbe la vita fra le ultime
+// quattro tacche senza mai muoversi in quelle prima.
+float vuPos(float lin) {
+    if (lin <= 0.0001f) return 0.0f;
+    const float db = 20.0f * log10f(lin);
+    if (db <= VU_DB_MIN) return 0.0f;
+    if (db >= 0.0f) return 1.0f;
+    return (db - VU_DB_MIN) / -VU_DB_MIN;
+}
+
+// Un tratto radiale fra due raggi, sull'angolo della tacca i.
+void vuSpoke(int i, int rIn, int rOut, uint16_t color) {
+    const float a = VU_A0 + (VU_A1 - VU_A0) * (float)i / (float)(VU_TICKS - 1);
+    int x0, y0, x1, y1;
+    polar(a, (float)rIn, x0, y0);
+    polar(a, (float)rOut, x1, y1);
+    gfx->drawLine(x0, y0, x1, y1, color);
+}
+
+// La corona intera, ridisegnata solo quando una tacca cambia davvero stato.
+//
+// Le tacche della zona rossa restano rosse anche da spente, in fantasma: il
+// confine del clip si vede **prima** di arrivarci, e a quel punto non serve
+// nessuna spia dedicata che si accenda quando ormai e' tardi.
+//
+// Ogni tacca si disegna su **tre** tratti e non su uno, e i due monconi che
+// sporgono sono neri dove il picco non c'e'. Non e' una complicazione gratuita:
+// il picco e' l'unica tacca lunga, si sposta ad ogni fotogramma, e ridisegnando
+// solo il tratto corto ci si lasciava dietro le sue punte — la corona si
+// riempiva di trattini bianchi appesi nel vuoto, uno per ogni posizione in cui
+// il picco era passato. Cosi' invece disegnare *e'* cancellare, per
+// costruzione: la corona tocca sempre gli stessi pixel, comunque stia messa.
+void vuCrown(int lit, int peak) {
+    for (int i = 0; i < VU_TICKS; ++i) {
+        const bool red = ((float)(i + 1) / (float)VU_TICKS) > VU_RED_ZONE;
+        const bool isPeak = (i == peak);
+        const uint16_t c = isPeak ? HUD_ICE
+                           : (i < lit) ? (red ? HUD_RED : HUD_LIME)
+                                       : (red ? ghost(HUD_RED) : HUD_TRACK);
+        vuSpoke(i, VU_PEAK_IN, VU_TICK_IN, isPeak ? c : BLACK);
+        vuSpoke(i, VU_TICK_IN, VU_TICK_OUT, c);
+        vuSpoke(i, VU_TICK_OUT, VU_PEAK_OUT, isPeak ? c : BLACK);
+    }
+}
+
 void drawSuonaScreen(const SynthView &v, bool full) {
     static int8_t samples[SCOPE_SAMPLES];
     static int16_t colTop[TR_W];
     static uint8_t colH[TR_W];
     static bool traced = false;
     static float zoom = 1.0f;
+    static int litDrawn = -1;
+    static int peakDrawn = -1;
+    static int peakIdx = -1;
+    static uint32_t peakAt = 0;
 
     const uint16_t horizon = ghost(HUD_MAGENTA);
 
@@ -645,6 +726,13 @@ void drawSuonaScreen(const SynthView &v, bool full) {
         drawFilterCurve(horizon);
         traced = false;
         zoom = 1.0f;
+        litDrawn = -1;
+        peakDrawn = -1;
+        peakIdx = -1;
+        // Il picco si e' accumulato per tutto il tempo in cui la schermata non
+        // era a video: si butta, altrimenti si entrerebbe sempre col rosso
+        // acceso per un suono di dieci minuti fa.
+        AudioEngine::peakLevel();
     } else {
         // Le targhette non hanno un valore che scivola: cambiano di scatto, e
         // quando cambiano si rifa' la fila intera. Costa 158x14 px una volta ogni
@@ -662,12 +750,33 @@ void drawSuonaScreen(const SynthView &v, bool full) {
         }
     }
 
-    // La corona delle voci: sedici tacche sull'arco basso, accese quante ne stanno
-    // suonando. Il colore dice la modalita' — lime in polifonico, ambra in mono —
-    // quindi premere VOCI si vede qui prima ancora che nella targhetta.
-    if (full || v.voices != prev.voices || v.poly != prev.poly) {
-        radialTicks(48, 55, 16, 130.0f, 230.0f, v.voices,
-                    v.poly ? HUD_LIME : HUD_AMBER, HUD_TRACK);
+    // La corona del livello. Le due letture stanno **fuori** dal ritorno
+    // anticipato qui sotto: l'oscilloscopio si aggiorna solo quando ha una
+    // finestra fresca da mostrare, ma il livello no — se si fermasse insieme a
+    // lui resterebbe appeso all'ultimo valore proprio nei momenti di silenzio,
+    // cioe' scriverebbe "sta ancora suonando" quando non suona piu' niente.
+    //
+    // peakLevel() e' una lettura distruttiva e va consumata a ogni fotogramma
+    // comunque, altrimenti il picco che si vede e' quello di quando si e' entrati
+    // nella schermata.
+    const int lit = (int)(vuPos(AudioEngine::rmsLevel()) * VU_TICKS + 0.5f);
+    const int pkNow = (int)(vuPos(AudioEngine::peakLevel()) * VU_TICKS + 0.5f) - 1;
+    const uint32_t nowMs = millis();
+    if (pkNow >= peakIdx) {
+        peakIdx = pkNow;
+        peakAt = nowMs;
+    } else if (nowMs - peakAt > 600) {
+        // Mezzo secondo appeso e poi giu' di una tacca ogni ottantina di
+        // millisecondi: e' il tempo che serve all'occhio per vedere un transiente
+        // che l'RMS, per come e' lisciato, non fa in tempo a mostrare.
+        --peakIdx;
+        peakAt = nowMs - 520;
+    }
+    if (peakIdx < lit - 1) peakIdx = lit - 1;
+    if (full || lit != litDrawn || peakIdx != peakDrawn) {
+        vuCrown(lit, peakIdx);
+        litDrawn = lit;
+        peakDrawn = peakIdx;
     }
 
     // Finestra nuova o niente: senza aggancio fresco si tiene a video l'ultima.
@@ -1309,197 +1418,6 @@ void drawRitmoScreen(const SynthView &v, bool full) {
     drawOrbit(v, full);
 }
 
-// ----------------------------------------------------------------- LIVELLO
-//
-// Il VU diventa concentrico al vetro invece di avere il perno sul fondo: su un
-// display tondo un quadrante che gira attorno al centro e' la forma che il vetro
-// chiede, e la corsa passa da 110 a 200 gradi.
-//
-// La geometria resta a raggi separati, che era gia' la cosa giusta: niente si
-// sovrappone, quindi ogni elemento si cancella ridisegnandosi in nero senza
-// rovinare quello che ha accanto.
-//
-//   r <= 44   ago
-//   r 46..52  indicatore di picco
-//   r 52..60  tacche
-//   r 60      arco della scala
-//   r 72      numeri della scala
-//
-// Tutto sta dentro il raggio 78, cioe' sotto le didascalie delle manopole: un
-// quadrante che si allargasse fino al bordo se le mangerebbe, e su questa
-// schermata la manopola viva e' proprio quella del volume.
-constexpr int VU_PX = 120;
-constexpr int VU_PY = 120;
-constexpr float VU_SWEEP = 100.0f;  // gradi per lato
-constexpr int VU_NEEDLE_R = 44;
-constexpr int VU_MARK_IN = 46;
-constexpr int VU_MARK_OUT = 52;
-constexpr int VU_TICK_R = 52;
-constexpr int VU_ARC_R = 60;
-constexpr int VU_LABEL_R = 72;
-constexpr float VU_DB_MIN = -40.0f;
-constexpr float VU_RED_ZONE = 0.8f;  // -8 dBFS: da qui in su si rischia il clip
-
-// Punto sulla corsa dell'ago: pos 0 = fondo scala sinistro, 1 = destro.
-void vuPoint(float pos, int r, int &x, int &y) {
-    const float deg = (pos * 2.0f - 1.0f) * VU_SWEEP;
-    const float a = deg * (float)M_PI / 180.0f;
-    x = VU_PX + (int)((float)r * sinf(a));
-    y = VU_PY - (int)((float)r * cosf(a));
-}
-
-float vuPos(float lin) {
-    if (lin <= 0.0001f) return 0.0f;
-    const float db = 20.0f * log10f(lin);
-    if (db <= VU_DB_MIN) return 0.0f;
-    if (db >= 0.0f) return 1.0f;
-    return (db - VU_DB_MIN) / -VU_DB_MIN;
-}
-
-// Ago e picco: la stessa funzione disegna e cancella (in nero), per costruzione
-// tocca esattamente gli stessi pixel.
-void vuNeedle(float pos, uint16_t color) {
-    int x, y;
-    vuPoint(pos, VU_NEEDLE_R, x, y);
-    gfx->drawLine(VU_PX, VU_PY, x, y, color);
-    gfx->drawLine(VU_PX - 1, VU_PY, x - 1, y, color);
-    gfx->drawLine(VU_PX + 1, VU_PY, x + 1, y, color);
-}
-
-void vuMark(float pos, uint16_t color) {
-    int x0, y0, x1, y1;
-    vuPoint(pos, VU_MARK_IN, x0, y0);
-    vuPoint(pos, VU_MARK_OUT, x1, y1);
-    gfx->drawLine(x0, y0, x1, y1, color);
-    gfx->drawLine(x0 + 1, y0, x1 + 1, y1, color);
-}
-
-void vuScale() {
-    gfx->startWrite();
-    int px, py;
-    vuPoint(0.0f, VU_ARC_R, px, py);
-    for (int i = 1; i <= 60; ++i) {
-        const float p = (float)i / 60.0f;
-        int x, y;
-        vuPoint(p, VU_ARC_R, x, y);
-        const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_LIME;
-        gfx->writeLine(px, py, x, y, c);
-        gfx->writeLine(px, py - 1, x, y - 1, c);
-        px = x;
-        py = y;
-    }
-    gfx->endWrite();
-
-    // Sei valori marcati, e nessuno in cima: a 12 in punto il numero cadrebbe
-    // sulla riga di separazione. Restano -40, -32, -24 a sinistra e -16, -8, 0 a
-    // destra, con lo zero rosso al fondo scala, dove serve.
-    const float marks[6] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
-    for (int i = 0; i < 6; ++i) {
-        const float p = marks[i];
-        const uint16_t c = (p > VU_RED_ZONE) ? HUD_RED : HUD_ICE;
-        int x0, y0, x1, y1;
-        vuPoint(p, VU_TICK_R, x0, y0);
-        vuPoint(p, VU_ARC_R, x1, y1);
-        gfx->drawLine(x0, y0, x1, y1, c);
-
-        char lbl[6];
-        snprintf(lbl, sizeof(lbl), "%d", (int)(VU_DB_MIN * (1.0f - p)));
-        int lx, ly;
-        vuPoint(p, VU_LABEL_R, lx, ly);
-        textAtPoint(lbl, lx, ly, 1, c);
-    }
-}
-
-void drawLivelloScreen(const SynthView &, bool full) {
-    static float lastNeedle = -1.0f;
-    static float lastMark = -1.0f;
-    static float peakHold = 0.0f;
-    static uint32_t peakHoldAt = 0;
-    static bool lastClip = false;
-    static char lastRms[16] = "";
-    static char lastPk[20] = "";
-
-    if (full) {
-        vuScale();
-        gfx->fillCircle(VU_PX, VU_PY, 5, HUD_ICE);
-        lastNeedle = -1.0f;
-        lastMark = -1.0f;
-        peakHold = 0.0f;
-        lastClip = true;  // forza il primo disegno della spia
-        lastRms[0] = '\0';
-        lastPk[0] = '\0';
-        // Il picco si e' accumulato per tutto il tempo in cui la schermata non era
-        // a video: si butta, altrimenti si entrerebbe sempre col clip acceso.
-        AudioEngine::peakLevel();
-    }
-
-    const float rms = AudioEngine::rmsLevel();
-    // Lettura distruttiva: e' il picco degli ultimi 33 ms, non l'istante attuale.
-    const float peak = AudioEngine::peakLevel();
-    const float pos = vuPos(rms);
-
-    // Il picco resta appeso mezzo secondo e poi ricade: e' l'unico modo di vedere
-    // transienti che l'ago, per come e' smorzato, non fa in tempo a seguire.
-    const uint32_t now = millis();
-    const float ppos = vuPos(peak);
-    if (ppos >= peakHold) {
-        peakHold = ppos;
-        peakHoldAt = now;
-    } else if (now - peakHoldAt > 600) {
-        peakHold -= 0.03f;
-        if (peakHold < pos) peakHold = pos;
-    }
-
-    if (fabsf(pos - lastNeedle) > 0.002f) {
-        if (lastNeedle >= 0.0f) vuNeedle(lastNeedle, BLACK);
-        vuNeedle(pos, HUD_ICE);
-        lastNeedle = pos;
-    }
-    if (fabsf(peakHold - lastMark) > 0.002f) {
-        if (lastMark >= 0.0f) vuMark(lastMark, BLACK);
-        vuMark(peakHold, (peakHold > VU_RED_ZONE) ? HUD_RED : HUD_AMBER);
-        lastMark = peakHold;
-    }
-
-    // La spia di clip e' il perno stesso: e' il punto dove l'occhio guarda gia'.
-    const bool clip = (peak >= 0.999f);
-    if (clip != lastClip || fabsf(pos - lastNeedle) < 0.0001f) {
-        gfx->fillCircle(VU_PX, VU_PY, 5, clip ? HUD_RED : HUD_ICE);
-        lastClip = clip;
-    }
-
-    char buf[16];
-    if (rms > 0.0005f) {
-        snprintf(buf, sizeof(buf), "%.1f dB", 20.0f * log10f(rms));
-    } else {
-        snprintf(buf, sizeof(buf), "-inf dB");
-    }
-    if (strcmp(buf, lastRms) != 0) {
-        // A 136 e non a 132: i due numeri di fondo scala stanno a raggio 72 sui
-        // fianchi, cioe' sulle righe 128..135, e una gomma che partisse da li' se
-        // ne porterebbe via la meta' inferiore ad ogni cambio di livello — un
-        // difetto che poi non si richiude, perche' la scala si disegna una volta
-        // sola entrando nella schermata.
-        contentFill(136, 17);
-        textCentered(buf, 136, 2, HUD_ICE);
-        strncpy(lastRms, buf, sizeof(lastRms) - 1);
-    }
-
-    char pk[20];
-    if (peakHold > 0.0f) {
-        snprintf(pk, sizeof(pk), "pk %.0f dB", VU_DB_MIN * (1.0f - peakHold));
-    } else {
-        snprintf(pk, sizeof(pk), "pk --");
-    }
-    if (strcmp(pk, lastPk) != 0) {
-        // Fascia stretta e centrata a mano: a questa quota gli archi delle
-        // manopole passano gia' ai due fianchi, e una gomma sulla corda ne
-        // porterebbe via le punte.
-        gfx->fillRect(CX - 40, 155, 80, 8, BLACK);
-        textCentered(pk, 155, 1, HUD_LABEL);
-        strncpy(lastPk, pk, sizeof(lastPk) - 1);
-    }
-}
 // ---------------------------------------------------------------- QR code
 //
 // Versione 3 fissa (29x29 moduli) piu' 2 moduli di margine chiaro per lato: con
@@ -2018,7 +1936,6 @@ void update(const SynthView &v) {
             case SCREEN_INVILUPPO: drawInviluppoScreen(v, full); break;
             case SCREEN_EFFETTI: drawEffettiScreen(v, full); break;
             case SCREEN_RITMO: drawRitmoScreen(v, full); break;
-            case SCREEN_LIVELLO: drawLivelloScreen(v, full); break;
             default: drawMenuScreen(v, full); break;
         }
 

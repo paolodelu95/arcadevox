@@ -98,4 +98,11 @@ bool encClick(int which);
 bool encRelease(int which);
 bool encIsDown(int which);
 
+// --- inattivita' ---
+// Millisecondi dall'ultimo comando toccato, di qualunque genere: tasti, joystick,
+// alberi, manopole. Un tasto **tenuto** conta come attivita' finche' e' giu'.
+// Serve al ritorno automatico alla schermata SUONA, e sta qui perche' questo e'
+// l'unico file che vede tutti i comandi insieme.
+uint32_t idleMs();
+
 }  // namespace Input
