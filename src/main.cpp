@@ -275,7 +275,7 @@ static uint32_t arpLastStep = 0;
 static bool prevAnyHeld = false;
 
 // Inattivita' dopo la quale il display torna da solo sulla schermata SUONA.
-static const uint32_t HOME_IDLE_MS = 30000;
+static const uint32_t HOME_IDLE_MS = 10000;
 
 static uint32_t lastDisplayAt = 0;
 static uint32_t lastLightAt = 0;
@@ -1642,22 +1642,23 @@ void loop() {
     // Esclusiva: il motore audio e' spento e il core 0 e' tutto dello stack
     // WiFi. Si esce solo riavviando.
     if (NetPortal::active()) {
-        // Gli eventi di AVVIA si leggono **prima** di NetPortal::update(), e la
-        // riga sotto e' la ragione per cui questo ordine conta.
+        // Gli eventi del click della seconda manopola si leggono **prima** di
+        // NetPortal::update(), e la riga sotto e' la ragione per cui questo
+        // ordine conta.
         //
         // Sono eventi a fronte: se non li si consuma restano in coda per sempre.
         // E update() e' proprio la funzione che puo' fermarsi qualche secondo a
         // leggere il manifest — ed e' quella che, tornando, arma l'offerta di
-        // aggiornamento. Leggendoli dopo, una pressione lunga fatta *prima* che
-        // ci fosse qualcosa da installare, e gia' rilasciata da un pezzo, si
+        // aggiornamento. Leggendoli dopo, una pressione fatta *prima* che ci
+        // fosse qualcosa da installare, e gia' rilasciata da un pezzo, si
         // sarebbe applicata all'offerta appena comparsa: una riprogrammazione del
-        // firmware partita da sola, senza nessun dito sul tasto.
+        // firmware partita da sola, senza nessun dito sulla manopola.
         //
         // E' la stessa famiglia di difetto del joystick che scendeva soltanto: un
         // fronte letto due volte, o letto nel momento sbagliato, non e' mai
         // innocuo.
-        const bool playHeldLong = Input::fnLongPress(FN_PLAY);
-        Input::fnShortPress(FN_PLAY);  // il breve qui non vuol dire niente
+        const bool netPressed = Input::encClick(1);
+        Input::encRelease(1);  // il rilascio qui non vuol dire niente
 
         NetPortal::update();
         // Si esce col joystick a sinistra, che e' il "torna indietro" di tutto
@@ -1670,26 +1671,47 @@ void loop() {
         }
 
         // Se il synth ha gia' trovato una versione nuova da solo, il telefono non
-        // serve piu' a niente: si tiene premuto AVVIA e si installa da qui. Stessa
-        // conferma dello svuotamento del pattern — l'anello che si riempie mentre
-        // tieni — perche' e' la stessa categoria di gesto: dopo, il firmware non
-        // e' piu' quello di prima.
+        // serve piu' a niente: si tiene premuto il click della seconda manopola e
+        // si installa da qui. Stessa conferma delle azioni del menu — l'anello che
+        // si riempie mentre tieni — perche' e' la stessa categoria di gesto: dopo,
+        // il firmware non e' piu' quello di prima.
+        //
+        // Ed e' la stessa manopola con cui si e' entrati qui dentro, tenendo
+        // premuta la voce RETE del menu: il gesto che apre la modalita' rete e il
+        // gesto che installa sono lo stesso, sotto lo stesso dito. Prima era
+        // AVVIA, cioe' un tasto che sta dall'altra parte del pannello e che qui
+        // dentro non fa nient'altro — bisognava saperlo, e non c'era modo di
+        // arrivarci da soli.
         if (NetPortal::updateAvailable()) {
+            // Il conto parte dal fronte di pressione, mai dal solo "e' giu'": chi
+            // arriva qui ha appena tenuto premuta quella stessa manopola per
+            // aprire la modalita' rete, e senza il fronte una mano ancora appoggiata
+            // sull'albero si troverebbe l'installazione partita da sola nel
+            // momento esatto in cui il manifest arriva.
+            static uint32_t netHoldStartedAt = 0;
+            static bool netHoldFired = false;
+            if (!Input::encIsDown(1)) {
+                netHoldStartedAt = 0;
+                netHoldFired = false;
+            }
+            if (netPressed) netHoldStartedAt = millis();
+
             uint8_t fill = 0;
-            if (Input::fnIsDown(FN_PLAY)) {
-                const uint32_t held = Input::fnHeldMs(FN_PLAY);
+            if (netHoldStartedAt != 0 && !netHoldFired) {
+                // millis() e non `now`: NetPortal::update() puo' essersi fermata
+                // qualche secondo a leggere il manifest, e `now` e' di prima.
+                const uint32_t held = millis() - netHoldStartedAt;
                 fill = (held >= FN_LONG_PRESS_SLOW_MS)
                            ? 255
                            : (uint8_t)(held * 255u / FN_LONG_PRESS_SLOW_MS);
+                if (held >= FN_LONG_PRESS_SLOW_MS) {
+                    netHoldFired = true;
+                    Display::drawNetHold(255);
+                    Serial.println(F("NETWORK: installo l'aggiornamento dal synth."));
+                    NetPortal::installUpdate();
+                }
             }
             Display::drawNetHold(fill);
-            // Il dito dev'esserci ancora: la soglia scatta col tasto premuto, e
-            // pretenderlo qui chiude anche l'ultima fessura per cui un fronte
-            // vecchio possa far partire da solo una riprogrammazione.
-            if (playHeldLong && Input::fnIsDown(FN_PLAY)) {
-                Serial.println(F("NETWORK: installo l'aggiornamento dal synth."));
-                NetPortal::installUpdate();
-            }
         }
         if (now - lastDisplayAt >= NETWORK_REFRESH_MS) {
             lastDisplayAt = now;
@@ -1901,7 +1923,7 @@ void loop() {
 
     // ------------------------------------------------------ ritorno a casa
     //
-    // Passato mezzo minuto senza che nessuno tocchi niente, il display torna da
+    // Passati dieci secondi senza che nessuno tocchi niente, il display torna da
     // solo su SUONA.
     //
     // E' la stessa idea dell'invito che fa respirare i tasti, applicata al vetro:
@@ -1912,10 +1934,12 @@ void loop() {
     // manopole del suonare, e adesso c'e' anche il livello — quindi e' la sola
     // che valga la pena trovare accesa.
     //
-    // Trenta secondi e non cinque: si sceglie un timbro guardando l'elenco e
-    // pensandoci, e una pagina che scappa via mentre la stai leggendo e' molto
-    // peggio di una pagina che resta dov'e'. Tenere premuto un tasto conta come
-    // attivita', quindi nemmeno un accordo lungo fa scattare il ritorno.
+    // Dieci secondi, non trenta: mezzo minuto era abbastanza lungo da non
+    // arrivare quasi mai — si posava lo strumento, ci si girava, e la pagina
+    // delle impostazioni restava li' comunque. Dieci si sentono, e non tolgono
+    // niente a chi sta scegliendo: tenere premuto un tasto conta come attivita',
+    // e cosi' contano la manopola che gira e il joystick, quindi la pagina non
+    // scappa via mentre la stai davvero usando — solo mentre non la usi.
     if (Display::currentScreen() != SCREEN_SUONA && Input::idleMs() >= HOME_IDLE_MS) {
         Display::goTo(SCREEN_SUONA);
     }

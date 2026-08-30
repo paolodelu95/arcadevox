@@ -2096,8 +2096,12 @@ void updateNetwork() {
         char buf[24];
         snprintf(buf, sizeof(buf), "NUOVA: %s", NetPortal::updateVersion());
         hudChipCentered(166, buf, HUD_AMBER, 1);
-        textCentered("TIENI AVVIA", 184, 2, HUD_ICE);
-        textCentered("per installarla", 204, 1, HUD_LABEL);
+        // Il gesto e' lo stesso con cui si e' arrivati qui — tenere premuto il
+        // click della seconda manopola — e va nominato per quello che si ha
+        // sotto le dita. A y=184 a corpo 2 la corda ne regge quindici, di
+        // caratteri: "TIENI IL CLICK" ci sta, e il "2" scende sulla riga sotto.
+        textCentered("TIENI IL CLICK", 184, 2, HUD_ICE);
+        textCentered("della manopola 2", 204, 1, HUD_LABEL);
     } else if (st == NetPortal::NET_AP) {
         // Ancora nessuno agganciato: il codice e' la rete, e le credenziali
         // servono a chi il QR non riesce a inquadrarlo.
@@ -2156,7 +2160,8 @@ void updateNetwork() {
     textCentered("SINISTRA: ESCI", 216, 1, HUD_LIME);
 }
 
-// Il caricamento della conferma mentre si tiene premuto AVVIA per installare.
+// Il caricamento della conferma mentre si tiene premuto il click della seconda
+// manopola per installare.
 //
 // Qui si puo' disegnare sul bordo senza precauzioni: la schermata del QR non ha
 // ghiera — e' un fillScreen(BLACK) e via — quindi l'arco si accende e si spegne

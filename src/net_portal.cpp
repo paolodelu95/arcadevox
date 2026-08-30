@@ -78,8 +78,8 @@ uint8_t autoTries = 0;      // e non all'infinito: dopo tre si smette
 
 // Quello che si sapeva della versione disponibile vale per la rete su cui lo si
 // e' saputo: cambiando rete — o dimenticandola — non vale piu' niente, e lasciare
-// a schermo un "tieni AVVIA per installare" senza piu' una strada per scaricare
-// vorrebbe dire mandare qualcuno dritto in un aggiornamento fallito.
+// a schermo un "tieni il click della 2 per installare" senza piu' una strada
+// per scaricare vorrebbe dire mandare qualcuno dritto in un aggiornamento fallito.
 void forgetFoundUpdate() {
     updateReady = false;
     autoChecked = false;

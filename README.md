@@ -177,7 +177,7 @@ Si percorrono col joystick, nei due sensi. La ghiera del display è divisa in se
 colorati, uno per schermata: quello dove sei è acceso pieno, gli altri sono spenti. Dopo due
 giri diventa una mappa — il viola sono i timbri, l'arancione i suoni, il lime il ritmo.
 
-E se ti dimentichi dove sei, **ci torna da solo**: passati trenta secondi senza che nessuno
+E se ti dimentichi dove sei, **ci torna da solo**: passati dieci secondi senza che nessuno
 tocchi niente, il display rientra su SUONA. Uno strumento acceso in mezzo a una stanza viene
 raccolto da qualcuno che non l'ha lasciato lì, e quello che deve trovare è la pagina su cui si
 suona — non l'elenco delle impostazioni aperto dove l'ha piantato l'ultima persona. Tenere
@@ -509,7 +509,7 @@ finestra del browser non proteggerebbe niente — nel browser ridotto del captiv
 quella finestra è anzi il punto in cui ci si incastra. La richiesta di utente e password
 resta solo per chi apre il portale **dall'indirizzo sulla rete di casa**, che è raggiungibile
 da chiunque sia in LAN senza aver visto il display: lì l'utente è `arcade` e la password è
-quella scritta accanto al QR. Si esce con **PLAY**, che riavvia il synth.
+quella scritta accanto al QR. Si esce col **joystick a sinistra**, che riavvia il synth.
 
 Il nome della rete di casa **si sceglie da un elenco**: il synth scandaglia le reti attorno e
 te le propone in una tendina, con la potenza del segnale. Il campo libero sotto serve solo
@@ -518,6 +518,11 @@ alle reti nascoste, che in nessuna scansione compaiono.
 Le credenziali della rete di casa **restano nel synth**: alla successiva accensione della radio
 si ricollega da solo, senza ridigitarle, e il display mostra l'indirizzo che ha preso. Dal
 portale si vede quale rete è in memoria e la si può dimenticare.
+
+Ricollegandosi controlla anche se esiste un firmware più nuovo, e se c'è te lo scrive sul
+display. Lo installi **tenendo premuto il click della seconda manopola** — la stessa che hai
+tenuto premuta sulla voce RETE per arrivare qui: il gesto che apre la modalità rete e il gesto
+che installa sono lo stesso, e l'anello esterno si riempie mentre tieni.
 
 Due cose da sapere:
 

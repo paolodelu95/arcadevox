@@ -186,8 +186,8 @@ void setKnob(int slot, const char *label, const char *value, float frac, bool fl
 // --- modalita' NETWORK (il synth e' muto, il loop normale non gira) ---
 void updateNetwork();
 void drawOtaProgress(int pct);
-// L'anello che si riempie tenendo premuto AVVIA per installare l'aggiornamento
-// che il synth ha trovato da solo.
+// L'anello che si riempie tenendo premuto il click della seconda manopola per
+// installare l'aggiornamento che il synth ha trovato da solo.
 void drawNetHold(uint8_t fill);
 
 }  // namespace Display
