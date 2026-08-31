@@ -70,6 +70,10 @@ const char *const ROOT_LABELS[12] = {"DO",  "DO#", "RE",  "RE#", "MI",  "FA",
 // non lo sapeva si ritrova il progetto che accelera da solo.
 const char *const MIDIOUT_LABELS[3] = {"SPENTO", "NOTE", "NOTE+CLOCK"};
 
+// Il verso dello schermo. "CAPOVOLTO" e non "180": chi lo cerca sta guardando un
+// display montato al contrario, non un angolo da scegliere.
+const char *const SCHERMO_LABELS[2] = {"NORMALE", "CAPOVOLTO"};
+
 const char *const LED_LABELS[9] = {"SPENTE", "1", "2", "3", "4", "5", "6", "7", "MAX"};
 
 }  // namespace
@@ -94,6 +98,7 @@ const Entry ENTRIES[SETTING_COUNT] = {
     // e non la chiamava nessuno: se la mappa veniva imparata storta, l'unico
     // rimedio da pannello era rifare tutta la procedura.
     {nullptr, "AZZERA LUCI", 0, 0, nullptr},
+    {"SCHERMO", "VERSO", 2, 0, SCHERMO_LABELS},
     {"AUDIO", "USCITA", AUDIO_ORDER_COUNT, 0, AudioEngine::AUDIO_ORDER_NAMES},
     {nullptr, "MIDI OUT", 3, 1, MIDIOUT_LABELS},
     {"RETE", "MODALITA' WIFI", 0, 0, nullptr},

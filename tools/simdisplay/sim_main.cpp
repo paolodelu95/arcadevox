@@ -534,7 +534,7 @@ void scene_luci_impara_ultima() { sceneLuci(19); }
 void scene_splash() {
     // Display::begin() vero, animazione compresa: le delay() non fermano nulla,
     // quindi quello che resta nel framebuffer e' l'ultimo fotogramma.
-    Display::begin();
+    Display::begin(false /* dritto */);
 }
 
 // --- rete e aggiornamento ---------------------------------------------------

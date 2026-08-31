@@ -553,6 +553,7 @@ static Storage::SynthState snapshotState() {
     s.setRoot = setIndex[SETTING_ROOT];
     s.setLed = setIndex[SETTING_LED];
     s.setAudio = setIndex[SETTING_AUDIO];
+    s.setSchermo = setIndex[SETTING_SCHERMO];
     s.setTimbro = setIndex[SETTING_TIMBRO];
     s.setMidiOut = setIndex[SETTING_MIDIOUT];
     s.seqInstrument = seqInstrument;
@@ -1021,6 +1022,10 @@ static void applyKnobs(uint8_t scr, const int enc[4], uint32_t now) {
                 // L'uscita audio va provata ad orecchio e le luci vanno viste:
                 // hanno effetto mentre giri, non all'uscita dal menu.
                 if (which == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[which]);
+                // Il verso dello schermo si sceglie guardandolo: deve girarsi
+                // mentre muovi la manopola, o non sapresti quale dei due valori
+                // stai scegliendo.
+                if (which == SETTING_SCHERMO) Display::setFlipped(setIndex[which] != 0);
                 Storage::markDirty();
             }
             label[0] = "SCEGLI";
@@ -1114,6 +1119,7 @@ static void resetKnob(uint8_t scr, int e) {
     } else if (scr == SCREEN_MENU && e == 1 && !Settings::isAction(settingsCursor)) {
         setIndex[settingsCursor] = Settings::ENTRIES[settingsCursor].byDefault;
         if (settingsCursor == SETTING_AUDIO) AudioEngine::setPinOrder(setIndex[settingsCursor]);
+        if (settingsCursor == SETTING_SCHERMO) Display::setFlipped(setIndex[settingsCursor] != 0);
         what = Settings::ENTRIES[settingsCursor].label;
     } else if (scr == SCREEN_SUONI && e == 3) {
         memeSpeedPos = 1.0f / 3.0f;
@@ -1550,6 +1556,12 @@ void setup() {
         setIndex[SETTING_ROOT] = Settings::clampIndex(SETTING_ROOT, saved.setRoot);
         setIndex[SETTING_LED] = Settings::clampIndex(SETTING_LED, saved.setLed);
         setIndex[SETTING_AUDIO] = Settings::clampIndex(SETTING_AUDIO, saved.setAudio);
+        // Da un blob piu' vecchio il campo non c'e' e si rilegge a zero, che vale
+        // NORMALE: e' il verso di sempre, ed e' quello giusto per chi aggiorna
+        // senza avere il problema.
+        if (saved.stateRev >= 5) {
+            setIndex[SETTING_SCHERMO] = Settings::clampIndex(SETTING_SCHERMO, saved.setSchermo);
+        }
         setIndex[SETTING_TIMBRO] = Settings::clampIndex(SETTING_TIMBRO, saved.setTimbro);
         setIndex[SETTING_MIDIOUT] = Settings::clampIndex(SETTING_MIDIOUT, saved.setMidiOut);
         // Da un blob piu- vecchio il campo non c'e' e si rilegge a zero, che vale
@@ -1607,7 +1619,9 @@ void setup() {
     // scomposto proprio sulle schede che hanno fatto l'apprendimento.
     Keylight::bootBegin(setIndex[SETTING_LED]);
     Display::setPacer(bootLights);
-    Display::begin();
+    // Storage::load() e' gia' passato, quindi il verso dello schermo si sa
+    // prima ancora di costruire il pannello: l'intro esce gia' dritta.
+    Display::begin(setIndex[SETTING_SCHERMO] != 0);
     Display::setPacer(nullptr);
 
     Serial.print(F("ArcadeVox "));

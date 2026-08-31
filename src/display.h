@@ -160,7 +160,18 @@ namespace Display {
 // dipendenza va in un verso solo e le luci restano fuori da questo file.
 void setPacer(void (*fn)(uint32_t now));
 
-void begin();
+// `flipped` gira lo schermo di mezzo giro, ed e' un parametro di begin() e non
+// una chiamata dopo: il verso si sa gia' quando si costruisce il pannello,
+// perche' Storage::load() gira **prima** di qui. Cosi' anche l'intro
+// dell'accensione esce dritta, invece di comparire capovolta e raddrizzarsi tre
+// secondi dopo — che sarebbe stato il modo di far sembrare un difetto la cura di
+// un difetto.
+void begin(bool flipped);
+
+// Lo gira a schermo acceso, per la voce SCHERMO del menu: il verso si sceglie
+// guardandolo, quindi deve cambiare mentre si gira la manopola e non al riavvio.
+void setFlipped(bool flipped);
+
 // L'anello si percorre nei due sensi: destra avanti, sinistra indietro.
 void nextScreen();
 void prevScreen();

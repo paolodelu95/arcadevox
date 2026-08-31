@@ -1823,14 +1823,34 @@ namespace Display {
 
 void setPacer(void (*fn)(uint32_t)) { pacer = fn; }
 
-void begin() {
+// Mezzo giro e' la rotazione 2. Le altre due posizioni della libreria, 1 e 3,
+// girerebbero di un quarto: il disegno e' costruito attorno al centro del tondo,
+// quindi verrebbe fuori lo stesso identico cerchio ma con la fascia dei comandi
+// lungo un fianco invece che sotto le manopole. Le uniche due posizioni che
+// hanno senso su questo pannello sono dritto e capovolto.
+constexpr uint8_t ROT_NORMAL = 0;
+constexpr uint8_t ROT_FLIPPED = 2;
+
+void begin(bool flipped) {
     bus = new Arduino_ESP32SPI(PIN_TFT_DC, PIN_TFT_CS, PIN_TFT_SCLK, PIN_TFT_MOSI,
                                GFX_NOT_DEFINED /* MISO non usato */);
-    gfx = new Arduino_GC9A01(bus, PIN_TFT_RST, 0 /* rotation */, true /* IPS */);
+    gfx = new Arduino_GC9A01(bus, PIN_TFT_RST, flipped ? ROT_FLIPPED : ROT_NORMAL,
+                             true /* IPS */);
 
     gfx->begin(40000000);
     splash();
 
+    forceFull = true;
+    prevValid = false;
+}
+
+void setFlipped(bool flipped) {
+    if (!gfx) return;
+    gfx->setRotation(flipped ? ROT_FLIPPED : ROT_NORMAL);
+    // Ruotare cambia dove andranno i pixel nuovi, non quelli gia' scritti: senza
+    // pulire resterebbe a video la schermata di prima, dritta, con la nuova che
+    // le si disegna sopra a pezzi. Il ridisegno completo lo chiede forceFull.
+    gfx->fillScreen(BLACK);
     forceFull = true;
     prevValid = false;
 }

@@ -347,6 +347,12 @@ class Arduino_GFX {
         cursor_y = y;
     }
     void setTextWrap(bool w) { wrap = w; }
+
+    // Il simulatore rende sempre dritto: qui interessa che il firmware compili e
+    // che la scena sia quella giusta, non riprodurre un display montato al
+    // contrario — girare l'immagine non proverebbe niente che l'occhio non sappia
+    // gia' fare da solo guardando il PNG sottosopra.
+    void setRotation(uint8_t r) { (void)r; }
     int16_t getCursorX() const { return cursor_x; }
     int16_t getCursorY() const { return cursor_y; }
 

@@ -109,13 +109,20 @@ struct SynthState {
     // strumento con cui era stato scritto no, che e' il modo piu' sicuro di
     // rendere inutile l'averlo salvato.
     uint8_t seqInstrument;
+
+    // --- 2.10.0: il verso dello schermo ---
+    // Va ricordato per forza: e' una proprieta' di come **quella** scheda e'
+    // stata montata, non una preferenza d'uso. Chi ha il display girato ce l'ha
+    // girato per sempre, e chiederglielo ad ogni accensione sarebbe come
+    // chiedergli ogni volta di che colore sono i suoi tasti.
+    uint8_t setSchermo;
 };
 
-// Alzata a 4 perche' seqInstrument e' un singolo byte in coda a una struttura
-// piena di float: il riempimento puo' lasciare sizeof identico, e il controllo
-// sulla sola lunghezza non se ne accorgerebbe. E' esattamente il buco che questo
+// Alzata a 5. La ragione della 4 vale identica per questo campo: un singolo byte
+// in coda a una struttura piena di float puo' lasciare sizeof invariato, e il
+// controllo sulla sola lunghezza non se ne accorgerebbe. E' il buco che questo
 // campo di revisione esiste per tappare, ed e' gia' successo una volta.
-#define STORAGE_STATE_REV 4
+#define STORAGE_STATE_REV 5
 
 // Orientamento attuale: la scala sale, l'indice cresce col numero a video.
 #define STORAGE_SCALE_REV 1

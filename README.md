@@ -55,6 +55,9 @@ con un inviluppo vero e un filtro risonante.
 - **15 timbri di fabbrica** — pianoforte, chitarra, organo, archi, campane, acido, arcade… —
   con una schermata tutta loro, e il ritratto di ognuno: forma d'onda e inviluppo
 - **Memoria**: pattern, parametri e mappa dei LED sopravvivono allo spegnimento
+- **Schermo capovolgibile**: il GC9A01 è tondo e non ha un verso obbligato, quindi si può
+  montare girato senza accorgersene. **MENU → SCHERMO → VERSO** lo raddrizza via firmware,
+  senza smontare il pannello, e se lo ricorda
 - **Aggiornamento via WiFi** con QR da inquadrare col telefono
 
 ## Hardware
@@ -371,6 +374,7 @@ per andare da zero a fondo scala. Ora si regola dalla schermata **MENU**.
 | LUCI | LUMINOSITÀ | da spente a 8 | 5 |
 | | IMPARA LUCI | insegna alla scheda l'ordine della catena | — |
 | | AZZERA LUCI | rimette l'ordine di fabbrica | — |
+| SCHERMO | VERSO | normale o capovolto, per un display montato girato | normale |
 | AUDIO | USCITA | quale filo è BCK, LRC e DIN | LRC BCK DIN |
 | | MIDI OUT | cosa manda al computer | NOTE |
 | RETE | MODALITÀ WIFI | accende la radio e mostra il QR | — |

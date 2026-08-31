@@ -19,11 +19,17 @@
 #define SETTING_LED 6
 #define SETTING_LEDLEARN 7  // azione: impara l'ordine della catena
 #define SETTING_LEDRESET 8  // azione: rimette l'ordine di fabbrica
+// --- schermo ---
+// Il GC9A01 e' tondo e non ha un verso obbligato: montandolo si puo' benissimo
+// ruotarlo di mezzo giro senza accorgersene, e da fuori non si vede — il vetro
+// e' simmetrico, e a scoprirlo si arriva solo dando corrente. Ruotare il modulo
+// vorrebbe dire smontare il pannello, quindi lo si gira via firmware.
+#define SETTING_SCHERMO 9
 // --- uscita audio e MIDI ---
-#define SETTING_AUDIO 9
-#define SETTING_MIDIOUT 10
+#define SETTING_AUDIO 10
+#define SETTING_MIDIOUT 11
 // --- rete ---
-#define SETTING_NET 11  // azione: accende la radio
+#define SETTING_NET 12  // azione: accende la radio
 
 // Fin qui il menu. Il TIMBRO sta dopo apposta: resta una voce a tutti gli
 // effetti — ha un indice, un valore di fabbrica, un posto in NVS e risponde al
@@ -34,9 +40,9 @@
 // Spostarlo in coda non tocca la memoria: lo stato salva ogni impostazione in un
 // campo col suo nome (`setTimbro`), non un array indicizzato, quindi
 // rinumerare qui non sposta niente di quello che c'e' gia' nelle schede in giro.
-#define SETTING_MENU_COUNT 12
-#define SETTING_TIMBRO 12
-#define SETTING_COUNT 13
+#define SETTING_MENU_COUNT 13
+#define SETTING_TIMBRO 13
+#define SETTING_COUNT 14
 
 namespace Settings {
 
